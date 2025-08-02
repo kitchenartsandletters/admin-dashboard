@@ -4,7 +4,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import DashboardHeader from './DashboardHeader';
 import ExportButtons from "./ExportButtons";
-import AdminTable from './AdminTable';
+import RequestTable from './RequestTable';
 
 declare module 'jspdf' {
   interface jsPDF {
@@ -27,7 +27,7 @@ type InterestEntry = {
   created_at: string
 }
 
-const AdminDashboard = () => {
+const RequestService = () => {
   const [data, setData] = useState<InterestEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -210,7 +210,7 @@ const AdminDashboard = () => {
           handleFilterChange={handleFilterChange}
         />
       </div>
-      <AdminTable
+      <RequestTable
         filteredData={filteredData}
         handleSort={handleSort}
         renderSortIcon={renderSortIcon}
@@ -222,4 +222,4 @@ const AdminDashboard = () => {
 }
 
 
-export default AdminDashboard
+export default RequestService

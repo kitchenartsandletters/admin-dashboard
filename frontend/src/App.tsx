@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import SidebarLayout from './components/SidebarLayout';
-import AdminDashboard from './components/AdminDashboard';
+import RequestService from './components/RequestService';
 import SystemStatusDashboard from './components/SystemStatusDashboard'; // placeholder for now
 
 const App = () => {
@@ -8,7 +8,7 @@ const App = () => {
     <Router>
       <SidebarLayout>
         <Routes>
-          <Route path="/requests" element={<AdminDashboard />} />
+          <Route path="/requests" element={<RequestService />} />
           <Route path="/status" element={<SystemStatusDashboard />} />
           <Route path="*" element={<Navigate to="/requests" replace />} />
         </Routes>

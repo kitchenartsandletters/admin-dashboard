@@ -9,7 +9,7 @@ type InterestEntry = {
   created_at: string;
 };
 
-interface AdminTableProps {
+interface RequestTableProps {
   filteredData: InterestEntry[];
   handleSort: (key: keyof InterestEntry) => void;
   renderSortIcon: (key: keyof InterestEntry) => string;
@@ -17,7 +17,7 @@ interface AdminTableProps {
   decodeHTMLEntities: (str: string) => string;
 }
 
-const AdminTable: React.FC<AdminTableProps> = ({
+const RequestTable: React.FC<RequestTableProps> = ({
   filteredData,
   handleSort,
   renderSortIcon,
@@ -90,4 +90,4 @@ const AdminTable: React.FC<AdminTableProps> = ({
   );
 };
 
-export default AdminTable;
+export default RequestTable;
