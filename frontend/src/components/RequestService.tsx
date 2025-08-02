@@ -199,14 +199,14 @@ const RequestService = () => {
       <div className="border p-4 rounded shadow-sm bg-white dark:bg-gray-800">
         <div className="flex justify-between items-center">
           <div>
-            <p className="text-sm font-medium">{entry.product_title}</p>
+            <p className="text-sm font-medium">{decodeHTMLEntities(entry.product_title)}</p>
             <p className="text-xs text-gray-600 dark:text-gray-300">{entry.email}</p>
           </div>
           <button
             onClick={() => setExpanded(!expanded)}
             className="text-sm text-blue-600 dark:text-blue-400"
           >
-            {expanded ? 'Hide Details' : 'View Details'}
+            {expanded ? '⌃' : '⌄'}
           </button>
         </div>
         {expanded && (
