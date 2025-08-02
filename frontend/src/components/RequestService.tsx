@@ -191,6 +191,35 @@ const RequestService = () => {
     window.print();
   };*/
 
+  // MobileRequestCard component for mobile cards
+  const MobileRequestCard = ({ entry }: { entry: InterestEntry }) => {
+    const [expanded, setExpanded] = useState(false);
+
+    return (
+      <div className="border p-4 rounded shadow-sm bg-white dark:bg-gray-800">
+        <div className="flex justify-between items-center">
+          <div>
+            <p className="text-sm font-medium">{entry.product_title}</p>
+            <p className="text-xs text-gray-600 dark:text-gray-300">{entry.email}</p>
+          </div>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-sm text-blue-600 dark:text-blue-400"
+          >
+            {expanded ? 'Hide Details' : 'View Details'}
+          </button>
+        </div>
+        {expanded && (
+          <div className="mt-3 space-y-1 text-sm text-gray-700 dark:text-gray-200">
+            {entry.cr_id && <p><strong>ID:</strong> {entry.cr_id}</p>}
+            {entry.isbn && <p><strong>ISBN:</strong> {entry.isbn}</p>}
+            <p><strong>Submitted:</strong> {new Date(entry.created_at).toLocaleDateString()}</p>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold mb-4">Request Service</h1>
@@ -210,13 +239,22 @@ const RequestService = () => {
           handleFilterChange={handleFilterChange}
         />
       </div>
-      <RequestTable
-        filteredData={filteredData}
-        handleSort={handleSort}
-        renderSortIcon={renderSortIcon}
-        sortConfig={sortConfig}
-        decodeHTMLEntities={decodeHTMLEntities}
-      />
+      {/* Desktop Table */}
+      <div className="hidden sm:block">
+        <RequestTable
+          filteredData={filteredData}
+          handleSort={handleSort}
+          renderSortIcon={renderSortIcon}
+          sortConfig={sortConfig}
+          decodeHTMLEntities={decodeHTMLEntities}
+        />
+      </div>
+      {/* Mobile Cards */}
+      <div className="block sm:hidden space-y-4">
+        {filteredData.map((entry, index) => (
+          <MobileRequestCard key={index} entry={entry} />
+        ))}
+      </div>
     </div>
   )
 }
