@@ -52,8 +52,13 @@ async def update_request_status(payload: StatusUpdateRequest, token: str = ""):
         raise HTTPException(status_code=403, detail="Invalid token")
 
     try:
+        # Debug: incoming payload
+        print("📥 Incoming status update payload:", payload.dict())
+
         # Default to "system" if no changed_by is provided
         actor = payload.changed_by if payload.changed_by else "system"
+
+        # Call the RPC
         result = update_status(
             payload.request_id,
             payload.new_status,
@@ -61,6 +66,12 @@ async def update_request_status(payload: StatusUpdateRequest, token: str = ""):
             source="api",
             optimistic=False
         )
+
+        # Debug: RPC call result
+        print("✅ RPC result:", result)
+
         return {"success": True, "data": result}
     except Exception as e:
+        print("❌ Error in update_request_status:", str(e))
         raise HTTPException(status_code=500, detail=str(e))
+

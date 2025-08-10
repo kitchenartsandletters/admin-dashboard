@@ -34,6 +34,14 @@ def update_status(request_id: str, new_status: str, changed_by: str = "system", 
     Atomically update the status in product_interest_requests and log the change
     in status_change_log via the update_status_with_log RPC function.
     """
+    print("📤 Calling RPC update_status_with_log with params:", {
+        "req_id": request_id,
+        "new_stat": new_status,
+        "actor": changed_by,
+        "src": source,
+        "is_optimistic": optimistic
+    })
+
     resp = supabase.rpc(
         "update_status_with_log",
         {
@@ -45,7 +53,12 @@ def update_status(request_id: str, new_status: str, changed_by: str = "system", 
         }
     ).execute()
 
+    # Debug log raw response from Supabase
+    print("📥 Raw Supabase RPC response:", resp)
+
     if getattr(resp, "error", None):
+        print("❌ Supabase RPC error:", resp.error)
         raise Exception(f"Status update failed: {resp.error}")
     
     return {"success": True}
+
