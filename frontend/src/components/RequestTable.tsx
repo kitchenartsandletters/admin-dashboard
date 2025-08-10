@@ -91,6 +91,12 @@ const RequestTable: React.FC<RequestTableProps> = ({
                 <select
                   value={entry.status || "New"}
                   onChange={(e) => onStatusChange(entry.id || "", e.target.value)}
+                  className="
+                    border border-gray-300 rounded px-2 py-1
+                    bg-white text-gray-900
+                    dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600
+                    focus:outline-none focus:ring-2 focus:ring-blue-500
+                  "
                 >
                   {statuses.map(status => (
                     <option key={status} value={status}>
