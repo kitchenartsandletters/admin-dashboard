@@ -1,14 +1,5 @@
 import React from 'react';
-
-type InterestEntry = {
-  cr_id?: string;
-  email: string;
-  isbn?: string;
-  product_id: number;
-  product_title: string;
-  status?: string;
-  created_at: string;
-};
+import { InterestEntry } from '../types'; // Adjust the import path as necessary
 
 interface RequestTableProps {
   filteredData: InterestEntry[];

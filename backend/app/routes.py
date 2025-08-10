@@ -14,7 +14,7 @@ class InterestRequest(BaseModel):
 class StatusUpdateRequest(BaseModel):
     request_id: str
     new_status: str
-    changed_by: str | None = None  # optional, can default to 'system' in client
+    changed_by: str | None = None
 
 @router.api_route("/interest", methods=["POST", "OPTIONS"])
 async def create_interest(req: Request):
@@ -38,7 +38,7 @@ async def get_interest_entries(token: str = ""):
 
     try:
         result = supabase.table("product_interest_requests") \
-            .select("*") \
+            .select("id, product_id, product_title, email, isbn, cr_id, status, cr_seq, created_at") \
             .order("created_at", desc=True) \
             .limit(100) \
             .execute()

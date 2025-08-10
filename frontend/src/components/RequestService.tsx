@@ -5,6 +5,7 @@ import autoTable from 'jspdf-autotable'
 import DashboardHeader from './DashboardHeader';
 import ExportButtons from "./ExportButtons";
 import RequestTable from './RequestTable';
+import { InterestEntry } from '../types';
 
 declare module 'jspdf' {
   interface jsPDF {
@@ -16,16 +17,6 @@ function decodeHTMLEntities(str: string) {
   const txt = document.createElement("textarea");
   txt.innerHTML = str;
   return txt.value;
-}
-
-type InterestEntry = {
-  cr_id?: string
-  email: string
-  isbn?: string
-  product_id: number
-  product_title: string
-  status?: string
-  created_at: string
 }
 
 const RequestService = () => {
@@ -62,7 +53,7 @@ const RequestService = () => {
         // Optimistic UI update
         setData(prev => {
           const updated = prev.map(item =>
-            item.cr_id === requestId ? { ...item, status: newStatus } : item
+            item.id === requestId ? { ...item, status: newStatus } : item
           );
 
           // If we're currently sorting, re-sort immediately after update
@@ -96,7 +87,7 @@ const RequestService = () => {
           body: JSON.stringify({
             request_id: requestId,
             new_status: newStatus,
-            changed_by: "admin@example.com" // Replace with real admin identity if available
+            changed_by: "admin" // Replace with real admin identity if available
           })
         });
 
@@ -132,12 +123,14 @@ const RequestService = () => {
         // fallback to mock data
         setData([
           {
+            id: 'mock-uuid-1',
             email: 'test@example.com',
             product_id: 12345,
             product_title: 'The Book of Ferments',
             created_at: new Date().toISOString(),
           },
           {
+            id: 'mock-uuid-2',
             email: 'reader@example.com',
             product_id: 98765,
             product_title: 'Cooking in the Shadows',
