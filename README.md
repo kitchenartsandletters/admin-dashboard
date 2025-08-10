@@ -36,6 +36,7 @@ This full-stack system consists of:
 	•	Backend: FastAPI
 	•	Database: Supabase (PostgreSQL)
 	•	Hosting: Railway (both frontend and backend)
+	•	Email: Mailtrap  
 
 ⸻
 
