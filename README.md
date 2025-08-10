@@ -275,5 +275,5 @@ VITE_API_BASE_URL=http://localhost:8000
 🧩 Next Steps
 	•	Add user-facing form for product interest
 	•	Connect frontend form to POST /api/interest
-	•	Implement filters, pagination, and search in AdminDashboard
+	•	Implement filters, pagination, and search in RequestService
 	•	Add logging and alerting for admin errors
