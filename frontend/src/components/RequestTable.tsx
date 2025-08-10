@@ -6,6 +6,7 @@ type InterestEntry = {
   isbn?: string;
   product_id: number;
   product_title: string;
+  status?: string;
   created_at: string;
 };
 
@@ -15,6 +16,7 @@ interface RequestTableProps {
   renderSortIcon: (key: keyof InterestEntry) => string;
   sortConfig: { key: keyof InterestEntry; direction: 'asc' | 'desc' } | null;
   decodeHTMLEntities: (str: string) => string;
+  onStatusChange: (id: string, newStatus: string) => void;
 }
 
 const RequestTable: React.FC<RequestTableProps> = ({
@@ -23,7 +25,17 @@ const RequestTable: React.FC<RequestTableProps> = ({
   renderSortIcon,
   sortConfig,
   decodeHTMLEntities,
+  onStatusChange
 }) => {
+  const statuses = [
+    "New",
+    "In Review",
+    "Contacted",
+    "Waiting on Customer",
+    "Approved",
+    "Closed"
+  ];
+
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full border-collapse border border-gray-200 dark:border-gray-700">
@@ -62,6 +74,16 @@ const RequestTable: React.FC<RequestTableProps> = ({
             >
               Created At {renderSortIcon('created_at')}
             </th>
+            {/* New Status column */}
+            <th
+              onClick={() => handleSort('status')}
+              className={`cursor-pointer border px-4 py-2 dark:border-gray-700 text-left ${
+                sortConfig?.key === 'status' ? 'text-green-600 dark:text-green-400' : ''
+              }`}
+            >
+              Status {renderSortIcon('status')}
+            </th>
+
             <th className="border px-4 py-2 dark:border-gray-700 text-left print-hidden">Link</th>
           </tr>
         </thead>
@@ -73,6 +95,19 @@ const RequestTable: React.FC<RequestTableProps> = ({
               <td className="border px-4 py-2 dark:border-gray-700">{entry.isbn}</td>
               <td className="border px-4 py-2 dark:border-gray-700">{entry.email}</td>
               <td className="border px-4 py-2 dark:border-gray-700">{new Date(entry.created_at).toLocaleString()}</td>
+                            {/* New Status dropdown */}
+              <td className="border px-4 py-2 dark:border-gray-700">
+                <select
+                  value={entry.status || "New"}
+                  onChange={(e) => onStatusChange(entry.cr_id || "", e.target.value)}
+                >
+                  {statuses.map(status => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </td>
               <td className="border px-4 py-2 dark:border-gray-700 print-hidden">
                 <a
                   href={`https://admin.shopify.com/store/castironbooks/products/${entry.product_id}`}

@@ -29,11 +29,23 @@ def fetch_all_interest():
         return []
     return response.data
 
-def update_status(request_id: str, new_status: str):
-    response = supabase.table("product_interest_requests") \
-        .update({"status": new_status}) \
-        .eq("id", request_id) \
-        .execute()
-    if not response.data:
-        raise Exception("Status update failed or returned no data.")
-    return response.data
+def update_status(request_id: str, new_status: str, changed_by: str = "system", source: str = "api", optimistic: bool = False):
+    """
+    Atomically update the status in product_interest_requests and log the change
+    in status_change_log via the update_status_with_log RPC function.
+    """
+    resp = supabase.rpc(
+        "update_status_with_log",
+        {
+            "req_id": request_id,
+            "new_stat": new_status,
+            "actor": changed_by,
+            "src": source,
+            "is_optimistic": optimistic
+        }
+    ).execute()
+
+    if getattr(resp, "error", None):
+        raise Exception(f"Status update failed: {resp.error}")
+    
+    return {"success": True}

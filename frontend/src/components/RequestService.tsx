@@ -24,6 +24,7 @@ type InterestEntry = {
   isbn?: string
   product_id: number
   product_title: string
+  status?: string
   created_at: string
 }
 
@@ -55,6 +56,60 @@ const RequestService = () => {
     if (!sortConfig || sortConfig.key !== key) return '⇅';
     return sortConfig.direction === 'asc' ? '↑' : '↓';
   };
+
+    const handleStatusChange = async (requestId: string, newStatus: string) => {
+      try {
+        // Optimistic UI update
+        setData(prev => {
+          const updated = prev.map(item =>
+            item.cr_id === requestId ? { ...item, status: newStatus } : item
+          );
+
+          // If we're currently sorting, re-sort immediately after update
+          if (sortConfig) {
+            return [...updated].sort((a, b) => {
+              const { key, direction } = sortConfig;
+              if (key === 'status') {
+                const statusOrder = [
+                  "New",
+                  "In Review",
+                  "Contacted",
+                  "Waiting on Customer",
+                  "Approved",
+                  "Closed"
+                ];
+                const aIndex = statusOrder.indexOf(a.status || "New");
+                const bIndex = statusOrder.indexOf(b.status || "New");
+                return (aIndex - bIndex) * (direction === 'asc' ? 1 : -1);
+              }
+              return 0; // Other sorts fall back to default sorter in sortedData
+            });
+          }
+
+          return updated;
+        });
+
+        // Backend update
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/update_status?token=${import.meta.env.VITE_ADMIN_TOKEN}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            request_id: requestId,
+            new_status: newStatus,
+            changed_by: "admin@example.com" // Replace with real admin identity if available
+          })
+        });
+
+        if (!res.ok) throw new Error("Failed to update status");
+
+        const json = await res.json();
+        console.log("Status updated:", json);
+
+      } catch (err) {
+        console.error("Error updating status:", err);
+      }
+    };
+
   
   useEffect(() => {
     const fetchData = async () => {
@@ -100,13 +155,29 @@ const RequestService = () => {
   console.log("Admin dashboard data:", data)
 
   // Sort helper
+  const statusOrder = [
+    "New",
+    "In Review",
+    "Contacted",
+    "Waiting on Customer",
+    "Approved",
+    "Closed"
+  ];
+
   const sortedData = [...data].sort((a, b) => {
-    if (!sortConfig) return 0
-    const { key, direction } = sortConfig
-    const aVal = a[key]
-    const bVal = b[key]
+    if (!sortConfig) return 0;
+    const { key, direction } = sortConfig;
+    const aVal = a[key];
+    const bVal = b[key];
 
     if (aVal == null || bVal == null) return 0;
+
+    // Special case for status sorting
+    if (key === 'status') {
+      const aIndex = statusOrder.indexOf(aVal as string);
+      const bIndex = statusOrder.indexOf(bVal as string);
+      return (aIndex - bIndex) * (direction === 'asc' ? 1 : -1);
+    }
 
     if (key === 'cr_id') {
       return aVal.toString().localeCompare(bVal.toString()) * (direction === 'asc' ? 1 : -1);
@@ -118,7 +189,6 @@ const RequestService = () => {
       return stripLeadingArticle(aVal).localeCompare(stripLeadingArticle(bVal)) * (direction === 'asc' ? 1 : -1);
     }
 
-    // Safer date comparison for created_at field
     if (key === 'created_at') {
       const aDate = Date.parse(aVal as string);
       const bDate = Date.parse(bVal as string);
@@ -126,11 +196,12 @@ const RequestService = () => {
     }
 
     if (typeof aVal === 'number' && typeof bVal === 'number') {
-      return (aVal - bVal) * (direction === 'asc' ? 1 : -1)
+      return (aVal - bVal) * (direction === 'asc' ? 1 : -1);
     }
 
-    return aVal.toString().localeCompare(bVal.toString()) * (direction === 'asc' ? 1 : -1)
-  })
+    return aVal.toString().localeCompare(bVal.toString()) * (direction === 'asc' ? 1 : -1);
+  });
+
 
   const filteredData = sortedData.filter((entry) =>
     Object.values(entry)
@@ -247,6 +318,7 @@ const RequestService = () => {
           renderSortIcon={renderSortIcon}
           sortConfig={sortConfig}
           decodeHTMLEntities={decodeHTMLEntities}
+          onStatusChange={handleStatusChange}
         />
       </div>
       {/* Mobile Cards */}
