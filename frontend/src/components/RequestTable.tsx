@@ -90,7 +90,7 @@ const RequestTable: React.FC<RequestTableProps> = ({
               <td className="border px-4 py-2 dark:border-gray-700">
                 <select
                   value={entry.status || "New"}
-                  onChange={(e) => onStatusChange(entry.cr_id || "", e.target.value)}
+                  onChange={(e) => onStatusChange(entry.id || "", e.target.value)}
                 >
                   {statuses.map(status => (
                     <option key={status} value={status}>
