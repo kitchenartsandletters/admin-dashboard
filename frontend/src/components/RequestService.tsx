@@ -90,7 +90,7 @@ const RequestService = () => {
         });
 
         // Backend update
-        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/update_status?token=${import.meta.env.VITE_ADMIN_TOKEN}`, {
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/update_status?token${import.meta.env.VITE_ADMIN_TOKEN}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
