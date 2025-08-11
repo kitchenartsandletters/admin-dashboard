@@ -10,6 +10,7 @@ class InterestRequest(BaseModel):
     email: str
     product_id: int
     product_title: str
+    isbn: str | None = None
 
 class StatusUpdateRequest(BaseModel):
     request_id: str
@@ -24,7 +25,8 @@ async def create_interest(req: Request):
         result = insert_interest(
             email=request.email,
             product_id=request.product_id,
-            product_title=request.product_title
+            product_title=request.product_title,
+            isbn=request.isbn
         )
         return {"success": True, "data": result}
     except Exception as e:

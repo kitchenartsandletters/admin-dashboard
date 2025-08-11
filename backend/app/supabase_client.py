@@ -1,6 +1,7 @@
 import os
 from supabase import create_client, Client
 from dotenv import load_dotenv
+import uuid
 
 load_dotenv()
 
@@ -9,11 +10,19 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def insert_interest(email: str, product_id: int, product_title: str):
+def insert_interest(email: str, product_id: int, product_title: str, isbn: str = None):
+    """
+    Insert a new interest request into product_interest_requests.
+    Automatically generates a CR ID and preserves ISBN if provided.
+    """
+    cr_id = f"CR{uuid.uuid4().hex[:8].upper()}"
+
     response = supabase.table("product_interest_requests").insert({
         "email": email,
         "product_id": product_id,
-        "product_title": product_title
+        "product_title": product_title,
+        "isbn": isbn,
+        "cr_id": cr_id
     }).execute()
 
     if not response.data:
