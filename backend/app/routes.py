@@ -11,6 +11,7 @@ class InterestRequest(BaseModel):
     product_id: int
     product_title: str
     isbn: str | None = None
+    customer_name: str | None = None
 
 class StatusUpdateRequest(BaseModel):
     request_id: str
@@ -26,7 +27,8 @@ async def create_interest(req: Request):
             email=request.email,
             product_id=request.product_id,
             product_title=request.product_title,
-            isbn=request.isbn
+            isbn=request.isbn,
+            customer_name=request.customer_name
         )
         return {"success": True, "data": result}
     except Exception as e:
@@ -40,7 +42,7 @@ async def get_interest_entries(token: str = ""):
 
     try:
         result = supabase.table("product_interest_requests") \
-            .select("id, product_id, product_title, email, isbn, cr_id, status, cr_seq, created_at") \
+            .select("id, product_id, product_title, email, customer_name, isbn, cr_id, status, cr_seq, created_at") \
             .order("created_at", desc=True) \
             .limit(100) \
             .execute()
@@ -76,4 +78,3 @@ async def update_request_status(payload: StatusUpdateRequest, token: str = ""):
     except Exception as e:
         print("❌ Error in update_request_status:", str(e))
         raise HTTPException(status_code=500, detail=str(e))
-

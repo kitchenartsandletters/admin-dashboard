@@ -10,19 +10,26 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def insert_interest(email: str, product_id: int, product_title: str, isbn: str = None):
+def insert_interest(email: str, product_id: int, product_title: str, isbn: str = None, customer_name: str = None):
     """
     Insert a new interest request into product_interest_requests.
     Automatically generates a CR ID and preserves ISBN if provided.
     """
     cr_id = f"CR{uuid.uuid4().hex[:8].upper()}"
 
+    # Normalize blank or whitespace-only names to None
+    if not customer_name or not customer_name.strip():
+        customer_name = None
+    else:
+        customer_name = customer_name.strip()
+
     response = supabase.table("product_interest_requests").insert({
         "email": email,
         "product_id": product_id,
         "product_title": product_title,
         "isbn": isbn,
-        "cr_id": cr_id
+        "cr_id": cr_id,
+        "customer_name": customer_name
     }).execute()
 
     if not response.data:
@@ -32,7 +39,7 @@ def insert_interest(email: str, product_id: int, product_title: str, isbn: str =
 
 def fetch_all_interest():
     response = supabase.table("product_interest_requests") \
-        .select("id, product_id, product_title, email, isbn, cr_id, status, cr_seq, created_at") \
+        .select("id, product_id, product_title, email, customer_name, isbn, cr_id, status, cr_seq, created_at") \
         .execute()
     if not response.data:
         return []
@@ -70,4 +77,3 @@ def update_status(request_id: str, new_status: str, changed_by: str = "system", 
         raise Exception(f"Status update failed: {resp.error}")
     
     return {"success": True}
-

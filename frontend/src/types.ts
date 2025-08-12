@@ -5,6 +5,7 @@ export interface InterestEntry {
   product_title: string;
   isbn?: string;
   email: string;
+  customer_name?: string;
   created_at: string;
   product_id: number;
   status?: string;

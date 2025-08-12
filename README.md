@@ -308,9 +308,15 @@ VITE_API_BASE_URL=http://localhost:8000
 
 * Gather user feedback on dropdown usability and possible color-coded status list
 * Add full per-option colorization via custom Listbox component
-* Add pagination and advanced filtering to dashboard
 * Extend logging to track admin interactions for auditing
 * Add Shopify frontend UI customer name entry field (in conjunction with email collection)
 * Refactor supabase ingress db to accept new payload (customer name and email)
-* Add archiving ability per row
+* Refactor request table to display customer name in dedicated column
+* Filter Controls: dropdown column editor, pagination, advanced filtering
+* Add archiving and deleting ability per row
+* Add history log in dashboard
+* A modal to manually create entries, edit entries
+* Bulk editing abilities
+* Slack/email notifications
+* Validate null or whitespace name entries?
 * Setup data rentention policy, regulatory policies, and performance needs -- what regulations do we need to adhere to? how should our policies be updated to include this type of data collection?

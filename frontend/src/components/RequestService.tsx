@@ -192,20 +192,31 @@ const RequestService = () => {
       return (aVal - bVal) * (direction === 'asc' ? 1 : -1);
     }
 
+    if (key === 'customer_name') {
+      const aEmpty = !aVal || aVal === '—';
+      const bEmpty = !bVal || bVal === '—';
+      if (aEmpty && !bEmpty) return 1;
+      if (!aEmpty && bEmpty) return -1;
+    }
+
     return aVal.toString().localeCompare(bVal.toString()) * (direction === 'asc' ? 1 : -1);
   });
 
 
-  const filteredData = sortedData.filter((entry) =>
-    Object.values(entry)
-      .join(" ")
-      .toLowerCase()
-      .includes(selectedFilter.toLowerCase())
-  )
+  const filteredData = sortedData.filter((item) => {
+    const search = selectedFilter.toLowerCase();
+    return (
+      item.product_title?.toLowerCase().includes(search) ||
+      item.email?.toLowerCase().includes(search) ||
+      item.customer_name?.toLowerCase().includes(search) ||
+      item.cr_id?.toLowerCase().includes(search)
+    );
+  });
 
   const filteredItems = data.filter(item =>
     item.product_title.toLowerCase().includes(selectedFilter.toLowerCase()) ||
     item.email.toLowerCase().includes(selectedFilter.toLowerCase()) ||
+    item.customer_name?.toLowerCase().includes(selectedFilter.toLowerCase()) ||
     item.cr_id?.toLowerCase().includes(selectedFilter.toLowerCase())
   );
 /*

@@ -58,6 +58,14 @@ const RequestTable: React.FC<RequestTableProps> = ({
               Email {renderSortIcon('email')}
             </th>
             <th
+              onClick={() => handleSort('customer_name')}
+              className={`cursor-pointer border px-4 py-2 dark:border-gray-700 text-left ${
+                sortConfig?.key === 'customer_name' ? 'text-green-600 dark:text-green-400' : ''
+              }`}
+            >
+                Customer {renderSortIcon('customer_name')}
+              </th>
+            <th
               onClick={() => handleSort('created_at')}
               className={`cursor-pointer border px-4 py-2 dark:border-gray-700 text-left ${
                 sortConfig?.key === 'created_at' ? 'text-green-600 dark:text-green-400' : ''
@@ -85,6 +93,7 @@ const RequestTable: React.FC<RequestTableProps> = ({
               <td className="border px-4 py-2 dark:border-gray-700">{decodeHTMLEntities(entry.product_title)}</td>
               <td className="border px-4 py-2 dark:border-gray-700">{entry.isbn}</td>
               <td className="border px-4 py-2 dark:border-gray-700">{entry.email}</td>
+              <td className="border px-4 py-2 dark:border-gray-700">{entry.customer_name?.trim() || '—'}</td>
               <td className="border px-4 py-2 dark:border-gray-700">{new Date(entry.created_at).toLocaleString()}</td>
                             {/* New Status dropdown */}
               <td className="border px-4 py-2 dark:border-gray-700">
