@@ -2,6 +2,23 @@
 
 This project formerly enabled customers to express interest in out-of-stock products, and gives admins a secure dashboard to view and manage those interest requests. It has since expanded to a full Admin Dashboard UI with what we call the 'Request Service' now serving a modular component of the dashboard.
 
+## 🗂️ Service Modules
+
+The Admin Dashboard is designed to support modular services. Each service is rendered via a dedicated route and contributes distinct functionality to the overall dashboard. Current modules:
+
+- [Request Service](#request-service) - currently bundled into #admin-dashboard
+- [Damaged Books Service](#damaged-books-service)
+
+---
+
+**Stack**
+
+* **Frontend:** Vite + React + TypeScript
+* **Backend:** FastAPI
+* **Database:** Supabase (PostgreSQL)
+* **Hosting:** Railway (frontend + backend)
+* **Email:** Mailtrap (not deployed)
+
 ---
 
 ## 🌗 Dark Mode Support
@@ -32,19 +49,7 @@ The admin dashboard supports dark mode via Tailwind CSS and a custom toggle comp
 
 ---
 
-## ✅ Project Overview
-
-**Stack**
-
-* **Frontend:** Vite + React + TypeScript
-* **Backend:** FastAPI
-* **Database:** Supabase (PostgreSQL)
-* **Hosting:** Railway (frontend + backend)
-* **Email:** Mailtrap
-
----
-
-## 🔧 Key Functionality
+## ✅ Request Service
 
 **Users**
 
@@ -57,6 +62,52 @@ The admin dashboard supports dark mode via Tailwind CSS and a custom toggle comp
 * Change request status via dropdown selector (with Tailwind dark mode styling applied)
 * Immediate frontend sort re-application on status change (optimistic UI)
 * Debug logging of payloads and Supabase RPC responses
+
+## 📦 Damaged Books Service
+
+Phase 1 of the Damaged Books Service (DBS) integration is now live in the Admin Dashboard.
+
+**Features**
+- Fetches from `/admin/damaged-inventory` on DBS (token-protected)
+- Renders a table with condition, stock, and Shopify links
+- Drawer UI shows full product data, related logs, and document links
+- Docs tab pulls from `/admin/docs`
+- Logs tab links to the log UI with a pre-filtered query on handle
+- Reconcile Now button (optional Phase 1 feature)
+
+**DBS Environment Variables (Frontend)**
+```env
+VITE_DBS_BASE_URL=https://used-books-service-production.up.railway.app
+VITE_DBS_ADMIN_TOKEN=your_token_here
+```
+
+**Expected DBS Response**
+```json
+{
+  "data": [
+    {
+      "inventory_item_id": 123,
+      "product_id": 456,
+      "variant_id": 789,
+      "handle": "sample-title",
+      "condition": "moderate",
+      "available": 1,
+      "last_shopify_sync_at": "...",
+      "last_webhook_at": "...",
+      "stock_status": "in_stock",
+      "title": "Sample Title"
+    }
+  ],
+  "meta": { "count": 1 }
+}
+```
+
+**Setup Notes**
+- Token must be passed as `X-Admin-Token` in request headers
+- `import.meta.env.VITE_DBS_*` values must be defined at build time
+- DBS must allow CORS from the Admin Dashboard origin
+- The sidebar now includes a “Damaged Books” tab if the route is mounted
+
 
 ---
 
@@ -79,6 +130,8 @@ SUPABASE_KEY=service_role_key
 SUPABASE_URL=supabase_project_url
 VITE_ADMIN_TOKEN="devtesttoken123"
 VITE_API_BASE_URL="outofstock-notify-frontend-production.up.railway.app"
+VITE_DBS_ADMIN_TOKEN="devtesttoken123"
+VITE_DBS_BASE_URL="https://used-books-service-production.up.railway.app"
 ```
 
 ---
@@ -306,6 +359,9 @@ VITE_API_BASE_URL=http://localhost:8000
 
 ## 🧩 Next Steps
 
+
+## #request-service
+
 * Scale down table font size
 * Gather user feedback on dropdown usability and possible color-coded status list
 * Add full per-option colorization via custom Listbox component
@@ -322,3 +378,39 @@ VITE_API_BASE_URL=http://localhost:8000
 * Slack/email notifications
 * Validate null or whitespace name entries?
 * Setup data rentention policy, regulatory policies, and performance needs -- what regulations do we need to adhere to? how should our policies be updated to include this type of data collection?
+
+## #damaged-books-service
+
+### Phase 2 Planning
+
+* Add inline override controls:
+  * PATCH /admin/damaged-inventory/:variant_id/override
+  * Body includes: `publish: boolean`, optional `redirect_target`, and `notes`
+  * UI control: dropdown or toggle with conditionally rendered inputs for redirect + notes
+* Build reconciliation status badge or column per row (e.g., last_sync status)
+* Add manual “Reconcile Now” button at table-level (visible to admins)
+* Add inline notes editor with audit logging
+* Filter/search controls by:
+  * Condition
+  * Stock status
+  * Handle (substring match)
+* Add pagination or virtual scroll to support >2,000 rows
+* Enable markdown rendering inside the Docs tab instead of link-only view
+* Expose standalone Docs & Logs routes via top-level nav (with shared drawer UI)
+* Add bulk actions (archive, delete, publish/unpublish, etc.)
+* Create server-side audit log (damaged.changelog) with Supabase triggers
+
+---
+
+## 🎨 Tailwind Style Guide
+
+All services and shared components should conform to the following Tailwind conventions:
+
+- **Dark Mode:** Use `dark:` variants on all backgrounds, borders, and text
+- **Tables:** Always apply `text-sm`, striped row alternation via `border-t`, and dark mode borders
+- **Typography:** 
+  - Headings: `text-xl font-semibold` (subheaders), `text-3xl font-semibold` (section headers)
+  - Paragraphs and UI text: `text-sm` or `text-xs` depending on density
+- **Buttons:** Rounded, padded (`px-4 py-2`), `hover:` variants, consistent color roles (`bg-blue-500`, `bg-gray-600`, etc.)
+- **Sidebar Navigation:** Highlight active route with `font-semibold bg-gray-200 dark:bg-gray-700`
+- **Responsiveness:** Use `sm:`, `md:` utilities to support sidebar collapse and mobile layouts

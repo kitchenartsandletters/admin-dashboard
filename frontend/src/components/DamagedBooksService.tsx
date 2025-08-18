@@ -69,6 +69,21 @@ export const DamagedBooksService = {
     });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     return await res.json();
+  },
+
+  async status(): Promise<{
+    inspected: number;
+    updated: number;
+    skipped: number;
+    note?: string;
+    at: string;
+  }> {
+    const res = await fetch(new URL('/admin/reconcile/status', BASE), {
+      method: 'GET',
+      headers: { 'X-Admin-Token': ADMIN_API_TOKEN }
+    });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return await res.json();
   }
 };
 
