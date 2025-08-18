@@ -105,7 +105,7 @@ const RequestService = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/interest?token${import.meta.env.VITE_ADMIN_TOKEN}`)
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/interest?token=${import.meta.env.VITE_ADMIN_TOKEN}`)
         let json: any
         try {
           json = await res.clone().json()

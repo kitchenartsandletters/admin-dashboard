@@ -1,6 +1,6 @@
-# 🛎️ Out-of-Stock Notify (Admin Dashboard)
+# 🛎️ Admin Dashboard (fka Out-of-stock Notify)
 
-This project enables customers to express interest in out-of-stock products, and gives admins a secure dashboard to view and manage those interest requests.
+This project formerly enabled customers to express interest in out-of-stock products, and gives admins a secure dashboard to view and manage those interest requests. It has since expanded to a full Admin Dashboard UI with what we call the 'Request Service' now serving a modular component of the dashboard.
 
 ---
 
