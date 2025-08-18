@@ -21,8 +21,8 @@ export type DamagedInventoryResponse = {
   meta: { count: number };
 };
 
-const BASE = import.meta.env.BASE_URL;
-const ADMIN_API_TOKEN = import.meta.env.ADMIN_API_TOKEN;
+const BASE = import.meta.env.VITE_DBS_BASE_URL;
+const ADMIN_API_TOKEN = import.meta.env.VITE_DBS_ADMIN_TOKEN;
 
 async function get<T>(path: string, params?: Record<string, string | number | boolean>) {
   const url = new URL(path, BASE);
