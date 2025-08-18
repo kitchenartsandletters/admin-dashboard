@@ -21,15 +21,15 @@ export type DamagedInventoryResponse = {
   meta: { count: number };
 };
 
-const BASE = import.meta.env.VITE_DBS_BASE_URL;
-const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN;
+const BASE = import.meta.env.BASE_URL;
+const ADMIN_API_TOKEN = import.meta.env.ADMIN_API_TOKEN;
 
 async function get<T>(path: string, params?: Record<string, string | number | boolean>) {
   const url = new URL(path, BASE);
   Object.entries(params || {}).forEach(([k, v]) => url.searchParams.set(k, String(v)));
   const res = await fetch(url.toString(), {
     headers: {
-      'X-Admin-Token': ADMIN_TOKEN,
+      'X-Admin-Token': ADMIN_API_TOKEN,
       'Accept': 'application/json',
     },
     credentials: 'omit',
@@ -65,7 +65,7 @@ export const DamagedBooksService = {
   async reconcileNow(): Promise<{ inspected: number; updated: number; skipped: number }> {
     const res = await fetch(new URL('/admin/reconcile', BASE), {
       method: 'POST',
-      headers: { 'X-Admin-Token': ADMIN_TOKEN, 'Content-Type': 'application/json' },
+      headers: { 'X-Admin-Token': ADMIN_API_TOKEN, 'Content-Type': 'application/json' },
     });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     return await res.json();
