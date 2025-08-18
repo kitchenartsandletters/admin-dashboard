@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import SidebarLayout from './components/SidebarLayout';
 import RequestService from './components/RequestService';
 import SystemStatusDashboard from './components/SystemStatusDashboard'; // placeholder for now
+import DamagedBooksTable from './components/DamagedBooksTable';
 
 const App = () => {
   return (
@@ -9,6 +10,7 @@ const App = () => {
       <SidebarLayout>
         <Routes>
           <Route path="/requests" element={<RequestService />} />
+          <Route path="/damaged" element={<DamagedBooksTable />} />
           <Route path="/status" element={<SystemStatusDashboard />} />
           <Route path="*" element={<Navigate to="/requests" replace />} />
         </Routes>
