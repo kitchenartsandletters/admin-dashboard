@@ -306,6 +306,7 @@ VITE_API_BASE_URL=http://localhost:8000
 
 ## 🧩 Next Steps
 
+* Scale down table font size
 * Gather user feedback on dropdown usability and possible color-coded status list
 * Add full per-option colorization via custom Listbox component
 * Extend logging to track admin interactions for auditing
@@ -313,6 +314,7 @@ VITE_API_BASE_URL=http://localhost:8000
 * Refactor supabase ingress db to accept new payload (customer name and email)
 * Refactor request table to display customer name in dedicated column
 * Filter Controls: dropdown column editor, pagination, advanced filtering
+* Add product.collection to payload; decide on ways to surface it later
 * Add archiving and deleting ability per row
 * Add history log in dashboard
 * A modal to manually create entries, edit entries
