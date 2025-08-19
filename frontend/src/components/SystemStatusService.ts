@@ -11,6 +11,22 @@ export type ServiceStatus = {
   lastChecked: string;
 };
 
+// Helper function to perform fetch with timeout
+function timeoutFetch(url: string, options: RequestInit = {}, timeout = 5000): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Timeout')), timeout);
+    fetch(url, options)
+      .then((res) => {
+        clearTimeout(timer);
+        resolve(res);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
 export async function fetchSystemStatuses(): Promise<ServiceStatus[]> {
   const now = new Date().toLocaleString();
   const headers = {
@@ -20,7 +36,8 @@ export async function fetchSystemStatuses(): Promise<ServiceStatus[]> {
 
   async function check(url: string, opts: RequestInit = {}): Promise<EndpointStatus> {
     try {
-      const res = await fetch(url, opts);
+      console.log('🌐 Checking URL:', url);
+      const res = await timeoutFetch(url, opts, 5000);
       const status = res.ok ? 'Healthy' : 'Degraded';
       return { url, status, code: res.status, message: res.statusText };
     } catch (err: any) {
