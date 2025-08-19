@@ -115,27 +115,27 @@ export default function DamagedBooksTable() {
         <table className="min-w-full border border-gray-200 dark:border-gray-700 text-sm ">
           <thead className="bg-gray-50 dark:bg-gray-800">
             <tr>
-              <th className="px-3 py-2 text-left dark:border-gray-700 cursor-pointer" onClick={() => handleSort('title')}>Title</th>
-              <th className="px-3 py-2 text-left dark:border-gray-700">Condition</th>
-              <th className="px-3 py-2 text-left dark:border-gray-700">Available</th>
-              <th className="px-3 py-2 text-left dark:border-gray-700">Author</th>
-              <th className="px-3 py-2 text-left dark:border-gray-700">Barcode</th>
-              <th className="px-3 py-2 text-left dark:border-gray-700 cursor-pointer" onClick={() => handleSort('stock_status')}>Status</th>
-              <th className="px-3 py-2 text-left dark:border-gray-700">Shopify</th>
-              <th className="px-3 py-2 text-left dark:border-gray-700">Online</th>
-              <th className="px-3 py-2 text-left dark:border-gray-700"></th>
+              <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700 cursor-pointer" onClick={() => handleSort('title')}>Title</th>
+              <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Condition</th>
+              <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Available</th>
+              <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Author</th>
+              <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Barcode</th>
+              <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700 cursor-pointer" onClick={() => handleSort('stock_status')}>Status</th>
+              <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Shopify</th>
+              <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Online</th>
+              <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700"></th>
             </tr>
           </thead>
           <tbody>
             {sortedRows.map(r => (
-              <tr key={r.inventory_item_id} className="border-t dark:border-gray-700">
-                <td className="px-3 py-2 dark:border-gray-700">{r.title ?? r.handle}</td>
-                <td className="px-3 py-2 dark:border-gray-700 capitalize">{r.condition}</td>
-                <td className="px-3 py-2 dark:border-gray-700 text-center">{r.available}</td>
-                <td className="px-3 py-2 dark:border-gray-700">{r.sku ?? '—'}</td>
-                <td className="px-3 py-2 dark:border-gray-700">{r.barcode ?? '—'}</td>
-                <td className="px-3 py-2 dark:border-gray-700">{r.stock_status === 'in_stock' ? 'In Stock' : 'Out of Stock'}</td>
-                <td className="px-3 py-2 dark:border-gray-700">
+              <tr key={r.inventory_item_id} className="{`${idx % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800'} border-t dark:border-gray-700`}">
+                <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700">{r.title ?? r.handle}</td>
+                <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 capitalize">{r.condition}</td>
+                <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-center">{r.available}</td>
+                <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700">{r.sku ?? '—'}</td>
+                <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700">{r.barcode ?? '—'}</td>
+                <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700">{r.stock_status === 'in_stock' ? 'In Stock' : 'Out of Stock'}</td>
+                <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700">
                   <a
                     href={`${SHOPIFY_ADMIN_PREFIX}${r.product_id}`}
                     target="_blank"
