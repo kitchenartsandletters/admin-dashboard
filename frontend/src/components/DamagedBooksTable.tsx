@@ -92,7 +92,7 @@ export default function DamagedBooksTable() {
         </button>
       </div>
 
-      <div className="flex gap-3 flex-wrap items-center">
+      <div className="flex gap-3 flex-wrap items-left">
         <input
           type="text"
           placeholder="Search title or barcode..."
