@@ -28,7 +28,7 @@ const RequestTable: React.FC<RequestTableProps> = ({
   ];
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto border rounded-md">
       <table className="min-w-full border-collapse border border-gray-200 dark:border-gray-700 text-sm">
         <thead className="bg-gray-100 dark:bg-gray-800">
           <tr>

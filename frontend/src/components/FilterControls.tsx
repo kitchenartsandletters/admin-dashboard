@@ -10,7 +10,7 @@ const FilterControls: React.FC<FilterControlsProps> = ({
   handleFilterChange,
 }) => {
   return (
-    <div className="mb-4">
+    <div className="flex gap-3 flex-wrap items-center-4">
       <input
         type="text"
         placeholder="Filter by title, email or ID..."
