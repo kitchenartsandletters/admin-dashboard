@@ -10,13 +10,13 @@ const FilterControls: React.FC<FilterControlsProps> = ({
   handleFilterChange,
 }) => {
   return (
-    <div className="flex gap-3 flex-wrap items-center-4">
+    <div className="flex gap-3 flex-wrap items-center">
       <input
         type="text"
         placeholder="Filter by title, email or ID..."
         value={selectedFilter}
         onChange={handleFilterChange}
-        className="px-4 py-2 border border-gray-300 rounded w-full dark:bg-gray-800 dark:text-white dark:border-gray-600"
+        className="px-3 py-2 border rounded text-sm dark:bg-gray-800 dark:text-white"
       />
     </div>
   );
