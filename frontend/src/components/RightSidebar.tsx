@@ -8,6 +8,7 @@ export default function RightSidebar({ row, onClose }: Props) {
   const [tab, setTab] = useState<'info' | 'docs' | 'logs'>('info');
   const [docs, setDocs] = useState<{ title: string; url: string }[]>([]);
   const [logsUrl, setLogsUrl] = useState<string>('');
+  const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
     if (!row) return;
@@ -29,6 +30,15 @@ export default function RightSidebar({ row, onClose }: Props) {
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
 
+  // Slide-in animation visibility
+  useEffect(() => {
+    if (row) {
+      setTimeout(() => setIsVisible(true), 10);
+    } else {
+      setIsVisible(false);
+    }
+  }, [row]);
+
   if (!row) return null;
 
   const searchHandle = encodeURIComponent(row.handle);
@@ -40,7 +50,9 @@ export default function RightSidebar({ row, onClose }: Props) {
         className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40"
         onClick={onClose}
       />
-      <div className="fixed inset-y-0 right-0 w-full sm:w-[28rem] bg-white dark:bg-gray-900 border-l shadow-xl z-50 transition-transform duration-300 transform translate-x-0">
+      <div
+        className={`fixed inset-y-0 right-0 w-full sm:w-[28rem] bg-white dark:bg-gray-900 border-l shadow-xl z-50 transition-transform duration-300 transform ${isVisible ? 'translate-x-0' : 'translate-x-full'}`}
+      >
         <div className="flex items-center justify-between p-3 border-b dark:border-gray-700">
           <h3 className="font-semibold text-lg">Damaged Details</h3>
           <button onClick={onClose} className="text-sm underline">Close</button>
