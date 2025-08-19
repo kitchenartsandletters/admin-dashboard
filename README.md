@@ -108,6 +108,44 @@ VITE_DBS_ADMIN_TOKEN=your_token_here
 - DBS must allow CORS from the Admin Dashboard origin
 - The sidebar now includes a “Damaged Books” tab if the route is mounted
 
+## 📡 System Status Module
+
+The System Status Dashboard provides real-time visibility into the health of all critical services.
+
+**Overview**
+- Each service cluster includes multiple endpoints (e.g., public, internal, worker).
+- The dashboard fetches each endpoint and classifies its health as `Healthy`, `Degraded`, `Offline`, or `Partial`.
+- A top-level summary indicator reflects the worst-case status across all services.
+- The dashboard auto-refreshes every 30 minutes.
+
+**Tracked Services**
+- Admin Dashboard (Frontend): `admin.kitchenartsandletters.com` + Railway URL
+- Admin Dashboard (Backend): `outofstock-notify-frontend-production.up.railway.app:8000`
+- Request Service: `api.kitchenartsandletters.com` + Railway URL
+- Damaged Books Service: `used-books-service-production.up.railway.app:3000` + DBS cron
+- Webhook Gateway: Main + Retry cron worker endpoints
+
+**Environment Variables Required**
+```env
+VITE_ADMIN_DASHBOARD_FE=https://admin.kitchenartsandletters.com
+VITE_ADMIN_DASHBOARD_FE_RAILWAY=https://hearty-respect-production.up.railway.app:8080
+VITE_ADMIN_BACKEND=https://outofstock-notify-frontend-production.up.railway.app:8000
+VITE_REQ_PUBLIC=https://api.kitchenartsandletters.com
+VITE_REQ_RAILWAY=https://outofstock-notify-public-production.up.railway.app:8080
+VITE_DBS_URL=https://used-books-service-production.up.railway.app:3000
+VITE_DBS_CRON=https://airy-friendship-production.up.railway.app:3000
+VITE_WEBHOOK_URL=https://webhook-gateway-production.up.railway.app:3000
+VITE_WEBHOOK_CRON=https://cron-retry-worker-production.up.railway.app:3000
+VITE_DBS_ADMIN_TOKEN=your_token_here
+VITE_ADMIN_TOKEN=your_token_here
+```
+
+**Optional**
+```env
+VITE_HEALTH_TIMEOUT_MS=4000
+```
+
+Each route in the dashboard uses `SystemStatusService.ts` to call and evaluate the endpoints. Results are cached in state and refreshed automatically every 30 minutes.
 
 ---
 
