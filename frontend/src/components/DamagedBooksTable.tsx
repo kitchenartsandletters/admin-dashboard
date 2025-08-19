@@ -116,14 +116,14 @@ export default function DamagedBooksTable() {
           <thead className="bg-gray-50 dark:bg-gray-800">
             <tr>
               <th className="px-3 py-2 text-left cursor-pointer" onClick={() => handleSort('title')}>Title</th>
-              <th className="px-3 py-2">Condition</th>
-              <th className="px-3 py-2">Available</th>
-              <th className="px-3 py-2">Author</th>
-              <th className="px-3 py-2">Barcode</th>
-              <th className="px-3 py-2 cursor-pointer" onClick={() => handleSort('stock_status')}>Status</th>
-              <th className="px-3 py-2">Shopify</th>
-              <th className="px-3 py-2">Online</th>
-              <th className="px-3 py-2"></th>
+              <th className="px-3 py-2 text-left">Condition</th>
+              <th className="px-3 py-2 text-left">Available</th>
+              <th className="px-3 py-2 text-left">Author</th>
+              <th className="px-3 py-2 text-left">Barcode</th>
+              <th className="px-3 py-2 text-left cursor-pointer" onClick={() => handleSort('stock_status')}>Status</th>
+              <th className="px-3 py-2 text-left">Shopify</th>
+              <th className="px-3 py-2 text-left">Online</th>
+              <th className="px-3 py-2 text-left"></th>
             </tr>
           </thead>
           <tbody>
