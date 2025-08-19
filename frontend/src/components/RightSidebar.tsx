@@ -44,7 +44,7 @@ export default function RightSidebar({ row, onClose }: Props) {
 
   if (!shouldRender) return null;
 
-  const searchHandle = encodeURIComponent(row!.handle);
+  const searchHandle = encodeURIComponent(row?.handle ?? '');
   const logsDeepLink = logsUrl ? `${logsUrl}?q=${searchHandle}` : '';
 
   return (
@@ -70,15 +70,15 @@ export default function RightSidebar({ row, onClose }: Props) {
         <div className="p-3 text-sm space-y-3 overflow-auto h-[calc(100%-6rem)]">
           {tab === 'info' && (
             <div className="space-y-2">
-              <div><span className="opacity-70">Title:</span> {row!.title ?? row!.handle}</div>
-              <div><span className="opacity-70">Handle:</span> {row!.handle}</div>
-              <div><span className="opacity-70">Condition:</span> {row!.condition}</div>
-              <div><span className="opacity-70">Available:</span> {row!.available}</div>
-              <div><span className="opacity-70">SKU:</span> {row!.sku ?? '—'}</div>
-              <div><span className="opacity-70">Barcode:</span> {row!.barcode ?? '—'}</div>
-              <div><span className="opacity-70">Stock:</span> {row!.stock_status}</div>
-              <div><span className="opacity-70">Last webhook:</span> {row!.last_webhook_at}</div>
-              <div><span className="opacity-70">Last reconcile:</span> {row!.last_shopify_sync_at}</div>
+              <div><span className="opacity-70">Title:</span> {row?.title ?? row?.handle ?? '—'}</div>
+              <div><span className="opacity-70">Handle:</span> {row?.handle ?? '—'}</div>
+              <div><span className="opacity-70">Condition:</span> {row?.condition ?? '—'}</div>
+              <div><span className="opacity-70">Available:</span> {row?.available ?? '—'}</div>
+              <div><span className="opacity-70">SKU:</span> {row?.sku ?? '—'}</div>
+              <div><span className="opacity-70">Barcode:</span> {row?.barcode ?? '—'}</div>
+              <div><span className="opacity-70">Stock:</span> {row?.stock_status ?? '—'}</div>
+              <div><span className="opacity-70">Last webhook:</span> {row?.last_webhook_at ?? '—'}</div>
+              <div><span className="opacity-70">Last reconcile:</span> {row?.last_shopify_sync_at ?? '—'}</div>
             </div>
           )}
 
