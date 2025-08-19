@@ -8,8 +8,8 @@ console.log('Initial window width:', window.innerWidth);
 
 const navItems = [
   { label: 'Request Service', path: '/requests' },
-  { label: 'System Status', path: '/status' },
   { label: 'Damaged Books', path: '/damaged' },
+  { label: 'System Status', path: '/status' },
 ];
 
 
