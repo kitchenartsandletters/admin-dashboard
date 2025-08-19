@@ -128,7 +128,7 @@ export default function DamagedBooksTable() {
           </thead>
           <tbody>
             {sortedRows.map(r => (
-              <tr key={r.inventory_item_id} className="{`${idx % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800'} border-t dark:border-gray-700`}">
+              <tr key={r.inventory_item_id} className="even:bg-gray-50 dark:even:bg-gray-700">
                 <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700">{r.title ?? r.handle}</td>
                 <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 capitalize">{r.condition}</td>
                 <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-center">{r.available}</td>
