@@ -300,20 +300,22 @@ const RequestService = () => {
       <h1 className="text-2xl font-semibold mb-4">Request Service</h1>
       {loading && <p>Loading...</p>}
       {error && <p className="text-red-600 text-sm">Error: {error}</p>}
-      {/* Filter and export controls */}
-      <div className="print-hidden">
+      
+      {/* Flexbox container for controls */}
+      <div className="flex justify-between items-center print-hidden">
+        {/* FilterControls on the left */}
+        <FilterControls
+          selectedFilter={selectedFilter}
+          handleFilterChange={handleFilterChange}
+        />
+        
+        {/* ExportButtons on the right */}
         <ExportButtons
           filteredData={filteredData}
           decodeHTMLEntities={decodeHTMLEntities}
         />
       </div>
-      {/* FilterControls and Table */}
-      <div className="print-hidden">
-        <FilterControls
-          selectedFilter={selectedFilter}
-          handleFilterChange={handleFilterChange}
-        />
-      </div>
+
       {/* Desktop Table */}
       <div className="hidden sm:block">
         <RequestTable
