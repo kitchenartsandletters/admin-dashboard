@@ -414,3 +414,9 @@ All services and shared components should conform to the following Tailwind conv
 - **Buttons:** Rounded, padded (`px-4 py-2`), `hover:` variants, consistent color roles (`bg-blue-500`, `bg-gray-600`, etc.)
 - **Sidebar Navigation:** Highlight active route with `font-semibold bg-gray-200 dark:bg-gray-700`
 - **Responsiveness:** Use `sm:`, `md:` utilities to support sidebar collapse and mobile layouts
+- **Sidebar Drawer Animation:** Apply `transition-transform duration-300 ease-in-out` for smooth slide-in/out effects. Use `translate-x-0` when visible and `translate-x-full` when hidden.
+- **Backdrop Blur & Darken:** Apply a fixed full-screen `div` with `backdrop-blur-sm bg-black/40` behind modals or drawers to create a darkened, blurred background effect.
+- **Table Row Styling:**
+  - Use `border-t border-gray-200 dark:border-gray-700` on rows to visually separate them.
+  - Apply `even:bg-gray-50 dark:even:bg-gray-800` to alternate row backgrounds for readability.
+  - Use `border` or `border-r` on `<td>` elements for vertical column delineation.
