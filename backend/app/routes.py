@@ -39,19 +39,51 @@ async def create_interest(req: Request):
         raise HTTPException(status_code=500, detail="Failed to record interest.")
 
 @router.get("/interest")
-async def get_interest_entries(token: str = "", collection_filter: str | None = None):
+async def get_interest_entries(
+    token: str = "",
+    collection_filter: str | None = None,
+    page: int = 1,
+    limit: int = 100,
+):
     if token != os.getenv("VITE_ADMIN_TOKEN"):
         raise HTTPException(status_code=403, detail="Invalid token")
+
+    # Clamp and compute pagination
+    try:
+        page = int(page) if page is not None else 1
+    except Exception:
+        page = 1
+    try:
+        limit = int(limit) if limit is not None else 100
+    except Exception:
+        limit = 100
+    if page < 1:
+        page = 1
+    if limit < 1:
+        limit = 1
+    if limit > 200:
+        limit = 200
+    offset = (page - 1) * limit
+    range_to = offset + limit - 1
 
     try:
         # Base query
         q = supabase.table("product_interest_requests") \
             .select("id, product_id, product_title, email, customer_name, isbn, cr_id, status, cr_seq, created_at, shopify_collection_handles") \
             .order("created_at", desc=True) \
-            .limit(100)
+            .range(offset, range_to)
 
-        # Normalize and apply collection filter
-        cf = (collection_filter or "all").lower()
+        # Normalize: accept "All", "OOP"/"Out-of-Print" variants, and "Frontlist"
+        raw_cf = (collection_filter or "All").strip().lower()
+        cf = raw_cf.replace(" ", "-")  # spaces -> hyphen
+        # Map common variants
+        if cf in {"oop", "out-of-print", "out_of_print"}:
+            cf = "oop"
+        elif cf in {"frontlist"}:
+            cf = "frontlist"
+        else:
+            cf = "all"
+
         if cf == "oop":
             # Rows whose handles overlap with either Out-of-Print handle
             q = q.overlaps("shopify_collection_handles", OOP_HANDLES)
