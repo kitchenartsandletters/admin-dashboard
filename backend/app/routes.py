@@ -4,7 +4,10 @@ from pydantic import BaseModel
 from fastapi.responses import Response
 from app.supabase_client import insert_interest, supabase, update_status
 
+
 router = APIRouter()
+
+OOP_HANDLES = ["out-of-print-offers", "out-of-print-offers-1"]
 
 class InterestRequest(BaseModel):
     email: str
@@ -36,16 +39,28 @@ async def create_interest(req: Request):
         raise HTTPException(status_code=500, detail="Failed to record interest.")
 
 @router.get("/interest")
-async def get_interest_entries(token: str = ""):
+async def get_interest_entries(token: str = "", collection_filter: str | None = None):
     if token != os.getenv("VITE_ADMIN_TOKEN"):
         raise HTTPException(status_code=403, detail="Invalid token")
 
     try:
-        result = supabase.table("product_interest_requests") \
-            .select("id, product_id, product_title, email, customer_name, isbn, cr_id, status, cr_seq, created_at") \
+        # Base query
+        q = supabase.table("product_interest_requests") \
+            .select("id, product_id, product_title, email, customer_name, isbn, cr_id, status, cr_seq, created_at, shopify_collection_handles") \
             .order("created_at", desc=True) \
-            .limit(100) \
-            .execute()
+            .limit(100)
+
+        # Normalize and apply collection filter
+        cf = (collection_filter or "all").lower()
+        if cf == "oop":
+            # Rows whose handles overlap with either Out-of-Print handle
+            q = q.overlaps("shopify_collection_handles", OOP_HANDLES)
+        elif cf == "frontlist":
+            # Rows whose handles do NOT overlap with the Out-of-Print handles
+            q = q.not_.overlaps("shopify_collection_handles", OOP_HANDLES)
+        # else: "all" -> no additional filter
+
+        result = q.execute()
         return {"success": True, "data": result.data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

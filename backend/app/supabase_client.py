@@ -2,13 +2,80 @@ import os
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import uuid
+import requests
 
 load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
+# Shopify env
+SHOP_URL = os.getenv("SHOP_URL")  # e.g. castironbooks.myshopify.com
+SHOPIFY_ACCESS_TOKEN = os.getenv("SHOPIFY_ACCESS_TOKEN")
+SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION", "2024-10")
+
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def _normalize_tags(tag_str: str | None):
+    if not tag_str:
+        return None
+    tags = [t.strip() for t in tag_str.split(",")]
+    tags = [t for t in tags if t]
+    return tags or None
+
+def _enrich_from_shopify(product_id: int):
+    """
+    Best-effort fetch of tags + collections (titles + handles).
+    Returns a dict suitable to merge into the insert payload.
+    """
+    if not SHOP_URL or not SHOPIFY_ACCESS_TOKEN:
+        # Missing creds; skip enrichment
+        return {}
+
+    session = requests.Session()
+    session.headers.update({"X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN})
+    base = f"https://{SHOP_URL}/admin/api/{SHOPIFY_API_VERSION}"
+
+    try:
+        # Product (for tags)
+        pr = session.get(f"{base}/products/{product_id}.json", timeout=12)
+        pr.raise_for_status()
+        product = pr.json().get("product", {})
+        tags = _normalize_tags(product.get("tags"))
+
+        # Collects (product -> collection ids)
+        cr = session.get(f"{base}/collects.json",
+                         params={"product_id": product_id, "limit": 250},
+                         timeout=12)
+        cr.raise_for_status()
+        coll_ids = [c["collection_id"] for c in cr.json().get("collects", [])]
+
+        titles: list[str] = []
+        handles: list[str] = []
+        for cid in coll_ids:
+            # /collections/{id}.json returns { collection: { title, handle, ... } }
+            r = session.get(f"{base}/collections/{cid}.json", timeout=10)
+            if r.status_code == 200:
+                coll = r.json().get("collection", {}) or {}
+                title = coll.get("title")
+                handle = coll.get("handle")
+                if title:
+                    titles.append(title)
+                if handle:
+                    handles.append(handle)
+
+        out = {}
+        if tags is not None:
+            out["product_tags"] = tags
+        if titles:
+            out["shopify_collections"] = titles
+        if handles:
+            out["shopify_collection_handles"] = handles
+        return out
+
+    except Exception as e:
+        print("Enrichment failed (non-fatal):", e)
+        return {}
 
 def insert_interest(email: str, product_id: int, product_title: str, isbn: str = None, customer_name: str = None):
     """
@@ -23,14 +90,21 @@ def insert_interest(email: str, product_id: int, product_title: str, isbn: str =
     else:
         customer_name = customer_name.strip()
 
-    response = supabase.table("product_interest_requests").insert({
+    payload = {
         "email": email,
         "product_id": product_id,
         "product_title": product_title,
         "isbn": isbn,
         "cr_id": cr_id,
         "customer_name": customer_name
-    }).execute()
+    }
+
+    # Best-effort enrichment (tags + collections)
+    enrich = _enrich_from_shopify(product_id)
+    if enrich:
+        payload.update(enrich)
+
+    response = supabase.table("product_interest_requests").insert(payload).execute()
 
     if not response.data:
         raise Exception("Insert failed or returned no data.")

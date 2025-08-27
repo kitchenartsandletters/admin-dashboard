@@ -25,6 +25,15 @@ const RequestService = () => {
   const [error, setError] = useState<string | null>(null)
   const [sortConfig, setSortConfig] = useState<{ key: keyof InterestEntry; direction: 'asc' | 'desc' } | null>(null)
   const [selectedFilter, setSelectedFilter] = useState('');
+  const [collectionFilter, setCollectionFilter] = useState<'all' | 'oop' | 'frontlist'>(() => {
+    try {
+      const saved = localStorage.getItem('collectionFilter');
+      if (saved === 'all' || saved === 'oop' || saved === 'frontlist') return saved;
+    } catch {
+      // no-op if localStorage is unavailable
+    }
+    return 'all';
+  });
 
   const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSelectedFilter(e.target.value);
@@ -105,7 +114,7 @@ const RequestService = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/interest?token=${import.meta.env.VITE_ADMIN_TOKEN}`)
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/interest?token=${import.meta.env.VITE_ADMIN_TOKEN}&collection_filter=${collectionFilter}`)
         let json: any
         try {
           json = await res.clone().json()
@@ -143,7 +152,16 @@ const RequestService = () => {
     }
 
     fetchData()
-  }, [])
+  }, [collectionFilter])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('collectionFilter', collectionFilter);
+    } catch {
+      // ignore write errors (e.g., privacy mode)
+    }
+  }, [collectionFilter]);
+
   console.log("Row IDs from backend:", data.map(d => d.id));
   console.log("Admin dashboard data:", data)
 
@@ -308,6 +326,17 @@ const RequestService = () => {
           selectedFilter={selectedFilter}
           handleFilterChange={handleFilterChange}
         />
+        <select
+          value={collectionFilter}
+          onChange={(e) => setCollectionFilter(e.target.value as 'all' | 'oop' | 'frontlist')}
+          className="ml-3 border rounded px-2 py-1 bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+          aria-label="Filter by collection"
+          title="Filter by collection"
+        >
+          <option value="all">All</option>
+          <option value="oop">Out-of-Print</option>
+          <option value="frontlist">Frontlist</option>
+        </select>
         
         {/* ExportButtons on the right */}
         <ExportButtons
