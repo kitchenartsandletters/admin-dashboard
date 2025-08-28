@@ -131,7 +131,11 @@ const RequestService = () => {
           throw new Error("Invalid data response")
         }
         setData(json.data)
-        setTotal(typeof json.meta?.total === 'number' ? json.meta.total : null)
+        // Prefer X-Total-Count header from API if present; otherwise fall back to json.meta.total
+        const totalHeaderRaw = res.headers.get('x-total-count') || res.headers.get('X-Total-Count');
+        const totalFromHeader = totalHeaderRaw ? parseInt(totalHeaderRaw, 10) : null;
+        const totalFromMeta = (typeof json.meta?.total === 'number') ? json.meta.total : null;
+        setTotal(Number.isFinite(totalFromHeader as number) ? (totalFromHeader as number) : totalFromMeta);
         setLoading(false)
       } catch (err: any) {
         // fallback to mock data
@@ -166,6 +170,17 @@ const RequestService = () => {
       // ignore write errors (e.g., privacy mode)
     }
   }, [collectionFilter]);
+
+  // If the current page is beyond the last page for the current total/limit,
+  // snap back to the last valid page (e.g., switching from All->OOP)
+  useEffect(() => {
+    if (total != null) {
+      const tp = Math.max(1, Math.ceil(total / limit));
+      if (page > tp) {
+        setPage(tp);
+      }
+    }
+  }, [total, limit]);
 
   const onChangeLimit = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const next = parseInt(e.target.value, 10);
