@@ -91,10 +91,7 @@ async def get_interest_entries(
             # 3) product_tags contain 'op' or 'pastop'
             # 4) product_title starts with "OP: "
             q = q.or_(
-                "shopify_collection_handles.ov.{out-of-print-offers,out-of-print-offers-1},"
-                "shopify_collections.ov.{Out-of-Print Offers,Past Out-of-Print Offers},"
-                "product_tags.ov.{op,pastop},"
-                "product_title.ilike.OP:%"
+                "shopify_collection_handles.ov.{out-of-print-offers,out-of-print-offers-1},shopify_collections.ov.{Out-of-Print Offers,Past Out-of-Print Offers},product_tags.ov.{op,pastop},product_title.ilike.OP:%"
             )
         elif cf == "frontlist":
             # Frontlist if ALL of these are true:
@@ -102,16 +99,7 @@ async def get_interest_entries(
             #  OR
             # (b) arrays are null/empty and title does NOT start with OP:
             q = q.or_(
-                "and("
-                "shopify_collection_handles.not.ov.{out-of-print-offers,out-of-print-offers-1},"
-                "shopify_collections.not.ov.{Out-of-Print Offers,Past Out-of-Print Offers},"
-                "product_tags.not.ov.{op,pastop},"
-                "product_title.not.ilike.OP:%)",
-                "and("
-                "or(shopify_collection_handles.is.null,shopify_collection_handles.eq.{}),"
-                "or(shopify_collections.is.null,shopify_collections.eq.{}),"
-                "or(product_tags.is.null,product_tags.eq.{}),"
-                "product_title.not.ilike.OP:%)"
+                "and(shopify_collection_handles.not.ov.{out-of-print-offers,out-of-print-offers-1},shopify_collections.not.ov.{Out-of-Print Offers,Past Out-of-Print Offers},product_tags.not.ov.{op,pastop},product_title.not.ilike.OP:%),and(or(shopify_collection_handles.is.null,shopify_collection_handles.eq.{}),or(shopify_collections.is.null,shopify_collections.eq.{}),or(product_tags.is.null,product_tags.eq.{}),product_title.not.ilike.OP:%)"
             )
         # else: "all" -> no additional filter
 
