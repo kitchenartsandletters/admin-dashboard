@@ -10,7 +10,7 @@ const App = () => {
       <SidebarLayout>
         {/* Global header (shown across all pages) */}
         <div className="bg-white dark:bg-gray-900">
-          <header className="flex items-center justify-between px-4 py-4 border-b dark:border-gray-800">
+          <header className="flex items-center justify-end px-4 py-4 border-b dark:border-gray-800">
             <h1 className="text-xl md:text-2xl font-semibold">Admin Dashboard</h1>
           </header>
         </div>
