@@ -171,24 +171,10 @@ const RequestService = () => {
     }
   }, [collectionFilter]);
 
-  // If the current page is beyond the last page for the current total/limit,
-  // snap back to the last valid page (e.g., switching from All->OOP)
+  // When switching views, always reset to page 1 to avoid empty pages
   useEffect(() => {
-    if (total != null) {
-      const tp = Math.max(1, Math.ceil(total / limit));
-      if (page > tp) {
-        setPage(tp);
-      }
-    }
-  }, [total, limit]);
-
-  // Fallback snapback: if backend didn't send a total and we fetched an empty page
-  // (e.g., switched to a smaller dataset while on a high page), step back until we hit data
-  useEffect(() => {
-    if (total == null && page > 1 && data.length === 0) {
-      setPage(p => Math.max(1, p - 1));
-    }
-  }, [data, total, page]);
+    setPage(1);
+  }, [collectionFilter]);
 
   const onChangeLimit = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const next = parseInt(e.target.value, 10);
