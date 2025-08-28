@@ -75,11 +75,10 @@ async def get_interest_entries(
 
         # Normalize: accept "All", "OP"/"Out-of-Print" variants, and "Not OP"
         raw_cf = (collection_filter or "All").strip().lower()
-        cf = raw_cf.replace(" ", "-")  # spaces -> hyphen
-        # Map common variants
-        if cf in {"op", "out-of-print", "out_of_print"}:
+        norm = raw_cf.replace(" ", "-")  # normalize spaces -> hyphen
+        if norm in {"op", "out-of-print", "out_of_print"}:
             cf = "op"
-        elif cf in {"notop"}:
+        elif norm in {"notop", "not-op", "not_out_of_print"}:
             cf = "notop"
         else:
             cf = "all"
@@ -94,12 +93,12 @@ async def get_interest_entries(
                 "shopify_collection_handles.ov.{out-of-print-offers,out-of-print-offers-1},shopify_collections.ov.{Out-of-Print Offers,Past Out-of-Print Offers},product_tags.ov.{op,pastop},product_title.ilike.OP:%"
             )
         elif cf == "notop":
-            # Not OP if ALL of these are true:
-            # (a) NOT in OP handles AND NOT in OP titled collections AND NOT tagged op/pastop AND NOT title starting with OP:
-            #  OR
-            # (b) arrays are null/empty and title does NOT start with OP:
+            # NOT OP criteria (minimal & robust):
+            #   1) Title does NOT start with "OP: "
+            #   2) Tags do NOT include 'op' or 'pastop' (including when tags are NULL or empty)
+            # We express this as: (product_title NOT ILIKE 'OP:%') AND (product_tags is NULL OR product_tags = {} OR product_tags NOT OV {op,pastop})
             q = q.or_(
-                "and(shopify_collection_handles.not.ov.{out-of-print-offers,out-of-print-offers-1},shopify_collections.not.ov.{Out-of-Print Offers,Past Out-of-Print Offers},product_tags.not.ov.{op,pastop},product_title.not.ilike.OP:%),and(or(shopify_collection_handles.is.null,shopify_collection_handles.eq.{}),or(shopify_collections.is.null,shopify_collections.eq.{}),or(product_tags.is.null,product_tags.eq.{}),product_title.not.ilike.OP:%)"
+                "and(product_title.not.ilike.OP:%,product_tags.not.ov.{op,pastop}),and(product_title.not.ilike.OP:%,or(product_tags.is.null,product_tags.eq.{}))"
             )
         # else: "all" -> no additional filter
 
