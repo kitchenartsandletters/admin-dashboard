@@ -182,6 +182,12 @@ const RequestService = () => {
   // Disable Next when we know total and have reached it; otherwise fallback to length heuristic
   const isLastPage = total != null ? endIndex >= total : data.length < limit;
 
+  const totalPages = total != null ? Math.ceil(total / limit) : null;
+  const pageSummary = totalPages ? `Page ${page} / ${totalPages}` : `Page ${page}`;
+  const rangeSummary = total != null
+    ? `${startIndex}–${endIndex} of ${total} entries`
+    : `${startIndex}–${endIndex} entries`;
+
   console.log("Row IDs from backend:", data.map(d => d.id));
   console.log("Admin dashboard data:", data)
 
@@ -383,7 +389,7 @@ const RequestService = () => {
             >
               Prev
             </button>
-            <span className="text-sm text-gray-700 dark:text-gray-300">Page {page}</span>
+            <span className="text-xs md:text-sm text-gray-700 dark:text-gray-300">{pageSummary}</span>
             <button
               type="button"
               onClick={onNextPage}
@@ -394,10 +400,8 @@ const RequestService = () => {
             </button>
           </div>
           {/* Range display */}
-          <span className="text-sm text-gray-700 dark:text-gray-300 ml-2">
-            {total != null
-              ? `${startIndex}–${endIndex} of ${total}`
-              : `${startIndex}–${endIndex}`}
+          <span className="text-xs md:text-sm text-gray-700 dark:text-gray-300 ml-2">
+            {rangeSummary}
           </span>
         </div>
 
@@ -419,11 +423,21 @@ const RequestService = () => {
           onStatusChange={handleStatusChange}
         />
       </div>
+      {/* Footer Summary (duplicates above) */}
+      <div className="hidden sm:flex justify-end items-center gap-3 mt-2 print-hidden">
+        <span className="text-xs md:text-sm text-gray-700 dark:text-gray-300">{pageSummary}</span>
+        <span className="text-xs md:text-sm text-gray-700 dark:text-gray-300">{rangeSummary}</span>
+      </div>
       {/* Mobile Cards */}
       <div className="block sm:hidden space-y-4">
         {filteredData.map((entry, index) => (
           <MobileRequestCard key={index} entry={entry} />
         ))}
+      </div>
+      {/* Mobile footer summary */}
+      <div className="flex sm:hidden justify-between items-center mt-2 px-1 print-hidden">
+        <span className="text-xs text-gray-700 dark:text-gray-300">{pageSummary}</span>
+        <span className="text-xs text-gray-700 dark:text-gray-300">{rangeSummary}</span>
       </div>
     </div>
   )
