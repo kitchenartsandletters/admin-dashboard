@@ -73,29 +73,29 @@ async def get_interest_entries(
             .order("created_at", desc=True) \
             .range(offset, range_to)
 
-        # Normalize: accept "All", "OOP"/"Out-of-Print" variants, and "Frontlist"
+        # Normalize: accept "All", "OP"/"Out-of-Print" variants, and "Not OP"
         raw_cf = (collection_filter or "All").strip().lower()
         cf = raw_cf.replace(" ", "-")  # spaces -> hyphen
         # Map common variants
-        if cf in {"oop", "out-of-print", "out_of_print"}:
-            cf = "oop"
-        elif cf in {"frontlist"}:
-            cf = "frontlist"
+        if cf in {"op", "out-of-print", "out_of_print"}:
+            cf = "op"
+        elif cf in {"notop"}:
+            cf = "notop"
         else:
             cf = "all"
 
-        if cf == "oop":
+        if cf == "op":
             # Out-of-Print if ANY of these is true:
-            # 1) handles overlap OOP handles
-            # 2) collection titles overlap OOP titles
+            # 1) handles overlap OP handles
+            # 2) collection titles overlap OP titles
             # 3) product_tags contain 'op' or 'pastop'
             # 4) product_title starts with "OP: "
             q = q.or_(
                 "shopify_collection_handles.ov.{out-of-print-offers,out-of-print-offers-1},shopify_collections.ov.{Out-of-Print Offers,Past Out-of-Print Offers},product_tags.ov.{op,pastop},product_title.ilike.OP:%"
             )
-        elif cf == "frontlist":
-            # Frontlist if ALL of these are true:
-            # (a) NOT in OOP handles AND NOT in OOP titled collections AND NOT tagged op/pastop AND NOT title starting with OP:
+        elif cf == "notop":
+            # Not OP if ALL of these are true:
+            # (a) NOT in OP handles AND NOT in OP titled collections AND NOT tagged op/pastop AND NOT title starting with OP:
             #  OR
             # (b) arrays are null/empty and title does NOT start with OP:
             q = q.or_(

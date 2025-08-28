@@ -71,7 +71,7 @@ const RequestTable: React.FC<RequestTableProps> = ({
             >
               Submitted {renderSortIcon('created_at')}
             </th>
-            {/* New Status column */}
+            {/* Status column */}
             <th
               onClick={() => handleSort('status')}
               className={`cursor-pointer border px-4 py-2 dark:border-gray-700 text-left ${
@@ -118,7 +118,7 @@ const RequestTable: React.FC<RequestTableProps> = ({
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  View Product
+                  View
                 </a>
               </td>
             </tr>

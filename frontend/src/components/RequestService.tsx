@@ -25,10 +25,10 @@ const RequestService = () => {
   const [error, setError] = useState<string | null>(null)
   const [sortConfig, setSortConfig] = useState<{ key: keyof InterestEntry; direction: 'asc' | 'desc' } | null>(null)
   const [selectedFilter, setSelectedFilter] = useState('');
-  const [collectionFilter, setCollectionFilter] = useState<'all' | 'oop' | 'frontlist'>(() => {
+  const [collectionFilter, setCollectionFilter] = useState<'all' | 'op' | 'notop'>(() => {
     try {
       const saved = localStorage.getItem('collectionFilter');
-      if (saved === 'all' || saved === 'oop' || saved === 'frontlist') return saved;
+      if (saved === 'all' || saved === 'op' || saved === 'notop') return saved;
     } catch {
       // no-op if localStorage is unavailable
     }
@@ -359,14 +359,14 @@ const RequestService = () => {
         />
         <select
           value={collectionFilter}
-          onChange={(e) => setCollectionFilter(e.target.value as 'all' | 'oop' | 'frontlist')}
+          onChange={(e) => setCollectionFilter(e.target.value as 'all' | 'op' | 'notop')}
           className="ml-3 border rounded px-2 py-1 bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
           aria-label="Filter by collection"
           title="Filter by collection"
         >
           <option value="all">All</option>
-          <option value="oop">Out-of-Print</option>
-          <option value="frontlist">Frontlist</option>
+          <option value="op">Out-of-Print</option>
+          <option value="notop">Not OP</option>
         </select>
         
         {/* Pagination controls */}

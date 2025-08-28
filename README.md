@@ -405,7 +405,7 @@ VITE_API_BASE_URL=http://localhost:8000
 - Backend updated to accept and store `customer_name`; UI shows a **Customer** column with sorting/search support.
 - Implemented **Status** column with 6-phase dropdown; sorts by phase order (not alphabetically) and re-sorts optimistically on change.
 - Atomic status updates via Supabase RPC `update_status_with_log`; de-duped logging; added debug logging in routes and client.
-- Enriched inserts with Shopify **collection handles/titles** and **tags**; implemented **Out-of-Print** vs **Frontlist** backend filter.
+- Enriched inserts with Shopify **collection handles/titles** and **tags**; implemented **Out-of-Print** vs **Not OP** backend filter.
 - `GET /api/interest` now supports `collection_filter`, pagination (`page`, `limit`); frontend dropdown added for collection filter.
 - Backfill scripts for tags/collections/handles improved with **retry + rate limiting** mitigation and handling of **null/empty arrays**.
 - Implemented **pagination** (`page`, `limit`) in backend + UI; page summary (`X–Y of Z`) now displays; dropdown filter integrates with pagination.
