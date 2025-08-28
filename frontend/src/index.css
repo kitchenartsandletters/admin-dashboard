@@ -3,9 +3,39 @@
 @tailwind utilities;
 
 @media print {
+
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
   .print-hidden {
     display: none !important;
   }
+
+  /* Make any scroll containers printable */
+  .overflow-x-auto, .overflow-y-auto, .overflow-auto, .overflow-scroll {
+    overflow: visible !important;
+  }
+
+  /* Generic containers that might constrain height */
+  .print-container {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  /* Keep table headers repeating and rows intact */
+  thead { display: table-header-group !important; }
+  tfoot { display: table-footer-group !important; }
+  tr.print-avoid-break { break-inside: avoid !important; page-break-inside: avoid !important; }
+
+  /* Optional: improve color fidelity */
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* Page margins (tweak as needed) */
+  @page { margin: 12mm; }
+
 }
 /*
 .admin-dashboard-container.dark-mode {
