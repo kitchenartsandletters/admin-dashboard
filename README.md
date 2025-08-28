@@ -58,7 +58,7 @@ The admin dashboard supports dark mode via Tailwind CSS and a custom toggle comp
 **Admins**
 
 * View the 100 most recent interest submissions
-* Sort requests by phase order (New → In Review → Contacted → Waiting on Customer → Approved → Closed)
+* Sort requests by phase order (New → In Progress → Request Filed → Complete)
 * Change request status via dropdown selector (with Tailwind dark mode styling applied)
 * Immediate frontend sort re-application on status change (optimistic UI)
 * Debug logging of payloads and Supabase RPC responses
@@ -411,6 +411,7 @@ VITE_API_BASE_URL=http://localhost:8000
 - Implemented **pagination** (`page`, `limit`) in backend + UI; page summary (`X–Y of Z`) now displays; dropdown filter integrates with pagination.
 - Added a **pagination selector** (20/50/100) and persist selected page size + collection filter via localStorage.
 - Advanced filtering: OOP definition in sync (tags `op`/`pastop`, OOP collections, or title starting with "OP: ").
+- Statuses changed to New → In Progress → Request Filed → Complete 
 
 📌 Next Steps
 - UI polish: scale down table font size, explore per-option color cues for the status dropdown.

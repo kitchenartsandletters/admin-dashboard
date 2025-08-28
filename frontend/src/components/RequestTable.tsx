@@ -20,11 +20,9 @@ const RequestTable: React.FC<RequestTableProps> = ({
 }) => {
   const statuses = [
     "New",
-    "In Review",
-    "Contacted",
-    "Waiting on Customer",
-    "Approved",
-    "Closed"
+    "In Progress",
+    "Request Filed",
+    "Complete"
   ];
 
   return (

@@ -76,11 +76,9 @@ const RequestService = () => {
               if (key === 'status') {
                 const statusOrder = [
                   "New",
-                  "In Review",
-                  "Contacted",
-                  "Waiting on Customer",
-                  "Approved",
-                  "Closed"
+                  "In Progress",
+                  "Request Filed",
+                  "Complete"
                 ];
                 const aIndex = statusOrder.indexOf(a.status || "New");
                 const bIndex = statusOrder.indexOf(b.status || "New");
@@ -203,11 +201,9 @@ const RequestService = () => {
   // Sort helper
   const statusOrder = [
     "New",
-    "In Review",
-    "Contacted",
-    "Waiting on Customer",
-    "Approved",
-    "Closed"
+    "In Progress",
+    "Request Filed",
+    "Complete"
   ];
 
   const sortedData = [...data].sort((a, b) => {
