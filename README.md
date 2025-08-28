@@ -416,7 +416,7 @@ VITE_API_BASE_URL=http://localhost:8000
 📌 Next Steps
 - UI polish: scale down table font size, explore per-option color cues for the status dropdown.
 - Consider full per-option colorization using a custom Listbox component (only if users request it).
-- Extend logging to track admin interactions by specific user for auditing (replace hard-coded "admin").
+- Extend logging to track admin interactions by specific user for auditing (replace hard-coded "admin" - add users).
 - Handle **page reset on filter change** (snap to last valid page if current page exceeds dataset).
 - Row actions: add **archive** / **delete** functionality.
 - Add a **request history log** in the dashboard (status change trail).

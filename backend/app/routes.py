@@ -21,6 +21,14 @@ class StatusUpdateRequest(BaseModel):
     new_status: str
     changed_by: str | None = None
 
+class ArchiveOne(BaseModel):
+    id: str
+    reason: str | None = None
+
+class ArchiveBulk(BaseModel):
+    ids: list[str]
+    reason: str | None = None
+
 @router.api_route("/interest", methods=["POST", "OPTIONS"])
 async def create_interest(req: Request):
     try:
@@ -42,6 +50,7 @@ async def create_interest(req: Request):
 async def get_interest_entries(
     token: str = "",
     collection_filter: str | None = None,
+    archived: str | None = None,
     page: int = 1,
     limit: int = 100,
 ):
@@ -67,11 +76,19 @@ async def get_interest_entries(
     range_to = offset + limit - 1
 
     try:
-        # Base query
         q = supabase.table("product_interest_requests") \
-            .select("id, product_id, product_title, email, customer_name, isbn, cr_id, status, cr_seq, created_at, shopify_collection_handles, product_tags, shopify_collections") \
+            .select("id, product_id, product_title, email, customer_name, isbn, cr_id, status, cr_seq, archived, archived_at, created_at, shopify_collection_handles, product_tags, shopify_collections") \
             .order("created_at", desc=True) \
             .range(offset, range_to)
+
+        # Archived mode: exclude (default), include, only
+        archived_mode = (archived or "exclude").strip().lower()
+        if archived_mode not in {"exclude", "include", "only"}:
+            archived_mode = "exclude"
+        if archived_mode == "exclude":
+            q = q.eq("archived", False)
+        elif archived_mode == "only":
+            q = q.eq("archived", True)
 
         # Normalize: accept "All", "OP"/"Out-of-Print" variants, and "Not OP"
         raw_cf = (collection_filter or "All").strip().lower()
@@ -134,4 +151,25 @@ async def update_request_status(payload: StatusUpdateRequest, token: str = ""):
         return {"success": True, "data": result}
     except Exception as e:
         print("❌ Error in update_request_status:", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/archive")
+async def archive_one(payload: ArchiveOne, token: str = ""):
+    if token != os.getenv("VITE_ADMIN_TOKEN"):
+        raise HTTPException(status_code=403, detail="Invalid token")
+    try:
+        resp = supabase.rpc("archive_mark", {"ids": [payload.id], "reason": payload.reason}).execute()
+        return {"success": True, "moved": 1}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/archive/bulk")
+async def archive_bulk(payload: ArchiveBulk, token: str = ""):
+    if token != os.getenv("VITE_ADMIN_TOKEN"):
+        raise HTTPException(status_code=403, detail="Invalid token")
+    try:
+        resp = supabase.rpc("archive_mark", {"ids": payload.ids, "reason": payload.reason}).execute()
+        return {"success": True, "count": len(payload.ids)}
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

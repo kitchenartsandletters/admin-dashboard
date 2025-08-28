@@ -5,7 +5,9 @@ import autoTable from 'jspdf-autotable'
 import DashboardHeader from './DashboardHeader';
 import ExportButtons from "./ExportButtons";
 import RequestTable from './RequestTable';
-import { InterestEntry } from '../types';
+import { InterestEntry, StatusPhase, STATUS_ORDER, getStatusIndex } from '../types';
+import ConfirmModal from './ConfirmModal';
+import UndoToast from './UndoToast';
 
 declare module 'jspdf' {
   interface jsPDF {
@@ -25,6 +27,8 @@ const RequestService = () => {
   const [error, setError] = useState<string | null>(null)
   const [sortConfig, setSortConfig] = useState<{ key: keyof InterestEntry; direction: 'asc' | 'desc' } | null>(null)
   const [selectedFilter, setSelectedFilter] = useState('');
+    // Undo toast state
+  const [undoToast, setUndoToast] = useState<{ message: string; onUndo: () => void } | null>(null);
   const [collectionFilter, setCollectionFilter] = useState<'all' | 'op' | 'notop'>(() => {
     try {
       const saved = localStorage.getItem('collectionFilter');
@@ -38,6 +42,10 @@ const RequestService = () => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(50); // options: 20, 50, 100
   const [total, setTotal] = useState<number | null>(null);
+
+  const showUndo = (message: string, onUndo: () => void) => {
+    setUndoToast({ message, onUndo });
+  };
 
   const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSelectedFilter(e.target.value);
@@ -61,7 +69,7 @@ const RequestService = () => {
     return sortConfig.direction === 'asc' ? '↑' : '↓';
   };
 
-    const handleStatusChange = async (requestId: string, newStatus: string) => {
+    const handleStatusChange = async (requestId: string, newStatus: StatusPhase) => {
       try {
         // Optimistic UI update
         setData(prev => {
@@ -74,14 +82,8 @@ const RequestService = () => {
             return [...updated].sort((a, b) => {
               const { key, direction } = sortConfig;
               if (key === 'status') {
-                const statusOrder = [
-                  "New",
-                  "In Progress",
-                  "Request Filed",
-                  "Complete"
-                ];
-                const aIndex = statusOrder.indexOf(a.status || "New");
-                const bIndex = statusOrder.indexOf(b.status || "New");
+                const aIndex = getStatusIndex(a.status);
+                const bIndex = getStatusIndex(b.status);
                 return (aIndex - bIndex) * (direction === 'asc' ? 1 : -1);
               }
               return 0; // Other sorts fall back to default sorter in sortedData
@@ -199,12 +201,12 @@ const RequestService = () => {
   console.log("Admin dashboard data:", data)
 
   // Sort helper
-  const statusOrder = [
-    "New",
-    "In Progress",
-    "Request Filed",
-    "Complete"
-  ];
+  //const statusOrder = [
+  //  "New",
+  //  "In Progress",
+  //  "Request Filed",
+  //  "Complete"
+  //];
 
   const sortedData = [...data].sort((a, b) => {
     if (!sortConfig) return 0;
@@ -216,8 +218,8 @@ const RequestService = () => {
 
     // Special case for status sorting
     if (key === 'status') {
-      const aIndex = statusOrder.indexOf(aVal as string);
-      const bIndex = statusOrder.indexOf(bVal as string);
+      const aIndex = getStatusIndex(aVal as string);
+      const bIndex = getStatusIndex(bVal as string);
       return (aIndex - bIndex) * (direction === 'asc' ? 1 : -1);
     }
 
@@ -360,7 +362,7 @@ const RequestService = () => {
         <select
           value={collectionFilter}
           onChange={(e) => setCollectionFilter(e.target.value as 'all' | 'op' | 'notop')}
-          className="ml-3 border rounded px-2 py-1 bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+          className="ml-3 text-sm text-left border rounded px-2 py-1 bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
           aria-label="Filter by collection"
           title="Filter by collection"
         >
@@ -371,7 +373,7 @@ const RequestService = () => {
         
         {/* Pagination controls */}
         <div className="flex items-center gap-3 ml-4">
-          <label className="text-sm text-gray-700 dark:text-gray-300" htmlFor="rows-per-page">Rows:</label>
+          <label className="text-xs text-gray-700 dark:text-gray-300" htmlFor="rows-per-page">Rows:</label>
           <select
             id="rows-per-page"
             value={limit}
@@ -394,7 +396,7 @@ const RequestService = () => {
             >
               Prev
             </button>
-            <span className="text-[0.5rem] md:text-sm text-gray-700 dark:text-gray-300">{pageSummary}</span>
+            <span className="text-xs md:text-sm text-gray-700 dark:text-gray-300">{pageSummary}</span>
             <button
               type="button"
               onClick={onNextPage}
@@ -405,7 +407,7 @@ const RequestService = () => {
             </button>
           </div>
           {/* Range display */}
-          <span className="text-[0.5rem] md:text-sm text-gray-700 dark:text-gray-300 ml-2">
+          <span className="text-xs md:text-sm text-gray-700 dark:text-gray-300 ml-2">
             {rangeSummary}
           </span>
         </div>

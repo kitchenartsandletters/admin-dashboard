@@ -1,5 +1,5 @@
 import React from 'react';
-import { InterestEntry } from '../types'; // Adjust the import path as necessary
+import { InterestEntry, StatusPhase, STATUS_ORDER } from '../types'; // Adjust the import path as necessary
 
 interface RequestTableProps {
   filteredData: InterestEntry[];
@@ -7,8 +7,10 @@ interface RequestTableProps {
   renderSortIcon: (key: keyof InterestEntry) => string;
   sortConfig: { key: keyof InterestEntry; direction: 'asc' | 'desc' } | null;
   decodeHTMLEntities: (str: string) => string;
-  onStatusChange: (id: string, newStatus: string) => void;
+  onStatusChange: (id: string, newStatus: StatusPhase) => void;
 }
+
+const statuses = STATUS_ORDER;
 
 const RequestTable: React.FC<RequestTableProps> = ({
   filteredData,
@@ -97,7 +99,7 @@ const RequestTable: React.FC<RequestTableProps> = ({
               <td className="border px-4 py-2 dark:border-gray-700">
                 <select
                   value={entry.status || "New"}
-                  onChange={(e) => onStatusChange(entry.id || "", e.target.value)}
+                  onChange={(e) => onStatusChange(entry.id || "", e.target.value as StatusPhase)}
                   className="
                     border border-gray-300 rounded px-2 py-1
                     bg-white text-gray-900

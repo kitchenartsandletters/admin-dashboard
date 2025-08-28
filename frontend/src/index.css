@@ -52,6 +52,20 @@
   @page { margin: 12mm; }
 
 }
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-fade-in-up {
+  animation: fade-in-up 0.3s ease-out forwards;
+}
 /*
 .admin-dashboard-container.dark-mode {
   background-color: #1e1e1e;
