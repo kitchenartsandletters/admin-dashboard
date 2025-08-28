@@ -11,3 +11,7 @@ export interface InterestEntry {
   status?: string;
   cr_seq?: number;
 }
+
+export interface DashboardHeaderProps {
+  title: string;
+}

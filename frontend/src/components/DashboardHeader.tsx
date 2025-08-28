@@ -1,8 +1,5 @@
 import { ReactNode } from 'react';
-
-type DashboardHeaderProps = {
-  title: string;
-};
+import { DashboardHeaderProps } from '../types';
 
 const DashboardHeader = ({ title }: DashboardHeaderProps) => {
   return (
