@@ -389,7 +389,7 @@ const RequestService = () => {
             >
               Prev
             </button>
-            <span className="text-xs md:text-sm text-gray-700 dark:text-gray-300">{pageSummary}</span>
+            <span className="text-[0.5rem] md:text-sm text-gray-700 dark:text-gray-300">{pageSummary}</span>
             <button
               type="button"
               onClick={onNextPage}
@@ -400,7 +400,7 @@ const RequestService = () => {
             </button>
           </div>
           {/* Range display */}
-          <span className="text-xs md:text-sm text-gray-700 dark:text-gray-300 ml-2">
+          <span className="text-[0.5rem] md:text-sm text-gray-700 dark:text-gray-300 ml-2">
             {rangeSummary}
           </span>
         </div>
@@ -425,8 +425,8 @@ const RequestService = () => {
       </div>
       {/* Footer Summary (duplicates above) */}
       <div className="hidden sm:flex justify-end items-center gap-3 mt-2 print-hidden">
-        <span className="text-xs md:text-sm text-gray-700 dark:text-gray-300">{pageSummary}</span>
-        <span className="text-xs md:text-sm text-gray-700 dark:text-gray-300">{rangeSummary}</span>
+        <span className="text-[0.5rem] md:text-sm text-gray-700 dark:text-gray-300">{pageSummary}</span>
+        <span className="text-[0.5rem] md:text-sm text-gray-700 dark:text-gray-300">{rangeSummary}</span>
       </div>
       {/* Mobile Cards */}
       <div className="block sm:hidden space-y-4">
@@ -436,8 +436,8 @@ const RequestService = () => {
       </div>
       {/* Mobile footer summary */}
       <div className="flex sm:hidden justify-between items-center mt-2 px-1 print-hidden">
-        <span className="text-xs text-gray-700 dark:text-gray-300">{pageSummary}</span>
-        <span className="text-xs text-gray-700 dark:text-gray-300">{rangeSummary}</span>
+        <span className="text-[0.5rem] text-gray-700 dark:text-gray-300">{pageSummary}</span>
+        <span className="text-[0.5rem] text-gray-700 dark:text-gray-300">{rangeSummary}</span>
       </div>
     </div>
   )
