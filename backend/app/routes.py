@@ -69,7 +69,7 @@ async def get_interest_entries(
     try:
         # Base query
         q = supabase.table("product_interest_requests") \
-            .select("id, product_id, product_title, email, customer_name, isbn, cr_id, status, cr_seq, created_at, shopify_collection_handles") \
+            .select("id, product_id, product_title, email, customer_name, isbn, cr_id, status, cr_seq, created_at, shopify_collection_handles, product_tags, shopify_collections") \
             .order("created_at", desc=True) \
             .range(offset, range_to)
 
@@ -85,11 +85,34 @@ async def get_interest_entries(
             cf = "all"
 
         if cf == "oop":
-            # Rows whose handles overlap with either Out-of-Print handle
-            q = q.overlaps("shopify_collection_handles", OOP_HANDLES)
+            # Out-of-Print if ANY of these is true:
+            # 1) handles overlap OOP handles
+            # 2) collection titles overlap OOP titles
+            # 3) product_tags contain 'op' or 'pastop'
+            # 4) product_title starts with "OP: "
+            q = q.or_(
+                "shopify_collection_handles.ov.{out-of-print-offers,out-of-print-offers-1},"
+                "shopify_collections.ov.{Out-of-Print Offers,Past Out-of-Print Offers},"
+                "product_tags.ov.{op,pastop},"
+                "product_title.ilike.OP:%"
+            )
         elif cf == "frontlist":
-            # Rows whose handles do NOT overlap with the Out-of-Print handles
-            q = q.not_.overlaps("shopify_collection_handles", OOP_HANDLES)
+            # Frontlist if ALL of these are true:
+            # (a) NOT in OOP handles AND NOT in OOP titled collections AND NOT tagged op/pastop AND NOT title starting with OP:
+            #  OR
+            # (b) arrays are null/empty and title does NOT start with OP:
+            q = q.or_(
+                "and("
+                "shopify_collection_handles.not.ov.{out-of-print-offers,out-of-print-offers-1},"
+                "shopify_collections.not.ov.{Out-of-Print Offers,Past Out-of-Print Offers},"
+                "product_tags.not.ov.{op,pastop},"
+                "product_title.not.ilike.OP:%)",
+                "and("
+                "or(shopify_collection_handles.is.null,shopify_collection_handles.eq.{}),"
+                "or(shopify_collections.is.null,shopify_collections.eq.{}),"
+                "or(product_tags.is.null,product_tags.eq.{}),"
+                "product_title.not.ilike.OP:%)"
+            )
         # else: "all" -> no additional filter
 
         result = q.execute()
