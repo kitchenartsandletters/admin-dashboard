@@ -5,6 +5,8 @@
 @media print {
 
   html, body {
+    background: white !important;
+    color: black !important;
     height: auto !important;
     overflow: visible !important;
   }
@@ -23,6 +25,19 @@
     overflow: visible !important;
     height: auto !important;
     max-height: none !important;
+  }
+
+  table, th, td {
+    background: white !important;
+    color: black !important;
+    border-color: black !important;
+  }
+
+  /* Neutralize dark: classes */
+  .dark * {
+    background: white !important;
+    color: black !important;
+    border-color: black !important;
   }
 
   /* Keep table headers repeating and rows intact */
