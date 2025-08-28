@@ -400,22 +400,28 @@ VITE_API_BASE_URL=http://localhost:8000
 
 ## #request-service
 
-* Scale down table font size
-* Gather user feedback on dropdown usability and possible color-coded status list
-* Add full per-option colorization via custom Listbox component
-* Extend logging to track admin interactions for auditing
-* Add Shopify frontend UI customer name entry field (in conjunction with email collection)
-* Refactor supabase ingress db to accept new payload (customer name and email)
-* Refactor request table to display customer name in dedicated column
-* Filter Controls: dropdown column editor, pagination, advanced filtering
-* Add product.collection to payload; decide on ways to surface it later
-* Add archiving and deleting ability per row
-* Add history log in dashboard
-* A modal to manually create entries, edit entries
-* Bulk editing abilities
-* Slack/email notifications
-* Validate null or whitespace name entries?
-* Setup data rentention policy, regulatory policies, and performance needs -- what regulations do we need to adhere to? how should our policies be updated to include this type of data collection?
+
+✅ Recently Completed
+- Added Shopify frontend **customer name** field alongside email; payload now includes `customer_name`.
+- Backend updated to accept and store `customer_name`; UI shows a **Customer** column with sorting/search support.
+- Implemented **Status** column with 6-phase dropdown; sorts by phase order (not alphabetically) and re-sorts optimistically on change.
+- Atomic status updates via Supabase RPC `update_status_with_log`; de-duped logging; added debug logging in routes and client.
+- Enriched inserts with Shopify **collection handles/titles** and **tags**; implemented **Out-of-Print** vs **Frontlist** backend filter.
+- `GET /api/interest` now supports `collection_filter`, pagination (`page`, `limit`); frontend dropdown added for collection filter.
+- Backfill scripts for tags/collections/handles improved with **retry + rate limiting** mitigation and handling of **null/empty arrays**.
+
+📌 Next Steps
+- UI polish: scale down table font size, explore per-option color cues for the status dropdown.
+- Consider full per-option colorization using a custom Listbox component (only if users request it).
+- Extend logging to track admin interactions by specific user for auditing (replace hard-coded "admin").
+- Pagination selector (20/50/100) and persist selected collection filter via localStorage.
+- Advanced filtering: keep OOP definition in sync (tags `op`/`pastop`, OOP collections, or title starting with "OP: ").
+- Row actions: add **archive** / **delete** functionality.
+- Add a **request history log** in the dashboard (status change trail).
+- Modals for manual **create/edit**; support **bulk editing** abilities.
+- Notifications: Slack/email on new submissions and/or status changes.
+- Validation: tighten whitespace-only name handling in Shopify UI and optionally enforce server-side sanitization.
+- Data retention & privacy: implement automatic archiving/deletion (e.g., delete open requests after 12 months; archive after fulfillment) and update Privacy Policy accordingly.
 
 ## #damaged-books-service
 

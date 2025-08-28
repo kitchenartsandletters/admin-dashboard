@@ -35,6 +35,10 @@ const RequestService = () => {
     return 'all';
   });
 
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50); // options: 20, 50, 100
+  const [total, setTotal] = useState<number | null>(null);
+
   const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSelectedFilter(e.target.value);
   };
@@ -114,7 +118,7 @@ const RequestService = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/interest?token=${import.meta.env.VITE_ADMIN_TOKEN}&collection_filter=${collectionFilter}`)
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/interest?token=${import.meta.env.VITE_ADMIN_TOKEN}&collection_filter=${collectionFilter}&page=${page}&limit=${limit}`)
         let json: any
         try {
           json = await res.clone().json()
@@ -127,6 +131,7 @@ const RequestService = () => {
           throw new Error("Invalid data response")
         }
         setData(json.data)
+        setTotal(typeof json.meta?.total === 'number' ? json.meta.total : null)
         setLoading(false)
       } catch (err: any) {
         // fallback to mock data
@@ -152,7 +157,7 @@ const RequestService = () => {
     }
 
     fetchData()
-  }, [collectionFilter])
+  }, [collectionFilter, page, limit])
 
   useEffect(() => {
     try {
@@ -161,6 +166,21 @@ const RequestService = () => {
       // ignore write errors (e.g., privacy mode)
     }
   }, [collectionFilter]);
+
+  const onChangeLimit = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const next = parseInt(e.target.value, 10);
+    setLimit(next);
+    setPage(1); // reset to first page when page size changes
+  };
+
+  const onPrevPage = () => setPage(p => Math.max(1, p - 1));
+  const onNextPage = () => setPage(p => p + 1);
+
+  // Range display and pagination end detection
+  const startIndex = data.length > 0 ? (page - 1) * limit + 1 : 0;
+  const endIndex = (page - 1) * limit + data.length;
+  // Disable Next when we know total and have reached it; otherwise fallback to length heuristic
+  const isLastPage = total != null ? endIndex >= total : data.length < limit;
 
   console.log("Row IDs from backend:", data.map(d => d.id));
   console.log("Admin dashboard data:", data)
@@ -338,6 +358,49 @@ const RequestService = () => {
           <option value="frontlist">Frontlist</option>
         </select>
         
+        {/* Pagination controls */}
+        <div className="flex items-center gap-3 ml-4">
+          <label className="text-sm text-gray-700 dark:text-gray-300" htmlFor="rows-per-page">Rows:</label>
+          <select
+            id="rows-per-page"
+            value={limit}
+            onChange={onChangeLimit}
+            className="border rounded px-2 py-1 bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+            aria-label="Rows per page"
+            title="Rows per page"
+          >
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onPrevPage}
+              disabled={page === 1}
+              className="px-2 py-1 border rounded disabled:opacity-50 bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+            >
+              Prev
+            </button>
+            <span className="text-sm text-gray-700 dark:text-gray-300">Page {page}</span>
+            <button
+              type="button"
+              onClick={onNextPage}
+              disabled={isLastPage}
+              className="px-2 py-1 border rounded disabled:opacity-50 bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+            >
+              Next
+            </button>
+          </div>
+          {/* Range display */}
+          <span className="text-sm text-gray-700 dark:text-gray-300 ml-2">
+            {total != null
+              ? `${startIndex}–${endIndex} of ${total}`
+              : `${startIndex}–${endIndex}`}
+          </span>
+        </div>
+
         {/* ExportButtons on the right */}
         <ExportButtons
           filteredData={filteredData}
