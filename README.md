@@ -400,7 +400,6 @@ VITE_API_BASE_URL=http://localhost:8000
 
 ## #request-service
 
-
 ✅ Recently Completed
 - Added Shopify frontend **customer name** field alongside email; payload now includes `customer_name`.
 - Backend updated to accept and store `customer_name`; UI shows a **Customer** column with sorting/search support.
@@ -409,13 +408,15 @@ VITE_API_BASE_URL=http://localhost:8000
 - Enriched inserts with Shopify **collection handles/titles** and **tags**; implemented **Out-of-Print** vs **Frontlist** backend filter.
 - `GET /api/interest` now supports `collection_filter`, pagination (`page`, `limit`); frontend dropdown added for collection filter.
 - Backfill scripts for tags/collections/handles improved with **retry + rate limiting** mitigation and handling of **null/empty arrays**.
+- Implemented **pagination** (`page`, `limit`) in backend + UI; page summary (`X–Y of Z`) now displays; dropdown filter integrates with pagination.
+- Added a **pagination selector** (20/50/100) and persist selected page size + collection filter via localStorage.
+- Advanced filtering: OOP definition in sync (tags `op`/`pastop`, OOP collections, or title starting with "OP: ").
 
 📌 Next Steps
 - UI polish: scale down table font size, explore per-option color cues for the status dropdown.
 - Consider full per-option colorization using a custom Listbox component (only if users request it).
 - Extend logging to track admin interactions by specific user for auditing (replace hard-coded "admin").
-- Pagination selector (20/50/100) and persist selected collection filter via localStorage.
-- Advanced filtering: keep OOP definition in sync (tags `op`/`pastop`, OOP collections, or title starting with "OP: ").
+- Handle **page reset on filter change** (snap to last valid page if current page exceeds dataset).
 - Row actions: add **archive** / **delete** functionality.
 - Add a **request history log** in the dashboard (status change trail).
 - Modals for manual **create/edit**; support **bulk editing** abilities.
