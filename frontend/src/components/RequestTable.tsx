@@ -63,7 +63,7 @@ const RequestTable: React.FC<RequestTableProps> = ({
                 sortConfig?.key === 'customer_name' ? 'text-green-600 dark:text-green-400' : ''
               }`}
             >
-                Customer {renderSortIcon('customer_name')}
+                Name {renderSortIcon('customer_name')}
               </th>
             <th
               onClick={() => handleSort('created_at')}
@@ -71,7 +71,7 @@ const RequestTable: React.FC<RequestTableProps> = ({
                 sortConfig?.key === 'created_at' ? 'text-green-600 dark:text-green-400' : ''
               }`}
             >
-              Created At {renderSortIcon('created_at')}
+              Submitted {renderSortIcon('created_at')}
             </th>
             {/* New Status column */}
             <th
