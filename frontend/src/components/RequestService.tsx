@@ -29,6 +29,20 @@ const RequestService = () => {
   const [selectedFilter, setSelectedFilter] = useState('');
     // Undo toast state
   const [undoToast, setUndoToast] = useState<{ message: string; onUndo: () => void } | null>(null);
+  // Confirm modal state for status changes
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [pendingChange, setPendingChange] = useState<{
+    id: string;
+    newStatus: StatusPhase;
+    prevStatus: StatusPhase;
+  } | null>(null);
+  // Called when a row requests a status change; opens confirm dialog
+  const requestStatusChange = (requestId: string, newStatus: StatusPhase) => {
+    const current = (data.find(d => d.id === requestId)?.status as StatusPhase) ?? "New";
+    setPendingChange({ id: requestId, newStatus, prevStatus: current });
+    setConfirmOpen(true);
+  };
   const [collectionFilter, setCollectionFilter] = useState<'all' | 'op' | 'notop'>(() => {
     try {
       const saved = localStorage.getItem('collectionFilter');
@@ -69,7 +83,14 @@ const RequestService = () => {
     return sortConfig.direction === 'asc' ? '↑' : '↓';
   };
 
-    const handleStatusChange = async (requestId: string, newStatus: StatusPhase) => {
+    const handleStatusChange = async (
+      requestId: string,
+      newStatus: StatusPhase,
+      opts?: { skipUndo?: boolean }
+    ) => {
+      // Capture previous status BEFORE optimistic update for undo/revert
+      const prevStatus = ((data.find(d => d.id === requestId)?.status) as StatusPhase) ?? "New";
+
       try {
         // Optimistic UI update
         setData(prev => {
@@ -109,8 +130,20 @@ const RequestService = () => {
         const json = await res.json();
         console.log("Status updated:", json);
 
+        // Show Undo toast only for direct user actions (not when we are reverting via undo)
+        if (!opts?.skipUndo) {
+          showUndo(`Status changed to "${newStatus}". Undo?`, () => {
+            // Call again but skip showing another Undo toast to prevent loops
+            handleStatusChange(requestId, prevStatus, { skipUndo: true });
+          });
+        }
+
       } catch (err) {
-        console.error("Error updating status:", err);
+        console.error("Error updating status (reverting optimistic change):", err);
+        // Revert optimistic change on failure
+        setData(prev => prev.map(item =>
+          item.id === requestId ? { ...item, status: prevStatus } : item
+        ));
       }
     };
 
@@ -427,7 +460,7 @@ const RequestService = () => {
           renderSortIcon={renderSortIcon}
           sortConfig={sortConfig}
           decodeHTMLEntities={decodeHTMLEntities}
-          onStatusChange={handleStatusChange}
+          onStatusChange={requestStatusChange}
         />
       </div>
       {/* Footer Summary (duplicates above) */}
@@ -446,6 +479,48 @@ const RequestService = () => {
         <span className="text-[0.5rem] text-gray-700 dark:text-gray-300">{pageSummary}</span>
         <span className="text-[0.5rem] text-gray-700 dark:text-gray-300">{rangeSummary}</span>
       </div>
+      {/* Confirm modal for status change */}
+      {pendingChange && (
+        <ConfirmModal
+          open={confirmOpen}
+          onCancel={() => {
+            setConfirmOpen(false);
+            setPendingChange(null);
+          }}
+          onConfirm={async () => {
+            if (!pendingChange) return;
+            setConfirmBusy(true);
+            try {
+              await handleStatusChange(pendingChange.id, pendingChange.newStatus);
+            } finally {
+              setConfirmBusy(false);
+              setConfirmOpen(false);
+              setPendingChange(null);
+            }
+          }}
+          busy={confirmBusy}
+          title="Change status?"
+          description={`Change from "${pendingChange.prevStatus}" to "${pendingChange.newStatus}"?`}
+          confirmLabel="Change"
+          cancelLabel="Cancel"
+          variant="default"
+        />
+      )}
+      {/* Undo toast (10s) */}
+      {undoToast && (
+        <UndoToast
+          message={undoToast.message}
+          duration={10000}
+          onUndo={() => {
+            try {
+              undoToast.onUndo();
+            } finally {
+              setUndoToast(null);
+            }
+          }}
+          onClose={() => setUndoToast(null)}
+        />
+      )}
     </div>
   )
 }
