@@ -8,6 +8,10 @@ interface RequestTableProps {
   sortConfig: { key: keyof InterestEntry; direction: 'asc' | 'desc' } | null;
   decodeHTMLEntities: (str: string) => string;
   onStatusChange: (id: string, newStatus: StatusPhase) => void;
+  // NEW: selection props
+  selectedIds: Set<string>;
+  onRowSelect: (id: string, checked: boolean) => void;
+  onHeaderToggle: (checked: boolean, visibleIds: string[]) => void;
 }
 
 const statuses = STATUS_ORDER;
@@ -18,20 +22,33 @@ const RequestTable: React.FC<RequestTableProps> = ({
   renderSortIcon,
   sortConfig,
   decodeHTMLEntities,
-  onStatusChange
+  onStatusChange,
+  selectedIds,
+  onRowSelect,
+  onHeaderToggle
 }) => {
-  const statuses = [
-    "New",
-    "In Progress",
-    "Request Filed",
-    "Complete"
-  ];
+  const headerCbRef = React.useRef<HTMLInputElement>(null);
+  const idsOnPage = React.useMemo(() => filteredData.map(r => r.id), [filteredData]);
+  const allChecked = idsOnPage.length > 0 && idsOnPage.every(id => selectedIds.has(id));
+  const someChecked = idsOnPage.some(id => selectedIds.has(id)) && !allChecked;
+  React.useEffect(() => {
+    if (headerCbRef.current) headerCbRef.current.indeterminate = someChecked;
+  }, [someChecked]);
 
   return (
     <div className="overflow-x-auto border rounded-md">
       <table className="min-w-full border-collapse border border-gray-200 dark:border-gray-700 text-sm">
         <thead className="bg-gray-100 dark:bg-gray-800">
           <tr>
+            <th className="border px-3 py-2 dark:border-gray-700 text-left w-10">
+              <input
+                ref={headerCbRef}
+                type="checkbox"
+                checked={allChecked}
+                onChange={(e) => onHeaderToggle(e.currentTarget.checked, idsOnPage)}
+                aria-label="Select all rows on page"
+              />
+            </th>
             <th
               onClick={() => handleSort('cr_id')}
               className={`cursor-pointer border px-4 py-2 dark:border-gray-700 text-left ${
@@ -89,6 +106,14 @@ const RequestTable: React.FC<RequestTableProps> = ({
         <tbody>
           {filteredData.map((entry, index) => (
             <tr key={index} className="even:bg-gray-50 dark:even:bg-gray-700">
+              <td className="border px-3 py-2 dark:border-gray-700">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(entry.id)}
+                  onChange={(e) => onRowSelect(entry.id, e.currentTarget.checked)}
+                  aria-label={`Select row ${entry.cr_id || entry.id}`}
+                />
+              </td>
               <td className="border px-4 py-2 dark:border-gray-700">{entry.cr_id || 'CRN/A'}</td>
               <td className="border px-4 py-2 dark:border-gray-700">{decodeHTMLEntities(entry.product_title)}</td>
               <td className="border px-4 py-2 dark:border-gray-700">{entry.isbn}</td>

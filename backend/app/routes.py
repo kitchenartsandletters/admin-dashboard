@@ -76,10 +76,10 @@ async def get_interest_entries(
     range_to = offset + limit - 1
 
     try:
-        q = supabase.table("product_interest_requests") \
-            .select("id, product_id, product_title, email, customer_name, isbn, cr_id, status, cr_seq, archived, archived_at, created_at, shopify_collection_handles, product_tags, shopify_collections") \
-            .order("created_at", desc=True) \
-            .range(offset, range_to)
+        # Build base query (apply filters first; order & range last)
+        q = supabase.table("product_interest_requests").select(
+            "id, product_id, product_title, email, customer_name, isbn, cr_id, status, cr_seq, archived, archived_at, created_at, shopify_collection_handles, product_tags, shopify_collections"
+        )
 
         # Archived mode: exclude (default), include, only
         archived_mode = (archived or "exclude").strip().lower()
@@ -101,23 +101,19 @@ async def get_interest_entries(
             cf = "all"
 
         if cf == "op":
-            # Out-of-Print if ANY of these is true:
-            # 1) handles overlap OP handles
-            # 2) collection titles overlap OP titles
-            # 3) product_tags contain 'op' or 'pastop'
-            # 4) product_title starts with "OP: "
+            # Out-of-Print definition
             q = q.or_(
                 "shopify_collection_handles.ov.{out-of-print-offers,out-of-print-offers-1},shopify_collections.ov.{Out-of-Print Offers,Past Out-of-Print Offers},product_tags.ov.{op,pastop},product_title.ilike.OP:%"
             )
         elif cf == "notop":
-            # NOT OP criteria (minimal & robust):
-            #   1) Title does NOT start with "OP: "
-            #   2) Tags do NOT include 'op' or 'pastop' (including when tags are NULL or empty)
-            # We express this as: (product_title NOT ILIKE 'OP:%') AND (product_tags is NULL OR product_tags = {} OR product_tags NOT OV {op,pastop})
+            # Not-OP definition (title not OP and tags don't contain OP markers, accounting for null/empty)
             q = q.or_(
                 "and(product_title.not.ilike.OP:%,product_tags.not.ov.{op,pastop}),and(product_title.not.ilike.OP:%,or(product_tags.is.null,product_tags.eq.{}))"
             )
         # else: "all" -> no additional filter
+
+        # Finally, apply ordering and range (after all filters)
+        q = q.order("created_at", desc=True).range(offset, range_to)
 
         result = q.execute()
         return {"success": True, "data": result.data}
@@ -131,7 +127,7 @@ async def update_request_status(payload: StatusUpdateRequest, token: str = ""):
 
     try:
         # Debug: incoming payload
-        print("📥 Incoming status update payload:", payload.dict())
+        print("📥 Incoming status update payload:", payload.model_dump())
 
         # Default to "system" if no changed_by is provided
         actor = payload.changed_by if payload.changed_by else "system"
@@ -154,12 +150,32 @@ async def update_request_status(payload: StatusUpdateRequest, token: str = ""):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/archive")
-async def archive_one(payload: ArchiveOne, token: str = ""):
+async def archive_one(payload: ArchiveOne | None = None, id: str | None = None, token: str = ""):
     if token != os.getenv("VITE_ADMIN_TOKEN"):
         raise HTTPException(status_code=403, detail="Invalid token")
     try:
-        resp = supabase.rpc("archive_mark", {"ids": [payload.id], "reason": payload.reason}).execute()
-        return {"success": True, "moved": 1}
+        # Prefer explicit query param id, otherwise fall back to JSON payload
+        resolved_id = id or (payload.id if payload else None)
+        reason = payload.reason if payload else None
+        if not resolved_id:
+            raise HTTPException(status_code=422, detail="Missing 'id' (provide as query param or JSON body)")
+
+        resp = supabase.rpc("archive_mark", {"ids": [resolved_id], "reason": reason}).execute()
+        # Derive a useful count if possible
+        moved = None
+        data = getattr(resp, "data", None)
+        if isinstance(data, list):
+            if data and isinstance(data[0], dict):
+                moved = data[0].get("moved") or data[0].get("count") or len(data)
+            else:
+                moved = len(data)
+        elif isinstance(data, dict):
+            moved = data.get("moved") or data.get("count")
+        elif isinstance(data, (int, float)):
+            moved = int(data)
+        return {"success": True, "moved": moved if moved is not None else 1, "rpc": data}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -170,6 +186,17 @@ async def archive_bulk(payload: ArchiveBulk, token: str = ""):
         raise HTTPException(status_code=403, detail="Invalid token")
     try:
         resp = supabase.rpc("archive_mark", {"ids": payload.ids, "reason": payload.reason}).execute()
-        return {"success": True, "count": len(payload.ids)}
+        data = getattr(resp, "data", None)
+        count = None
+        if isinstance(data, list):
+            if data and isinstance(data[0], dict):
+                count = data[0].get("moved") or data[0].get("count") or len(data)
+            else:
+                count = len(data)
+        elif isinstance(data, dict):
+            count = data.get("moved") or data.get("count")
+        elif isinstance(data, (int, float)):
+            count = int(data)
+        return {"success": True, "count": count if count is not None else len(payload.ids), "rpc": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

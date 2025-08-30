@@ -21,12 +21,85 @@ function decodeHTMLEntities(str: string) {
   return txt.value;
 }
 
+// Inline bulk actions toolbar (scaffold). Replace with a dedicated file later if desired.
+const BulkActionsBar: React.FC<{
+  selectionCount: number;
+  onBulkStatus: (status: StatusPhase) => void;
+  onBulkArchive: () => void;
+}> = ({ selectionCount, onBulkStatus, onBulkArchive }) => {
+  const disabled = selectionCount === 0;
+  return (
+    <div className="print-hidden flex items-center gap-2 text-sm">
+      <span className="text-xs text-gray-600 dark:text-gray-300">
+        {selectionCount > 0 ? `${selectionCount} selected` : 'No rows selected'}
+      </span>
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-gray-600 dark:text-gray-300" htmlFor="bulk-status">Bulk:</label>
+        <select
+          id="bulk-status"
+          className="border rounded px-2 py-1 bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+          disabled={disabled}
+          onChange={(e) => {
+            const val = e.target.value as StatusPhase | '';
+            if (val) {
+              onBulkStatus(val);
+              // reset back to placeholder after firing
+              e.currentTarget.selectedIndex = 0;
+            }
+          }}
+          value=""
+        >
+          <option value="" disabled>Change status…</option>
+          {STATUS_ORDER.map(s => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+        <button
+          type="button"
+          disabled={disabled}
+          className="px-3 py-1 rounded border bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600 disabled:opacity-50"
+          onClick={onBulkArchive}
+        >
+          Archive selected
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const RequestService = () => {
   const [data, setData] = useState<InterestEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sortConfig, setSortConfig] = useState<{ key: keyof InterestEntry; direction: 'asc' | 'desc' } | null>(null)
   const [selectedFilter, setSelectedFilter] = useState('');
+  // Selection model for bulk actions
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Toggle a single row
+  const handleRowSelect = (id: string, checked: boolean) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (checked) next.add(id); else next.delete(id);
+      return next;
+    });
+  };
+
+  // Header checkbox toggles all visible row IDs (current page)
+  const handleHeaderToggle = (checked: boolean, visibleIds: string[]) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (checked) {
+        visibleIds.forEach(id => next.add(id));
+      } else {
+        visibleIds.forEach(id => next.delete(id));
+      }
+      return next;
+    });
+  };
+
+  // Helper to clear selection (e.g., after bulk action)
+  const clearSelection = () => setSelectedIds(new Set());
     // Undo toast state
   const [undoToast, setUndoToast] = useState<{ message: string; onUndo: () => void } | null>(null);
   // Confirm modal state for status changes
@@ -43,6 +116,13 @@ const RequestService = () => {
     setPendingChange({ id: requestId, newStatus, prevStatus: current });
     setConfirmOpen(true);
   };
+  // Bulk status change modal state
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkTargetStatus, setBulkTargetStatus] = useState<StatusPhase | null>(null);
+  // Bulk archive modal state
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
+  const [archiveBusy, setArchiveBusy] = useState(false);
   const [collectionFilter, setCollectionFilter] = useState<'all' | 'op' | 'notop'>(() => {
     try {
       const saved = localStorage.getItem('collectionFilter');
@@ -207,6 +287,7 @@ const RequestService = () => {
   // When switching views, always reset to page 1 to avoid empty pages
   useEffect(() => {
     setPage(1);
+    clearSelection();
   }, [collectionFilter]);
 
   const onChangeLimit = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -385,6 +466,23 @@ const RequestService = () => {
       {loading && <p>Loading...</p>}
       {error && <p className="text-red-600 text-sm">Error: {error}</p>}
       
+      {/* Bulk actions bar */}
+      <div className="flex justify-end mb-2">
+        <BulkActionsBar
+          selectionCount={selectedIds.size}
+          onBulkStatus={(s) => {
+            // open ConfirmModal to bulk-apply status `s` to selectedIds
+            if (selectedIds.size === 0) return;
+            setBulkTargetStatus(s);
+            setBulkConfirmOpen(true);
+          }}
+          onBulkArchive={() => {
+            if (selectedIds.size === 0) return;
+            setArchiveConfirmOpen(true);
+          }}
+        />
+      </div>
+
       {/* Flexbox container for controls */}
       <div className="flex justify-between items-center print-hidden">
         {/* FilterControls on the left */}
@@ -461,6 +559,9 @@ const RequestService = () => {
           sortConfig={sortConfig}
           decodeHTMLEntities={decodeHTMLEntities}
           onStatusChange={requestStatusChange}
+          selectedIds={selectedIds}
+          onRowSelect={handleRowSelect}
+          onHeaderToggle={handleHeaderToggle}
         />
       </div>
       {/* Footer Summary (duplicates above) */}
@@ -503,7 +604,50 @@ const RequestService = () => {
           description={`Change from "${pendingChange.prevStatus}" to "${pendingChange.newStatus}"?`}
           confirmLabel="Change"
           cancelLabel="Cancel"
-          variant="default"
+          variant="primary"
+        />
+      )}
+      {/* Confirm modal for BULK status change */}
+      {bulkTargetStatus && (
+        <ConfirmModal
+          open={bulkConfirmOpen}
+          onCancel={() => {
+            setBulkConfirmOpen(false);
+            setBulkTargetStatus(null);
+          }}
+          onConfirm={async () => {
+            const ids = Array.from(selectedIds);
+            if (ids.length === 0 || !bulkTargetStatus) return;
+            setBulkBusy(true);
+            try {
+              // Capture previous statuses for a single undo action
+              const prevMap: Record<string, StatusPhase> = {};
+              ids.forEach(id => {
+                const prevStatus = (data.find(d => d.id === id)?.status as StatusPhase) ?? 'New';
+                prevMap[id] = prevStatus;
+              });
+
+              await Promise.all(
+                ids.map(id => handleStatusChange(id, bulkTargetStatus, { skipUndo: true }))
+              );
+
+              showUndo(`Changed ${ids.length} ${ids.length === 1 ? 'item' : 'items'} to "${bulkTargetStatus}". Undo?`, () => {
+                Promise.all(ids.map(id => handleStatusChange(id, prevMap[id], { skipUndo: true })));
+              });
+
+              clearSelection();
+            } finally {
+              setBulkBusy(false);
+              setBulkConfirmOpen(false);
+              setBulkTargetStatus(null);
+            }
+          }}
+          busy={bulkBusy}
+          title={`Change status for ${selectedIds.size} selected?`}
+          description={`Set status to "${bulkTargetStatus}" for ${selectedIds.size} selected ${selectedIds.size === 1 ? 'item' : 'items'}?`}
+          confirmLabel="Change"
+          cancelLabel="Cancel"
+          variant="primary"
         />
       )}
       {/* Undo toast (10s) */}
@@ -521,6 +665,44 @@ const RequestService = () => {
           onClose={() => setUndoToast(null)}
         />
       )}
+      {/* Confirm modal for BULK archive */}
+      <ConfirmModal
+        open={archiveConfirmOpen}
+        onCancel={() => setArchiveConfirmOpen(false)}
+        onConfirm={async () => {
+          const ids = Array.from(selectedIds);
+          if (ids.length === 0) {
+            setArchiveConfirmOpen(false);
+            return;
+          }
+          setArchiveBusy(true);
+          try {
+            const res = await fetch(
+              `${import.meta.env.VITE_API_BASE_URL}/api/archive/bulk?token=${import.meta.env.VITE_ADMIN_TOKEN}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids }),
+              }
+            );
+            if (!res.ok) throw new Error('Failed to archive selected');
+            // Optimistic UI: remove archived rows from current view
+            setData(prev => prev.filter(item => !ids.includes(item.id)));
+            clearSelection();
+          } catch (e) {
+            console.error('Bulk archive failed', e);
+          } finally {
+            setArchiveBusy(false);
+            setArchiveConfirmOpen(false);
+          }
+        }}
+        busy={archiveBusy}
+        title={`Archive ${selectedIds.size} selected?`}
+        description={`Move ${selectedIds.size} selected ${selectedIds.size === 1 ? 'item' : 'items'} to archive.`}
+        confirmLabel="Archive"
+        cancelLabel="Cancel"
+        variant="danger"
+      />
     </div>
   )
 }
