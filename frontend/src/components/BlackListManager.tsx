@@ -8,7 +8,7 @@ interface BlacklistEntry {
   product_id: number;
 }
 
-const ADMIN_API_TOKEN = import.meta.env.VITE_DBS_ADMIN_TOKEN;
+const ADMIN_API_TOKEN = import.meta.env.VITE_ADMIN_TOKEN;
 
 const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry | null> => {
   const isProductId = /^\d+$/.test(input);
@@ -88,8 +88,9 @@ const BlacklistManager = () => {
   const [barcodeInput, setBarcodeInput] = useState("");
 
   const fetchBlacklist = async () => {
-    const res = await fetch("/api/blacklist?token=" + ADMIN_API_TOKEN);
-    const data = await res.json();
+    const res = await fetch(`/api/blacklist?token=${ADMIN_API_TOKEN}`);
+    const json = await res.json();
+    const data = Array.isArray(json.data) ? json.data : [];
     setEntries(data);
   };
 
@@ -113,7 +114,7 @@ const BlacklistManager = () => {
     }
 
     if (enrichedEntries.length > 0) {
-      await fetch("/api/blacklist/add", {
+      await fetch(`/api/blacklist/add?token=${ADMIN_API_TOKEN}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(enrichedEntries)
@@ -125,7 +126,7 @@ const BlacklistManager = () => {
   };
 
   const handleRemove = async (barcode: string) => {
-    await fetch("/api/blacklist/remove", {
+    await fetch(`/api/blacklist/remove?token=${ADMIN_API_TOKEN}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ barcode })
@@ -199,9 +200,8 @@ const BlacklistManager = () => {
       <button
         onClick={async () => {
           try {
-            const res = await fetch("/api/blacklist/export_snippet", {
+            const res = await fetch(`/api/blacklist/export_snippet?token=${ADMIN_API_TOKEN}`, {
               method: "POST",
-              headers: { Authorization: `Bearer ${ADMIN_API_TOKEN}` },
             });
             const json = await res.json();
             if (json.success) alert("✅ Liquid snippet exported successfully.");

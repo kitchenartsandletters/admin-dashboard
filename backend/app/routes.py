@@ -258,7 +258,7 @@ async def export_blacklist_snippet(token: str = ""):
     try:
         sb = supabase
         response = sb.table("blacklisted_barcodes").select("barcode").execute()
-        barcodes = [row["barcode"] for row in response.data if row.get("barcode")]
+        barcodes = [row["barcode"] for row in response.stta if row.get("barcode")]
 
         csv_string = ",".join(barcodes)
         snippet = f'{{% assign blacklisted_barcodes = "{csv_string}" | split: "," %}}'
