@@ -277,3 +277,26 @@ async def export_blacklist_snippet(token: str = ""):
     except Exception as e:
         print("Export failed:", e)
         return { "success": False, "error": str(e) }
+
+@router.post("/shopify/graphql")
+async def proxy_to_shopify(request: Request):
+    try:
+        shopify_token = os.getenv("SHOPIFY_ACCESS_TOKEN")
+        if not shopify_token:
+            raise HTTPException(status_code=500, detail="Shopify token missing")
+
+        payload = await request.json()
+        headers = {
+            "X-Shopify-Access-Token": shopify_token,
+            "Content-Type": "application/json"
+        }
+        response = requests.post(
+            f"https://{os.getenv('SHOP_URL')}/admin/api/2023-10/graphql.json",
+            json=payload,
+            headers=headers
+        )
+
+        return Response(content=response.content, status_code=response.status_code, media_type="application/json")
+    except Exception as e:
+        print("Shopify proxy error:", e)
+        raise HTTPException(status_code=500, detail=str(e))
