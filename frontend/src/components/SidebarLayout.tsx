@@ -11,7 +11,7 @@ const navItems = [
     label: 'Request Service',
     path: '/requests',
     children: [
-      { label: 'Request Form Blacklist', path: '/blacklist' },
+      { label: 'Blacklist', path: '/blacklist' },
     ]
   },
   { label: 'Damaged Books', path: '/damaged' },
@@ -20,6 +20,7 @@ const navItems = [
 
 const SidebarLayout = ({ children }: { children: React.ReactNode }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [requestMenuOpen, setRequestMenuOpen] = useState(false);
   const location = useLocation();
 
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -70,6 +71,10 @@ const SidebarLayout = ({ children }: { children: React.ReactNode }) => {
     };
     }, [sidebarOpen]);
 
+  useEffect(() => {
+    setRequestMenuOpen(location.pathname.startsWith("/requests"));
+  }, [location.pathname]);
+
     const sidebarClass = `
         fixed z-40 top-0 left-0 h-full w-64 bg-white dark:bg-gray-800 shadow-lg transform transition-transform duration-300 ease-in-out min-w-64
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -90,22 +95,38 @@ const SidebarLayout = ({ children }: { children: React.ReactNode }) => {
         <nav className="flex flex-col p-4 gap-2">
           {navItems.map(({ label, path, children }) => (
             <div key={path}>
-              <Link
-                to={path}
-                onClick={closeSidebar}
-                className={`px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-all
-                  ${location.pathname === path ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
-              >
-                {label}
-              </Link>
-              {children?.map(child => (
+              {label === 'Request Service' ? (
+                <div
+                  onClick={() => {
+                    setRequestMenuOpen(prev => !prev);
+                    closeSidebar();
+                  }}
+                  className={`px-3 py-2 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all
+                    ${location.pathname === path ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
+                >
+                  <Link to={path}>
+                    {label}
+                  </Link>
+                </div>
+              ) : (
+                <Link
+                  to={path}
+                  onClick={closeSidebar}
+                  className={`px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-all
+                    ${location.pathname === path ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
+                >
+                  {label}
+                </Link>
+              )}
+              {label === "Request Service" && requestMenuOpen && children?.map(child => (
                 <Link
                   key={child.path}
                   to={child.path}
                   onClick={closeSidebar}
-                  className={`pl-6 py-2 rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${location.pathname === child.path ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
+                  className={`pl-6 py-2 block rounded text-sm transition-all transform duration-300 ease-in-out hover:bg-gray-100 dark:hover:bg-gray-700 
+                    ${location.pathname === child.path ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
                 >
-                  {child.label}
+                  {child.label.replace("Form ", "")}
                 </Link>
               ))}
             </div>
