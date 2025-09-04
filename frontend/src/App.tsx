@@ -3,6 +3,7 @@ import SidebarLayout from './components/SidebarLayout';
 import RequestService from './components/RequestService';
 import SystemStatusDashboard from './components/SystemStatusDashboard'; // placeholder for now
 import DamagedBooksTable from './components/DamagedBooksTable';
+import BlacklistManager from './components/BlackListManager';
 
 const App = () => {
   return (
@@ -19,6 +20,7 @@ const App = () => {
         <div className="pt-4">
           <Routes>
             <Route path="/requests" element={<RequestService />} />
+            <Route path="/blacklist" element={<BlacklistManager />} />
             <Route path="/damaged" element={<DamagedBooksTable />} />
             <Route path="/status" element={<SystemStatusDashboard />} />
             <Route path="*" element={<Navigate to="/requests" replace />} />

@@ -7,11 +7,16 @@ import DarkModeToggle from './DarkModeToggle';
 console.log('Initial window width:', window.innerWidth);
 
 const navItems = [
-  { label: 'Request Service', path: '/requests' },
+  {
+    label: 'Request Service',
+    path: '/requests',
+    children: [
+      { label: 'Request Form Blacklist', path: '/blacklist' },
+    ]
+  },
   { label: 'Damaged Books', path: '/damaged' },
   { label: 'System Status', path: '/status' },
 ];
-
 
 const SidebarLayout = ({ children }: { children: React.ReactNode }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -83,16 +88,27 @@ const SidebarLayout = ({ children }: { children: React.ReactNode }) => {
           </button>
         </div>
         <nav className="flex flex-col p-4 gap-2">
-          {navItems.map(({ label, path }) => (
-            <Link
-              key={path}
-              to={path}
-              onClick={closeSidebar}
-              className={`px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-all
-                ${location.pathname === path ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
-            >
-              {label}
-            </Link>
+          {navItems.map(({ label, path, children }) => (
+            <div key={path}>
+              <Link
+                to={path}
+                onClick={closeSidebar}
+                className={`px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-all
+                  ${location.pathname === path ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
+              >
+                {label}
+              </Link>
+              {children?.map(child => (
+                <Link
+                  key={child.path}
+                  to={child.path}
+                  onClick={closeSidebar}
+                  className={`pl-6 py-2 rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${location.pathname === child.path ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
+                >
+                  ↳ {child.label}
+                </Link>
+              ))}
+            </div>
           ))}
         </nav>
         <div className="mt-auto p-4 border-t dark:border-gray-700">

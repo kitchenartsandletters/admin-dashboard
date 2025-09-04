@@ -1,8 +1,10 @@
 import os
-from fastapi import APIRouter, Request, HTTPException
+import requests
+from datetime import datetime
+from fastapi import APIRouter, Request, HTTPException, Depends
 from pydantic import BaseModel
 from fastapi.responses import Response
-from app.supabase_client import insert_interest, supabase, update_status
+from app.supabase_client import insert_interest, supabase, update_status, SHOP_URL, SHOPIFY_ACCESS_TOKEN, SHOPIFY_API_VERSION
 
 
 router = APIRouter()
@@ -28,6 +30,33 @@ class ArchiveOne(BaseModel):
 class ArchiveBulk(BaseModel):
     ids: list[str]
     reason: str | None = None
+
+class BlacklistEntry(BaseModel):
+    barcode: str
+    title: str
+    handle: str
+    author: str
+    product_id: int
+
+class RemoveEntry(BaseModel):
+    barcode: str
+
+def validate_admin_token(request: Request, token: str = "") -> str:
+    """Validate admin token from Authorization header or `token` query param.
+
+    Accepts either:
+    - Authorization: Bearer <VITE_DBS_ADMIN_TOKEN>
+    - `token` query param equal to VITE_DBS_ADMIN_TOKEN (or fallback VITE_ADMIN_TOKEN)
+    """
+    header = request.headers.get("Authorization", "")
+    provided = token
+    if header.lower().startswith("bearer "):
+        provided = header.split(" ", 1)[1].strip()
+
+    expected = os.getenv("VITE_DBS_ADMIN_TOKEN") or os.getenv("VITE_ADMIN_TOKEN")
+    if not expected or provided != expected:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    return provided
 
 @router.api_route("/interest", methods=["POST", "OPTIONS"])
 async def create_interest(req: Request):
@@ -200,3 +229,49 @@ async def archive_bulk(payload: ArchiveBulk, token: str = ""):
         return {"success": True, "count": count if count is not None else len(payload.ids), "rpc": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@router.get("/blacklist")
+async def get_blacklist(request: Request):
+    # Accept token via header (Bearer) or query param `token`
+    token = request.query_params.get("token", "")
+    validate_admin_token(request, token)
+    res = supabase.table("blacklisted_barcodes").select("*").execute()
+    return res.data
+
+@router.post("/blacklist/add")
+async def add_to_blacklist(entry: BlacklistEntry):
+    supabase.table("blacklisted_barcodes").upsert(entry.model_dump()).execute()
+    return {"success": True}
+
+@router.post("/blacklist/remove")
+async def remove_from_blacklist(entry: RemoveEntry):
+    supabase.table("blacklisted_barcodes").delete().eq("barcode", entry.barcode).execute()
+    return {"success": True}
+
+@router.post("/api/blacklist/export_snippet")
+async def export_blacklist_snippet(request: Request):
+    # ✅ Validate admin access using existing utility
+    validate_admin_token(request)
+
+    try:
+        sb = supabase
+        response = sb.table("blacklisted_barcodes").select("barcode").execute()
+        barcodes = [row["barcode"] for row in response.data if row.get("barcode")]
+
+        csv_string = ",".join(barcodes)
+        snippet = f'{{% assign blacklisted_barcodes = "{csv_string}" | split: "," %}}'
+
+        os.makedirs("snippets", exist_ok=True)
+        with open("snippets/blacklisted-barcodes.liquid", "w") as f:
+            f.write(snippet)
+
+        sb.table("blacklist_snippet_logs").insert({
+            "barcodes": barcodes,
+            "exported_at": datetime.utcnow().isoformat()
+        }).execute()
+
+        return { "success": True }
+
+    except Exception as e:
+        print("Export failed:", e)
+        return { "success": False, "error": str(e) }
