@@ -105,7 +105,7 @@ const SidebarLayout = ({ children }: { children: React.ReactNode }) => {
                   onClick={closeSidebar}
                   className={`pl-6 py-2 rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${location.pathname === child.path ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
                 >
-                  ↳ {child.label}
+                  {child.label}
                 </Link>
               ))}
             </div>

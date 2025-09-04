@@ -231,28 +231,30 @@ async def archive_bulk(payload: ArchiveBulk, token: str = ""):
         raise HTTPException(status_code=500, detail=str(e))
     
 @router.get("/blacklist")
-async def get_blacklist(request: Request):
-    # Accept token via header (Bearer) or query param `token`
-    token = request.query_params.get("token", "")
-    validate_admin_token(request, token)
+async def get_blacklist(token: str = ""):
+    if token != os.getenv("VITE_ADMIN_TOKEN"):
+        raise HTTPException(status_code=403, detail="Invalid token")
     res = supabase.table("blacklisted_barcodes").select("*").execute()
     return res.data
 
 @router.post("/blacklist/add")
-async def add_to_blacklist(entry: BlacklistEntry):
+async def add_to_blacklist(entry: BlacklistEntry, token: str = ""):
+    if token != os.getenv("VITE_ADMIN_TOKEN"):
+        raise HTTPException(status_code=403, detail="Invalid token")
     supabase.table("blacklisted_barcodes").upsert(entry.model_dump()).execute()
     return {"success": True}
 
 @router.post("/blacklist/remove")
-async def remove_from_blacklist(entry: RemoveEntry):
+async def remove_from_blacklist(entry: RemoveEntry, token: str = ""):
+    if token != os.getenv("VITE_ADMIN_TOKEN"):
+        raise HTTPException(status_code=403, detail="Invalid token")
     supabase.table("blacklisted_barcodes").delete().eq("barcode", entry.barcode).execute()
     return {"success": True}
 
 @router.post("/api/blacklist/export_snippet")
-async def export_blacklist_snippet(request: Request):
-    # ✅ Validate admin access using existing utility
-    validate_admin_token(request)
-
+async def export_blacklist_snippet(token: str = ""):
+    if token != os.getenv("VITE_ADMIN_TOKEN"):
+        raise HTTPException(status_code=403, detail="Invalid token")
     try:
         sb = supabase
         response = sb.table("blacklisted_barcodes").select("barcode").execute()
