@@ -290,7 +290,7 @@ async def proxy_to_shopify(request: Request):
         headers = {
             "X-Shopify-Access-Token": shopify_token,
             "Content-Type": "application/json"
-        }
+        }   
 
         response = requests.post(
             f"https://{os.getenv('SHOP_URL')}/admin/api/2023-10/graphql.json",

@@ -19,6 +19,7 @@ const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry
           id
           title
           handle
+          sku
           variants(first: 1) {
             edges {
               node {
@@ -39,6 +40,7 @@ const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry
                 id
                 title
                 handle
+                sku
               }
             }
           }
@@ -73,7 +75,7 @@ const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry
         barcode: variant.barcode,
         title: variant.product.title,
         handle: variant.product.handle,
-        author: variant.sku,
+        author: variant.product.sku || variant.sku,
         product_id: parseInt(variant.product.id.split("/").pop())
       };
     }
