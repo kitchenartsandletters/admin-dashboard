@@ -115,11 +115,13 @@ const BlacklistManager = () => {
     }
 
     if (enrichedEntries.length > 0) {
-      await fetch(`${BLACKLIST_API_BASE}/api/blacklist/add?token=${ADMIN_API_TOKEN}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(enrichedEntries)
-      });
+      for (const entry of enrichedEntries) {
+        await fetch(`${BLACKLIST_API_BASE}/api/blacklist/add?token=${ADMIN_API_TOKEN}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(entry)
+        });
+      }
     }
 
     setBarcodeInput("");
