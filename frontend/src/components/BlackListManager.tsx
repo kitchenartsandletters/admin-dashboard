@@ -19,7 +19,6 @@ const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry
           id
           title
           handle
-          sku
           variants(first: 1) {
             edges {
               node {
@@ -40,7 +39,6 @@ const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry
                 id
                 title
                 handle
-                sku
               }
             }
           }
@@ -71,6 +69,7 @@ const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry
       const edge = json.data.productVariants.edges[0];
       if (!edge) return null;
       const variant = edge.node;
+      if (!variant || !variant.product) return null;
       return {
         barcode: variant.barcode,
         title: variant.product.title,
