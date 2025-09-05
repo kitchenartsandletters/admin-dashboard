@@ -46,7 +46,7 @@ const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry
       }`;
 
   try {
-    const res = await fetch("/api/shopify/graphql", {
+    const res = await fetch(`${BLACKLIST_API_BASE}/api/shopify/graphql`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
