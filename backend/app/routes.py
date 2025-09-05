@@ -286,17 +286,28 @@ async def proxy_to_shopify(request: Request):
             raise HTTPException(status_code=500, detail="Shopify token missing")
 
         payload = await request.json()
+
         headers = {
             "X-Shopify-Access-Token": shopify_token,
             "Content-Type": "application/json"
         }
+
         response = requests.post(
             f"https://{os.getenv('SHOP_URL')}/admin/api/2023-10/graphql.json",
             json=payload,
             headers=headers
         )
 
-        return Response(content=response.content, status_code=response.status_code, media_type="application/json")
+        # 🔍 Log Shopify response for debugging
+        print("📡 Shopify GraphQL status:", response.status_code)
+        print("📄 Shopify response body:", response.text)
+
+        return Response(
+            content=response.content,
+            status_code=response.status_code,
+            media_type="application/json"
+        )
+
     except Exception as e:
-        print("Shopify proxy error:", e)
+        print("❌ Shopify proxy error:", e)
         raise HTTPException(status_code=500, detail=str(e))
