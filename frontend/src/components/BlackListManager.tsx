@@ -55,6 +55,7 @@ const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry
     });
     const json = await res.json();
     if (isProductId) {
+      if (!json.data || !json.data.product) return null;
       const product = json.data.product;
       const variant = product?.variants?.edges?.[0]?.node;
       if (!product || !variant) return null;
@@ -66,6 +67,7 @@ const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry
         product_id: parseInt(product.id.split("/").pop())
       };
     } else {
+      if (!json.data || !json.data.productVariants) return null;
       const edge = json.data.productVariants.edges[0];
       if (!edge) return null;
       const variant = edge.node;
@@ -115,12 +117,15 @@ const BlacklistManager = () => {
     }
 
     if (enrichedEntries.length > 0) {
-      for (const entry of enrichedEntries) {
-        await fetch(`${BLACKLIST_API_BASE}/api/blacklist/add?token=${ADMIN_API_TOKEN}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(entry)
-        });
+      const res = await fetch(`${BLACKLIST_API_BASE}/api/blacklist/add?token=${ADMIN_API_TOKEN}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(enrichedEntries),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        alert("Failed to add entries: " + errText);
       }
     }
 
