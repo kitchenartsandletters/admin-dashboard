@@ -116,16 +116,16 @@ const BlacklistManager = () => {
       }
     }
 
-    if (enrichedEntries.length > 0) {
+    for (const enriched of enrichedEntries) {
       const res = await fetch(`${BLACKLIST_API_BASE}/api/blacklist/add?token=${ADMIN_API_TOKEN}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(enrichedEntries),
+        body: JSON.stringify(enriched),
       });
 
       if (!res.ok) {
         const errText = await res.text();
-        alert("Failed to add entries: " + errText);
+        alert(`❌ Failed to add ${enriched.barcode}: ` + errText);
       }
     }
 
