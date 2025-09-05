@@ -75,7 +75,7 @@ const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry
         barcode: variant.barcode,
         title: variant.product.title,
         handle: variant.product.handle,
-        author: variant.product.sku || variant.sku,
+        author: variant.sku,
         product_id: parseInt(variant.product.id.split("/").pop())
       };
     }
