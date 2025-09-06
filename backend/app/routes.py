@@ -1,7 +1,7 @@
 import os
 import requests
 from datetime import datetime
-from fastapi import APIRouter, Request, HTTPException, Depends, Body
+from fastapi import APIRouter, Request, HTTPException, Depends
 from pydantic import BaseModel
 from fastapi.responses import Response
 from app.supabase_client import insert_interest, supabase, update_status, SHOP_URL, SHOPIFY_ACCESS_TOKEN, SHOPIFY_API_VERSION
@@ -239,8 +239,6 @@ async def get_blacklist(token: str = ""):
     res = supabase.table("blacklisted_barcodes").select("*").execute()
     return res.data
 
-from fastapi import Body
-
 @router.post("/blacklist/add")
 async def add_to_blacklist_debug(request: Request, token: str = ""):
     if token != os.getenv("VITE_ADMIN_TOKEN"):
@@ -250,10 +248,19 @@ async def add_to_blacklist_debug(request: Request, token: str = ""):
         raw_body = await request.json()
         print("📥 Raw incoming body (pre-validation):", raw_body)
 
-        entry = BlacklistEntry(**raw_body)
-        print("✅ Parsed entry:", entry.model_dump())
-        supabase.table("blacklisted_barcodes").upsert(entry.model_dump()).execute()
-        return {"success": True}
+        # Support both single object or list of objects
+        entries = raw_body if isinstance(raw_body, list) else [raw_body]
+
+        parsed_entries = []
+        for entry_data in entries:
+            entry = BlacklistEntry(**entry_data)
+            print("✅ Parsed entry:", entry.model_dump())
+            parsed_entries.append(entry.model_dump())
+
+        # Bulk upsert
+        supabase.table("blacklisted_barcodes").upsert(parsed_entries).execute()
+        return {"success": True, "count": len(parsed_entries)}
+
     except Exception as e:
         print("❌ Failed to parse or upsert:", e)
         raise HTTPException(status_code=422, detail=str(e))
