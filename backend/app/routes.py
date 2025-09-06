@@ -242,13 +242,14 @@ async def get_blacklist(token: str = ""):
 from fastapi import Body
 
 @router.post("/blacklist/add")
-async def add_to_blacklist_debug(token: str = "", raw_body: dict = Body(...)):
+async def add_to_blacklist_debug(request: Request, token: str = ""):
     if token != os.getenv("VITE_ADMIN_TOKEN"):
         raise HTTPException(status_code=403, detail="Invalid token")
-    
-    print("📥 Raw incoming body (pre-validation):", raw_body)
 
     try:
+        raw_body = await request.json()
+        print("📥 Raw incoming body (pre-validation):", raw_body)
+
         entry = BlacklistEntry(**raw_body)
         print("✅ Parsed entry:", entry.model_dump())
         supabase.table("blacklisted_barcodes").upsert(entry.model_dump()).execute()
