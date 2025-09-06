@@ -263,9 +263,46 @@ async def export_blacklist_snippet(token: str = ""):
         csv_string = ",".join(barcodes)
         snippet = f'{{% assign blacklisted_barcodes = "{csv_string}" | split: "," %}}'
 
-        os.makedirs("snippets", exist_ok=True)
-        with open("snippets/blacklisted-barcodes.liquid", "w") as f:
-            f.write(snippet)
+        # Step 1: Get the MAIN theme ID
+        theme_resp = requests.post(
+            f"https://{SHOP_URL}/admin/api/{SHOPIFY_API_VERSION}/graphql.json",
+            headers={
+                "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
+                "Content-Type": "application/json",
+            },
+            json={"query": "{ themes { edges { node { id name role } } } }"},
+        )
+
+        theme_data = theme_resp.json()
+        main_theme_id = None
+        for edge in theme_data.get("data", {}).get("themes", {}).get("edges", []):
+            node = edge.get("node", {})
+            if node.get("role") == "main":
+                main_theme_id = node.get("id").split("/")[-1]
+                break
+
+        if not main_theme_id:
+            raise Exception("No main theme found")
+
+        # Step 2: Upload snippet to the theme
+        asset_url = f"https://{SHOP_URL}/admin/api/{SHOPIFY_API_VERSION}/themes/{main_theme_id}/assets.json"
+        asset_payload = {
+            "asset": {
+                "key": "snippets/blacklisted-barcodes.liquid",
+                "value": snippet
+            }
+        }
+        upload_resp = requests.put(
+            asset_url,
+            headers={
+                "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
+                "Content-Type": "application/json",
+            },
+            json=asset_payload,
+        )
+
+        if not upload_resp.ok:
+            raise Exception(f"Snippet upload failed: {upload_resp.text}")
 
         sb.table("blacklist_snippet_logs").insert({
             "barcodes": barcodes,
