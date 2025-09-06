@@ -95,6 +95,7 @@ const BlacklistManager = () => {
     const json = await res.json();
     const data = Array.isArray(json.data) ? json.data : [];
     setEntries(data);
+    console.log("Blacklist response:", json);
   };
 
   const handleAdd = async () => {
