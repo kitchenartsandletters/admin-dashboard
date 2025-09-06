@@ -12,10 +12,10 @@ HOW IT WORKS
 STEP-BY-STEP USAGE
 
 1. Navigate to the Blacklist tab in the Admin Dashboard. It is located within the Request Service menu item.
-   - 📸 [Insert screenshot of tab UI]
+![Input Box](/docs-screenshots/blacklist-manager/tap-ui.gif)
 
-2. In the input box, enter a barcode or Shopify Product ID to search.
-   - 📸 [Insert screenshot showing input usage]
+2. In the input box, enter a barcode or Shopify Product ID to search (the entry field will accept either).
+![Input Box](/docs-screenshots/blacklist-manager/input-box.gif)
 
 3. Preview product details returned by Shopify in a modal before confirming.
    - Product Title
@@ -25,14 +25,14 @@ STEP-BY-STEP USAGE
    - Barcode
 
 4. Click “Confirm All” to save the entries to the database after previewing the products.
-   - 📸 [Insert screenshot of added row in table]
+![Input Box](/docs-screenshots/blacklist-manager/preview-modal.png)
 
 5. Once your list is built, click “Export to Shopify”.
    - This will:
      - Update blacklisted barcodes in the live theme.
+![Input Box](/docs-screenshots/blacklist-manager/export-shopify.png)
 
 6. You should now see the request form hidden on blacklisted product pages.
-   - 📸 [Insert screenshot of suppressed form]
 
 BULK ADDING
 
@@ -41,4 +41,4 @@ If you have multiple barcodes or product IDs to add:
 - The system will iterate through them and attempt to add each.
 - If a barcode is invalid or does not resolve to a product, it will be skipped.
 
-⚠️ Reminder: “Export to Shopify” must be clicked to publish changes to Shopify.
+⚠️ Reminder: “Export to Shopify” must be clicked to publish changes to Shopify. This applies to adding or removing entries.

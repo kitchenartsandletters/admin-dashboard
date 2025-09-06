@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import ConfirmModal from "./ConfirmModal";
+import DocViewer from '../components/DocViewer';
 
 interface BlacklistEntry {
   barcode: string;
@@ -108,6 +109,8 @@ const BlacklistManager = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortConfig, setSortConfig] = useState<{ key: keyof BlacklistEntry; direction: "asc" | "desc" } | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
+  const [docsOpen, setDocsOpen] = useState(false);
+  const [docsMd, setDocsMd] = useState(true);
   const removeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Moved renderSortIcon inside component to access sortConfig correctly
@@ -450,6 +453,17 @@ const BlacklistManager = () => {
       >
         {loading ? "Exporting to Shopify..." : "Export to Shopify"}
       </button>
+
+        <button
+          className="text-sm underline text-blue-600"
+          onClick={() => setDocsOpen(true)}
+        >
+          Help Docs
+        </button>
+
+        {docsOpen && docsMd && (
+          <DocViewer filePath="/docs/blacklist-manager.md" />
+        )}
 
       {errorModal && (
         <ConfirmModal

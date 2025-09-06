@@ -1,6 +1,7 @@
 // src/components/RightSidebar.tsx
 import React, { useEffect, useState } from 'react';
 import { DamagedBooksService, DamagedRow } from '../components/DamagedBooksService';
+import DocViewer from './DocViewer';
 
 type Props = { row: DamagedRow | null; onClose: () => void };
 
@@ -83,12 +84,20 @@ export default function RightSidebar({ row, onClose }: Props) {
           )}
 
           {tab === 'docs' && (
-            <ul className="list-disc ml-5 space-y-1">
-              {docs.map(d => (
-                <li key={d.url}><a className="underline" href={d.url} target="_blank" rel="noreferrer">{d.title}</a></li>
-              ))}
-              {docs.length === 0 && <li className="opacity-70">No docs</li>}
-            </ul>
+            row?.handle === 'blacklist-manager' ? (
+              <div className="prose dark:prose-invert max-w-none">
+                <DocViewer filePath="/docs/blacklist-manager.md" />
+              </div>
+            ) : (
+              <ul className="list-disc ml-5 space-y-1">
+                {docs.map(d => (
+                  <li key={d.url}>
+                    <a className="underline" href={d.url} target="_blank" rel="noreferrer">{d.title}</a>
+                  </li>
+                ))}
+                {docs.length === 0 && <li className="opacity-70">No docs</li>}
+              </ul>
+            )
           )}
 
           {tab === 'logs' && (
