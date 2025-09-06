@@ -269,8 +269,15 @@ async def add_to_blacklist_debug(request: Request, token: str = ""):
 async def remove_from_blacklist(entry: RemoveEntry, token: str = ""):
     if token != os.getenv("VITE_ADMIN_TOKEN"):
         raise HTTPException(status_code=403, detail="Invalid token")
+    conditions = []
+    if entry.barcode:
+        conditions.append(f"barcode.eq.{entry.barcode}")
+    if entry.product_id is not None:
+        conditions.append(f"product_id.eq.{entry.product_id}")
+    if not conditions:
+        raise HTTPException(status_code=422, detail="Must provide barcode and/or product_id")
     delete_query = supabase.table("blacklisted_barcodes").delete().or_(
-        f"barcode.eq.{entry.barcode},product_id.eq.{entry.product_id}"
+        ",".join(conditions)
     )
     result = delete_query.execute()
     print("🗑️ Delete result:", result.data)
