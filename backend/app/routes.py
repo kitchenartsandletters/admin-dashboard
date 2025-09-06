@@ -251,7 +251,7 @@ async def remove_from_blacklist(entry: RemoveEntry, token: str = ""):
     supabase.table("blacklisted_barcodes").delete().eq("barcode", entry.barcode).execute()
     return {"success": True}
 
-@router.post("/api/blacklist/export_snippet")
+@router.post("/blacklist/export_snippet")
 async def export_blacklist_snippet(token: str = ""):
     if token != os.getenv("VITE_ADMIN_TOKEN"):
         raise HTTPException(status_code=403, detail="Invalid token")
