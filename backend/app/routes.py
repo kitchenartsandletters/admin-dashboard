@@ -1,7 +1,7 @@
 import os
 import requests
 from datetime import datetime
-from fastapi import APIRouter, Request, HTTPException, Depends
+from fastapi import APIRouter, Request, HTTPException, Depends, Body
 from pydantic import BaseModel
 from fastapi.responses import Response
 from app.supabase_client import insert_interest, supabase, update_status, SHOP_URL, SHOPIFY_ACCESS_TOKEN, SHOPIFY_API_VERSION
@@ -239,17 +239,22 @@ async def get_blacklist(token: str = ""):
     res = supabase.table("blacklisted_barcodes").select("*").execute()
     return res.data
 
+from fastapi import Body
+
 @router.post("/blacklist/add")
-async def add_to_blacklist(entry: BlacklistEntry, token: str = ""):
+async def add_to_blacklist_debug(token: str = "", raw_body: dict = Body(...)):
     if token != os.getenv("VITE_ADMIN_TOKEN"):
         raise HTTPException(status_code=403, detail="Invalid token")
     
+    print("📥 Raw incoming body (pre-validation):", raw_body)
+
     try:
-        print("📥 Incoming blacklist entry:", entry.model_dump())
+        entry = BlacklistEntry(**raw_body)
+        print("✅ Parsed entry:", entry.model_dump())
         supabase.table("blacklisted_barcodes").upsert(entry.model_dump()).execute()
         return {"success": True}
     except Exception as e:
-        print("❌ Failed to upsert:", e)
+        print("❌ Failed to parse or upsert:", e)
         raise HTTPException(status_code=422, detail=str(e))
 
 @router.post("/blacklist/remove")
