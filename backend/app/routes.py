@@ -429,3 +429,109 @@ async def proxy_to_shopify(request: Request):
     except Exception as e:
         print("❌ Shopify proxy error:", e)
         raise HTTPException(status_code=500, detail=str(e))
+    
+@router.post("/shopify/resolve")
+async def resolve_product(input: dict, token: str = ""):
+    if token != os.getenv("VITE_DBS_ADMIN_TOKEN") and token != os.getenv("VITE_ADMIN_TOKEN"):
+        raise HTTPException(status_code=403, detail="Invalid token")
+
+    identifier = input.get("identifier", "").strip()
+    if not identifier:
+        raise HTTPException(status_code=422, detail="Missing identifier")
+
+    # Try to infer whether it's a barcode (non-numeric means it's likely a string) or product ID (numeric)
+    is_product_id = identifier.isdigit()
+
+    if is_product_id:
+        query = """
+        query getProductById($id: ID!) {
+          product(id: $id) {
+            id
+            title
+            handle
+            variants(first: 1) {
+              edges {
+                node {
+                  barcode
+                  sku
+                }
+              }
+            }
+          }
+        }
+        """
+        variables = {
+            "id": f"gid://shopify/Product/{identifier}"
+        }
+    else:
+        query = """
+        query getProductByBarcode($barcode: String!) {
+          productVariants(first: 1, query: $barcode) {
+            edges {
+              node {
+                barcode
+                sku
+                product {
+                  id
+                  title
+                  handle
+                }
+              }
+            }
+          }
+        }
+        """
+        variables = {
+            "barcode": f"barcode:{identifier}"
+        }
+
+    headers = {
+        "X-Shopify-Access-Token": os.getenv("SHOPIFY_ACCESS_TOKEN"),
+        "Content-Type": "application/json"
+    }
+
+    graphql_resp = requests.post(
+        f"https://{SHOP_URL}/admin/api/{SHOPIFY_API_VERSION}/graphql.json",
+        headers=headers,
+        json={"query": query, "variables": variables}
+    )
+
+    print("📡 Shopify GraphQL status:", graphql_resp.status_code)
+    print("📄 Shopify response body:", graphql_resp.text)
+
+    if not graphql_resp.ok:
+        raise HTTPException(status_code=graphql_resp.status_code, detail="GraphQL query failed")
+
+    data = graphql_resp.json().get("data", {})
+
+    if is_product_id:
+        product = data.get("product")
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+        variant = product.get("variants", {}).get("edges", [{}])[0].get("node", {})
+        return {
+            "success": True,
+            "data": {
+                "product_id": product["id"].split("/")[-1],
+                "title": product["title"],
+                "handle": product["handle"],
+                "barcode": variant.get("barcode"),
+                "author": variant.get("sku") or "Unknown"
+            }
+        }
+    else:
+        edges = data.get("productVariants", {}).get("edges", [])
+        if not edges:
+            raise HTTPException(status_code=404, detail="Product variant not found")
+        node = edges[0]["node"]
+        product = node["product"]
+        return {
+            "success": True,
+            "data": {
+                "product_id": product["id"].split("/")[-1],
+                "title": product["title"],
+                "handle": product["handle"],
+                "barcode": node["barcode"],
+                "author": node.get("sku") or "Unknown"
+            }
+        }

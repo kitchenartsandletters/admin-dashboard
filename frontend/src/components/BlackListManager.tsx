@@ -420,19 +420,19 @@ const BlacklistManager = () => {
             if (json.success) {
               setExportModal({
                 success: true,
-                message: "✅ Liquid snippet exported successfully.",
+                message: "Liquid snippet exported successfully.",
               });
             } else {
               setExportModal({
                 success: false,
-                message: "❌ Export failed.",
+                message: "Export failed.",
               });
             }
           } catch (err) {
             console.error("Export failed:", err);
             setExportModal({
               success: false,
-              message: "❌ Network error during export.",
+              message: "Network error during export.",
             });
           }
           setLoading(false);
