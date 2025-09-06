@@ -243,8 +243,14 @@ async def get_blacklist(token: str = ""):
 async def add_to_blacklist(entry: BlacklistEntry, token: str = ""):
     if token != os.getenv("VITE_ADMIN_TOKEN"):
         raise HTTPException(status_code=403, detail="Invalid token")
-    supabase.table("blacklisted_barcodes").upsert(entry.model_dump()).execute()
-    return {"success": True}
+    
+    try:
+        print("📥 Incoming blacklist entry:", entry.model_dump())
+        supabase.table("blacklisted_barcodes").upsert(entry.model_dump()).execute()
+        return {"success": True}
+    except Exception as e:
+        print("❌ Failed to upsert:", e)
+        raise HTTPException(status_code=422, detail=str(e))
 
 @router.post("/blacklist/remove")
 async def remove_from_blacklist(entry: RemoveEntry, token: str = ""):
