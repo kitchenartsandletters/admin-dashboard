@@ -41,6 +41,7 @@ class BlacklistEntry(BaseModel):
 
 class RemoveEntry(BaseModel):
     barcode: str
+    product_id: int | None = None
 
 def validate_admin_token(request: Request, token: str = "") -> str:
     """Validate admin token from Authorization header or `token` query param.
@@ -249,7 +250,11 @@ async def add_to_blacklist(entry: BlacklistEntry, token: str = ""):
 async def remove_from_blacklist(entry: RemoveEntry, token: str = ""):
     if token != os.getenv("VITE_ADMIN_TOKEN"):
         raise HTTPException(status_code=403, detail="Invalid token")
-    supabase.table("blacklisted_barcodes").delete().eq("barcode", entry.barcode).execute()
+    delete_query = supabase.table("blacklisted_barcodes").delete().or_(
+        f"barcode.eq.{entry.barcode},product_id.eq.{entry.product_id}"
+    )
+    result = delete_query.execute()
+    print("🗑️ Delete result:", result.data)
     return {"success": True}
 
 @router.post("/blacklist/export_snippet")
