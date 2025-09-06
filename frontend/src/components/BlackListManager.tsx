@@ -347,7 +347,15 @@ const BlacklistManager = () => {
               >
                 Author {sortConfig?.key === "author" ? (sortConfig.direction === "asc" ? "▲" : "▼") : ""}
               </th>
-              <th className="border px-4 py-2 dark:border-gray-700 text-left">Handle</th>
+              <th
+                className={`cursor-pointer border px-4 py-2 dark:border-gray-700 text-left ${
+                  sortConfig?.key === 'handle' ? 'text-green-600 dark:text-green-400' : ''
+                }`}
+                onClick={() => requestSort("handle")}
+                title="Sort by Handle"
+              >
+                Handle {sortConfig?.key === "handle" ? (sortConfig.direction === "asc" ? "▲" : "▼") : ""}
+              </th>
               <th
                 className="border px-4 py-2 dark:border-gray-700 text-left"
                 onClick={() => requestSort("product_id")}
