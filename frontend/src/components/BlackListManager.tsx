@@ -95,6 +95,7 @@ const BlacklistManager = () => {
   const [previewEntries, setPreviewEntries] = useState<BlacklistEntry[] | null>(null);
   const [successModal, setSuccessModal] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [exportModal, setExportModal] = useState<{ success: boolean; message: string } | null>(null);
   const [inputError, setInputError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortConfig, setSortConfig] = useState<{ key: keyof BlacklistEntry; direction: "asc" | "desc" } | null>(null);
@@ -327,7 +328,7 @@ const BlacklistManager = () => {
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder="Filter by barcode, title, handle, author, or product ID"
-          className="w-full border border-gray-300 dark:border-gray-700 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+          className="w-full border border-gray-200 dark:border-gray-600 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500"
         />
       </div>
 
@@ -416,18 +417,30 @@ const BlacklistManager = () => {
               method: "POST",
             });
             const json = await res.json();
-            if (json.success) alert("✅ Liquid snippet exported successfully.");
-            else alert("❌ Export failed.");
+            if (json.success) {
+              setExportModal({
+                success: true,
+                message: "✅ Liquid snippet exported successfully.",
+              });
+            } else {
+              setExportModal({
+                success: false,
+                message: "❌ Export failed.",
+              });
+            }
           } catch (err) {
             console.error("Export failed:", err);
-            alert("❌ Network error during export.");
+            setExportModal({
+              success: false,
+              message: "❌ Network error during export.",
+            });
           }
           setLoading(false);
         }}
         className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 mt-4 disabled:opacity-50"
         disabled={loading}
       >
-        {loading ? "Exporting..." : "Export to Shopify"}
+        {loading ? "Exporting to Shopify..." : "Export to Shopify"}
       </button>
 
       {errorModal && (
@@ -481,8 +494,20 @@ const BlacklistManager = () => {
           transition: opacity 0.4s ease-out;
         }
       `}</style>
+
+      {exportModal && (
+        <ConfirmModal
+          open={true}
+          title={exportModal.success ? "Export Successful" : "Export Failed"}
+          description={exportModal.message}
+          confirmLabel="OK"
+          onConfirm={() => setExportModal(null)}
+          onCancel={() => setExportModal(null)}
+        />
+      )}
     </div>
   );
 };
+
 
 export default BlacklistManager;
