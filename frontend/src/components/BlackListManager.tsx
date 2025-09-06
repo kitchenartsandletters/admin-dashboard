@@ -13,109 +13,34 @@ const ADMIN_API_TOKEN = import.meta.env.VITE_ADMIN_TOKEN;
 const BLACKLIST_API_BASE = import.meta.env.VITE_BLACKLIST_URL;
 
 const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry | null> => {
-  const isProductId = /^\d+$/.test(input);
-  const query = isProductId
-    ? `{
-        product(id: "gid://shopify/Product/${input}") {
-          id
-          title
-          handle
-          variants(first: 1) {
-            edges {
-              node {
-                barcode
-                sku
-              }
-            }
+  // First, attempt barcode-based query
+  const barcodeQuery = `{
+    productVariants(first: 1, query: "barcode:${input}") {
+      edges {
+        node {
+          barcode
+          sku
+          product {
+            id
+            title
+            handle
           }
         }
-      }`
-    : `{
-        productVariants(first: 1, query: "barcode:${input}") {
-          edges {
-            node {
-              barcode
-              sku
-              product {
-                id
-                title
-                handle
-              }
-            }
-          }
-        }
-      }`;
+      }
+    }
+  }`;
 
   try {
     const res = await fetch(`${BLACKLIST_API_BASE}/api/shopify/graphql`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ query })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: barcodeQuery })
     });
+
     const json = await res.json();
-    if (isProductId) {
-      if (!json.data || !json.data.product) return null;
-      const product = json.data.product;
-      const variant = product?.variants?.edges?.[0]?.node;
-      if (!product || !variant) return null;
-      return {
-        barcode: variant.barcode,
-        title: product.title,
-        handle: product.handle,
-        author: variant.sku,
-        product_id: parseInt(product.id.split("/").pop())
-      };
-    } else {
-      // If barcode lookup fails, fallback to a broader product query using the input
-      if (!json.data || !json.data.productVariants || json.data.productVariants.edges.length === 0) {
-        // Fallback to general product search using product title or barcode input
-        const fallbackQuery = `{
-          products(first: 1, query: "${input}") {
-            edges {
-              node {
-                id
-                title
-                handle
-                variants(first: 1) {
-                  edges {
-                    node {
-                      barcode
-                      sku
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }`;
-
-        const fallbackRes = await fetch(`${BLACKLIST_API_BASE}/api/shopify/graphql`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: fallbackQuery })
-        });
-
-        const fallbackJson = await fallbackRes.json();
-        if (!fallbackJson.data || !fallbackJson.data.products || fallbackJson.data.products.edges.length === 0) return null;
-        const product = fallbackJson.data.products.edges[0].node;
-        const variant = product?.variants?.edges?.[0]?.node;
-        if (!product || !variant) return null;
-
-        return {
-          barcode: variant.barcode,
-          title: product.title,
-          handle: product.handle,
-          author: variant.sku,
-          product_id: parseInt(product.id.split("/").pop())
-        };
-      }
-
-      const edge = json.data.productVariants.edges[0];
-      if (!edge) return null;
-      const variant = edge.node;
-      if (!variant || !variant.product) return null;
+    const edge = json?.data?.productVariants?.edges?.[0];
+    const variant = edge?.node;
+    if (variant && variant.product) {
       return {
         barcode: variant.barcode,
         title: variant.product.title,
@@ -124,6 +49,46 @@ const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry
         product_id: parseInt(variant.product.id.split("/").pop())
       };
     }
+
+    // If barcode query fails, attempt product ID query
+    // Validate input is numeric and is a valid Shopify product GID format
+    // We'll assume input is a numeric product ID
+    const productIdQuery = `{
+      product(id: "gid://shopify/Product/${input}") {
+        id
+        title
+        handle
+        variants(first: 1) {
+          edges {
+            node {
+              barcode
+              sku
+            }
+          }
+        }
+      }
+    }`;
+
+    const productRes = await fetch(`${BLACKLIST_API_BASE}/api/shopify/graphql`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: productIdQuery })
+    });
+
+    const productJson = await productRes.json();
+    const product = productJson?.data?.product;
+    const pidVariant = product?.variants?.edges?.[0]?.node;
+    if (product && pidVariant) {
+      return {
+        barcode: pidVariant.barcode,
+        title: product.title,
+        handle: product.handle,
+        author: pidVariant.sku,
+        product_id: parseInt(product.id.split("/").pop())
+      };
+    }
+
+    return null;
   } catch (err) {
     console.error("Shopify fetch error:", err);
     return null;
