@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from pydantic import BaseModel
 from fastapi.responses import Response
 from app.supabase_client import insert_interest, supabase, update_status, SHOP_URL, SHOPIFY_ACCESS_TOKEN, SHOPIFY_API_VERSION
+import re
 
 
 router = APIRouter()
@@ -313,12 +314,52 @@ async def export_blacklist_snippet(token: str = ""):
         if not upload_resp.ok:
             raise Exception(f"Snippet upload failed: {upload_resp.text}")
 
+        # Fetch current contents of main-product.liquid
+        theme_asset_url = f"https://{SHOP_URL}/admin/api/{SHOPIFY_API_VERSION}/themes/{main_theme_id}/assets.json?asset[key]=sections/main-product.liquid"
+        fetch_resp = requests.get(
+            theme_asset_url,
+            headers={
+                "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
+                "Content-Type": "application/json",
+            },
+        )
+        if not fetch_resp.ok:
+            raise Exception(f"Failed to fetch main-product.liquid: {fetch_resp.text}")
+        content = fetch_resp.json().get("asset", {}).get("value", "")
+
+        # Replace or insert the assign line using regex
+        pattern = r'{%\s*assign\s+blacklisted_barcodes\s*=.*?%}'
+        if re.search(pattern, content):
+            updated_content = re.sub(pattern, snippet, content, count=1)
+        else:
+            updated_content = snippet + "\n" + content
+
+        # Upload updated main-product.liquid
+        upload_main_resp = requests.put(
+            asset_url,
+            headers={
+                "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
+                "Content-Type": "application/json",
+            },
+            json={
+                "asset": {
+                    "key": "sections/main-product.liquid",
+                    "value": updated_content
+                }
+            },
+        )
+        if not upload_main_resp.ok:
+            raise Exception(f"main-product.liquid update failed: {upload_main_resp.text}")
+
         sb.table("blacklist_snippet_logs").insert({
             "barcodes": barcodes,
             "exported_at": datetime.utcnow().isoformat()
         }).execute()
 
-        return { "success": True }
+        return {
+            "success": True,
+            "reload_required": True
+        }
 
     except Exception as e:
         print("Export failed:", e)
