@@ -274,11 +274,20 @@ async def export_blacklist_snippet(token: str = ""):
         )
 
         theme_data = theme_resp.json()
+        themes = theme_data.get("data", {}).get("themes", {})
+        if themes is None or "edges" not in themes:
+            raise Exception(f"Malformed theme response: {theme_data}")
+
         main_theme_id = None
-        for edge in theme_data.get("data", {}).get("themes", {}).get("edges", []):
-            node = edge.get("node", {})
-            if node.get("role") == "main":
-                main_theme_id = node.get("id").split("/")[-1]
+        for edge in themes["edges"]:
+            node = edge.get("node")
+            if not node:
+                continue
+            if node.get("role", "").lower() == "main":
+                theme_id = node.get("id")
+                if not theme_id:
+                    continue
+                main_theme_id = theme_id.split("/")[-1]
                 break
 
         if not main_theme_id:
