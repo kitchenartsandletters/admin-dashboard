@@ -87,6 +87,7 @@ const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry
   }
 };
 
+
 const BlacklistManager = () => {
   const [entries, setEntries] = useState<BlacklistEntry[]>([]);
   const [barcodeInput, setBarcodeInput] = useState("");
@@ -99,6 +100,12 @@ const BlacklistManager = () => {
   const [sortConfig, setSortConfig] = useState<{ key: keyof BlacklistEntry; direction: "asc" | "desc" } | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const removeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Moved renderSortIcon inside component to access sortConfig correctly
+  const renderSortIcon = (key: keyof BlacklistEntry): string => {
+    if (!sortConfig || sortConfig.key !== key) return "⇅";
+    return sortConfig.direction === "asc" ? "▲" : "▼";
+  };
 
   const validateInput = (input: string): boolean => {
     // Reject if input is symbols only or empty after trim
@@ -272,11 +279,13 @@ const BlacklistManager = () => {
   }, [entries, searchTerm, sortConfig]);
 
   const requestSort = (key: keyof BlacklistEntry) => {
-    let direction: "asc" | "desc" = "asc";
-    if (sortConfig && sortConfig.key === key && sortConfig.direction === "asc") {
-      direction = "desc";
+    if (!sortConfig || sortConfig.key !== key) {
+      setSortConfig({ key, direction: "asc" });
+    } else if (sortConfig.direction === "asc") {
+      setSortConfig({ key, direction: "desc" });
+    } else {
+      setSortConfig(null);
     }
-    setSortConfig({ key, direction });
   };
 
   return (
@@ -317,7 +326,7 @@ const BlacklistManager = () => {
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search blacklist"
+          placeholder="Filter by barcode, title, handle, author, or product ID"
           className="w-full border border-gray-300 dark:border-gray-700 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
         />
       </div>
@@ -327,41 +336,44 @@ const BlacklistManager = () => {
           <thead>
             <tr className="bg-gray-100 dark:bg-gray-800 cursor-pointer select-none">
               <th
-                className="border px-4 py-2 dark:border-gray-700 text-left"
                 onClick={() => requestSort("barcode")}
-                title="Sort by Barcode"
-              >
-                Barcode {sortConfig?.key === "barcode" ? (sortConfig.direction === "asc" ? "▲" : "▼") : ""}
-              </th>
-              <th
-                className="border px-4 py-2 dark:border-gray-700 text-left"
-                onClick={() => requestSort("title")}
-                title="Sort by Title"
-              >
-                Title {sortConfig?.key === "title" ? (sortConfig.direction === "asc" ? "▲" : "▼") : ""}
-              </th>
-              <th
-                className="border px-4 py-2 dark:border-gray-700 text-left"
-                onClick={() => requestSort("author")}
-                title="Sort by Author"
-              >
-                Author {sortConfig?.key === "author" ? (sortConfig.direction === "asc" ? "▲" : "▼") : ""}
-              </th>
-              <th
                 className={`cursor-pointer border px-4 py-2 dark:border-gray-700 text-left ${
-                  sortConfig?.key === 'handle' ? 'text-green-600 dark:text-green-400' : ''
+                  sortConfig?.key === "barcode" ? "text-green-600 dark:text-green-400" : ""
                 }`}
-                onClick={() => requestSort("handle")}
-                title="Sort by Handle"
               >
-                Handle {sortConfig?.key === "handle" ? (sortConfig.direction === "asc" ? "▲" : "▼") : ""}
+                Barcode {renderSortIcon("barcode")}
               </th>
               <th
-                className="border px-4 py-2 dark:border-gray-700 text-left"
-                onClick={() => requestSort("product_id")}
-                title="Sort by Product ID"
+                onClick={() => requestSort("title")}
+                className={`cursor-pointer border px-4 py-2 dark:border-gray-700 text-left ${
+                  sortConfig?.key === "title" ? "text-green-600 dark:text-green-400" : ""
+                }`}
               >
-                Product ID {sortConfig?.key === "product_id" ? (sortConfig.direction === "asc" ? "▲" : "▼") : ""}
+                Title {renderSortIcon("title")}
+              </th>
+              <th
+                onClick={() => requestSort("author")}
+                className={`cursor-pointer border px-4 py-2 dark:border-gray-700 text-left ${
+                  sortConfig?.key === "author" ? "text-green-600 dark:text-green-400" : ""
+                }`}
+              >
+                Author {renderSortIcon("author")}
+              </th>
+              <th
+                onClick={() => requestSort("handle")}
+                className={`cursor-pointer border px-4 py-2 dark:border-gray-700 text-left ${
+                  sortConfig?.key === "handle" ? "text-green-600 dark:text-green-400" : ""
+                }`}
+              >
+                Handle {renderSortIcon("handle")}
+              </th>
+              <th
+                onClick={() => requestSort("product_id")}
+                className={`cursor-pointer border px-4 py-2 dark:border-gray-700 text-left ${
+                  sortConfig?.key === "product_id" ? "text-green-600 dark:text-green-400" : ""
+                }`}
+              >
+                Product ID {renderSortIcon("product_id")}
               </th>
               <th className="border px-4 py-2 dark:border-gray-700"></th>
             </tr>
