@@ -68,7 +68,50 @@ const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry
         product_id: parseInt(product.id.split("/").pop())
       };
     } else {
-      if (!json.data || !json.data.productVariants) return null;
+      // If barcode lookup fails, fallback to a broader product query using the input
+      if (!json.data || !json.data.productVariants || json.data.productVariants.edges.length === 0) {
+        // Fallback to general product search using product title or barcode input
+        const fallbackQuery = `{
+          products(first: 1, query: "${input}") {
+            edges {
+              node {
+                id
+                title
+                handle
+                variants(first: 1) {
+                  edges {
+                    node {
+                      barcode
+                      sku
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }`;
+
+        const fallbackRes = await fetch(`${BLACKLIST_API_BASE}/api/shopify/graphql`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: fallbackQuery })
+        });
+
+        const fallbackJson = await fallbackRes.json();
+        if (!fallbackJson.data || !fallbackJson.data.products || fallbackJson.data.products.edges.length === 0) return null;
+        const product = fallbackJson.data.products.edges[0].node;
+        const variant = product?.variants?.edges?.[0]?.node;
+        if (!product || !variant) return null;
+
+        return {
+          barcode: variant.barcode,
+          title: product.title,
+          handle: product.handle,
+          author: variant.sku,
+          product_id: parseInt(product.id.split("/").pop())
+        };
+      }
+
       const edge = json.data.productVariants.edges[0];
       if (!edge) return null;
       const variant = edge.node;
