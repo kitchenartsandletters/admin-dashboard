@@ -270,7 +270,7 @@ async def export_blacklist_snippet(token: str = ""):
                 "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
                 "Content-Type": "application/json",
             },
-            json={"query": "{ themes { edges { node { id name role } } } }"},
+            json={"query": "{ themes(first: 10) { edges { node { id name role } } } }"},
         )
 
         theme_data = theme_resp.json()
