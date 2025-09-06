@@ -93,9 +93,7 @@ const BlacklistManager = () => {
   const fetchBlacklist = async () => {
     const res = await fetch(`${BLACKLIST_API_BASE}/api/blacklist?token=${ADMIN_API_TOKEN}`);
     const json = await res.json();
-    const data = Array.isArray(json.data) ? json.data : [];
-    setEntries(data);
-    console.log("Blacklist response:", json);
+    setEntries(json);
   };
 
   const handleAdd = async () => {
