@@ -411,7 +411,11 @@ VITE_API_BASE_URL=http://localhost:8000
 - Implemented **pagination** (`page`, `limit`) in backend + UI; page summary (`X–Y of Z`) now displays; dropdown filter integrates with pagination.
 - Added a **pagination selector** (20/50/100) and persist selected page size + collection filter via localStorage.
 - Advanced filtering: OOP definition in sync (tags `op`/`pastop`, OOP collections, or title starting with "OP: ").
-- Statuses changed to New → In Progress → Request Filed → Complete 
+- Statuses changed to New → In Progress → Request Filed → Complete
+- Added full-featured **Blacklist Manager**:
+  - Allows admin to search Shopify for a product by barcode or ID, preview results, and add to a server-side blacklist table.
+  - Exporting the blacklist generates a Liquid snippet used by the Online Store to conditionally suppress the request form on select product pages.
+  - Snippet injection now writes directly to the live theme's `main-product.liquid`, replacing or inserting the assignment logic. 
 
 📌 Next Steps
 - UI polish: scale down table font size, explore per-option color cues for the status dropdown.
