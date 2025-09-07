@@ -167,7 +167,7 @@ export default function DamagedBooksTable() {
         </table>
       </div>
 
-      <RightSidebar row={selected} onClose={() => setSelected(null)} />
+      <RightSidebar row={selected} onClose={() => setSelected(null)} docsFilePath={undefined} />
     </div>
   );
 }

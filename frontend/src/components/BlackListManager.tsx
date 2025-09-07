@@ -525,6 +525,7 @@ const BlacklistManager = () => {
       )}
       {docsFilePath && (
         <RightSidebar
+          title="Blacklist Manager Guide"
           docsFilePath={docsFilePath}
           onClose={() => setDocsFilePath(null)}
         />
