@@ -5,7 +5,9 @@ import remarkGfm from 'remark-gfm';
 
 type DocViewerProps = {
   filePath: string;
-  components?: any; // Optional prop for custom renderers
+  components?: {
+    [key: string]: React.ElementType;
+  };
 };
 
 export default function DocViewer({ filePath, components }: DocViewerProps) {
