@@ -59,7 +59,7 @@ export default function RightSidebar({ title, onClose, row, renderRowContent, do
         onClick={onClose}
       />
       <div
-        className={`fixed inset-y-0 right-0 w-full sm:w-[28rem] bg-white dark:bg-gray-900 border-l shadow-xl z-50 relative transition-transform duration-300 transform ${isVisible ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed top-0 right-0 h-full w-full sm:w-[28rem] bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 shadow-xl z-50 transition-transform duration-300 transform ${isVisible ? 'translate-x-0' : 'translate-x-full'}`}
       >
         <div className="flex items-center justify-between p-3 border-b dark:border-gray-700">
           <h3 className="font-semibold text-lg">{title ?? 'Details'}</h3>
