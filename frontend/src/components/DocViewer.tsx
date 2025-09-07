@@ -5,9 +5,10 @@ import remarkGfm from 'remark-gfm';
 
 type DocViewerProps = {
   filePath: string;
+  components?: any; // Optional prop for custom renderers
 };
 
-export default function DocViewer({ filePath }: DocViewerProps) {
+export default function DocViewer({ filePath, components }: DocViewerProps) {
   const [markdown, setMarkdown] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -31,7 +32,9 @@ export default function DocViewer({ filePath }: DocViewerProps) {
           {loading ? (
             <p>Loading documentation...</p>
           ) : (
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+              {markdown}
+            </ReactMarkdown>
           )}
         </div>
       </div>

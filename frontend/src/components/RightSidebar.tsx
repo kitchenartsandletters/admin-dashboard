@@ -83,8 +83,17 @@ export default function RightSidebar({ title, onClose, row, renderRowContent, do
           {row && renderRowContent ? (
             renderRowContent()
           ) : docsFilePath ? (
-            <div className="prose dark:prose-invert max-w-none mt-6 relative z-0">
-              <DocViewer filePath={docsFilePath} />
+            <div className="prose dark:prose-invert max-w-none mt-6 pt-2 relative z-0">
+              <DocViewer
+                filePath={docsFilePath}
+                components={{
+                  img: ({ node, ...props }: { node?: any; [key: string]: any }) => (
+                    <div className="border border-gray-300 dark:border-gray-700 rounded p-2 my-6 bg-white dark:bg-gray-900 shadow-md max-w-xs mx-auto">
+                      <img {...props} className="w-full h-auto rounded" />
+                    </div>
+                  ),
+                }}
+              />
             </div>
           ) : (
             <div className="opacity-70">No content available</div>
