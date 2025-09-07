@@ -12,4 +12,12 @@ export default defineConfig({
       '@': (await import('node:path')).resolve(__dirname, './src'),
     },
   },
+  optimizeDeps: {
+    include: ['react-markdown', 'remark-gfm'],
+  },
+  build: {
+    rollupOptions: {
+      external: ['react-markdown', 'remark-gfm'],
+    },
+  },
 });
