@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import ConfirmModal from "./ConfirmModal";
+import RightSidebar from "./RightSidebar";
 
 interface BlacklistEntry {
   barcode: string;
@@ -527,6 +528,10 @@ const BlacklistManager = () => {
           onCancel={() => setExportModal(null)}
         />
       )}
+      <RightSidebar
+        row={null}
+        onClose={() => window.dispatchEvent(new CustomEvent("close-right-sidebar"))}
+      />
     </div>
   );
 };
