@@ -3,9 +3,9 @@ import React, { useEffect, useState } from 'react';
 import { DamagedBooksService, DamagedRow } from '../components/DamagedBooksService';
 import DocViewer from './DocViewer';
 
-type Props = { row: DamagedRow | null; onClose: () => void };
+type Props = { row: DamagedRow | null; onClose: () => void; docsFilePath?: string };
 
-export default function RightSidebar({ row, onClose }: Props) {
+export default function RightSidebar({ row, onClose, docsFilePath }: Props) {
   const [tab, setTab] = useState<'info' | 'docs' | 'logs'>('info');
   const [docs, setDocs] = useState<{ title: string; url: string }[]>([]);
   const [logsUrl, setLogsUrl] = useState<string>('');
@@ -22,7 +22,7 @@ export default function RightSidebar({ row, onClose }: Props) {
       setDocs(links);
       setLogsUrl(logUrl);
     })();
-  }, [row]);
+  }, [row, docsFilePath]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -31,6 +31,27 @@ export default function RightSidebar({ row, onClose }: Props) {
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
+
+  useEffect(() => {
+    const handleOpenSidebar = (e: CustomEvent) => {
+      if (e.detail?.docsFilePath) {
+        setTab('docs');
+        setShouldRender(true);
+        setIsVisible(true);
+        setDocs([
+          {
+            title: 'Help Documentation',
+            url: e.detail.docsFilePath
+          }
+        ]);
+      }
+    };
+
+    window.addEventListener('open-right-sidebar', handleOpenSidebar as EventListener);
+    return () => {
+      window.removeEventListener('open-right-sidebar', handleOpenSidebar as EventListener);
+    };
+  }, []);
 
   // Slide-in animation visibility and render control
   useEffect(() => {
@@ -84,19 +105,25 @@ export default function RightSidebar({ row, onClose }: Props) {
           )}
 
           {tab === 'docs' && (
-            row?.handle === 'blacklist-manager' ? (
+            docsFilePath ? (
               <div className="prose dark:prose-invert max-w-none">
-                <DocViewer filePath="/docs/blacklist-manager.md" />
+                <DocViewer filePath={docsFilePath} />
               </div>
             ) : (
-              <ul className="list-disc ml-5 space-y-1">
-                {docs.map(d => (
-                  <li key={d.url}>
-                    <a className="underline" href={d.url} target="_blank" rel="noreferrer">{d.title}</a>
-                  </li>
-                ))}
-                {docs.length === 0 && <li className="opacity-70">No docs</li>}
-              </ul>
+              row?.handle === 'blacklist-manager' ? (
+                <div className="prose dark:prose-invert max-w-none">
+                  <DocViewer filePath="/docs/blacklist-manager.md" />
+                </div>
+              ) : (
+                <ul className="list-disc ml-5 space-y-1">
+                  {docs.map(d => (
+                    <li key={d.url}>
+                      <a className="underline" href={d.url} target="_blank" rel="noreferrer">{d.title}</a>
+                    </li>
+                  ))}
+                  {docs.length === 0 && <li className="opacity-70">No docs</li>}
+                </ul>
+              )
             )
           )}
 

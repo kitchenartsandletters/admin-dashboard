@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 import ConfirmModal from "./ConfirmModal";
-import DocViewer from '../components/DocViewer';
 
 interface BlacklistEntry {
   barcode: string;
@@ -110,7 +109,6 @@ const BlacklistManager = () => {
   const [sortConfig, setSortConfig] = useState<{ key: keyof BlacklistEntry; direction: "asc" | "desc" } | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const [docsOpen, setDocsOpen] = useState(false);
-  const [docsMd, setDocsMd] = useState(true);
   const removeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Moved renderSortIcon inside component to access sortConfig correctly
@@ -456,14 +454,16 @@ const BlacklistManager = () => {
 
         <button
           className="text-sm underline text-blue-600"
-          onClick={() => setDocsOpen(true)}
+          onClick={() =>
+            window.dispatchEvent(
+              new CustomEvent('open-right-sidebar', {
+                detail: { docsFilePath: '/docs/blacklist-manager.md' }
+              })
+            )
+          }
         >
-          Help Docs
+          Open Help Sidebar
         </button>
-
-        {docsOpen && docsMd && (
-          <DocViewer filePath="/docs/blacklist-manager.md" />
-        )}
 
       {errorModal && (
         <ConfirmModal
