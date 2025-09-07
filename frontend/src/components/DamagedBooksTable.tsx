@@ -167,7 +167,18 @@ export default function DamagedBooksTable() {
         </table>
       </div>
 
-      <RightSidebar row={selected} onClose={() => setSelected(null)} docsFilePath={undefined} />
+      <RightSidebar
+        row={selected}
+        onClose={() => setSelected(null)}
+        renderRowContent={() => selected && (
+          <>
+            <div><strong>Title:</strong> {selected.title}</div>
+            <div><strong>Barcode:</strong> {selected.barcode}</div>
+            <div><strong>SKU:</strong> {selected.sku}</div>
+            {/* Add more fields as needed */}
+          </>
+        )}
+      />
     </div>
   );
 }

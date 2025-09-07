@@ -18,7 +18,10 @@ export default function RightSidebar({ title, onClose, row, renderRowContent, do
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isVisible) onClose();
+      if (e.key === 'Escape' && isVisible) {
+        setIsVisible(false);
+        setTimeout(onClose, 300);
+      }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
@@ -42,8 +45,10 @@ export default function RightSidebar({ title, onClose, row, renderRowContent, do
     const isOpen = !!row || !!docsFilePath;
     if (isOpen) {
       setShouldRender(true);
-      setTimeout(() => setIsVisible(true), 10);
-      contentRef.current?.scrollTo(0, 0);
+      setTimeout(() => {
+        setIsVisible(true);
+        contentRef.current?.scrollTo(0, 0);
+      }, 10);
     } else {
       setIsVisible(false);
       setTimeout(() => setShouldRender(false), 300);
@@ -62,7 +67,12 @@ export default function RightSidebar({ title, onClose, row, renderRowContent, do
         className={`fixed top-0 right-0 h-full w-full sm:w-[28rem] bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 shadow-xl z-50 transition-transform duration-300 transform ${isVisible ? 'translate-x-0' : 'translate-x-full'}`}
       >
         <div className="flex items-center justify-between p-3 border-b dark:border-gray-700">
-          <h3 className="font-semibold text-lg">{title ?? 'Details'}</h3>
+          <h3 className="font-semibold text-lg">
+            {docsFilePath
+              ? docsFilePath.includes('blacklist') ? 'Blacklist Manager Guide'
+              : 'Help Docs'
+              : 'Damaged Details'}
+          </h3>
           <button onClick={onClose} className="text-sm underline">Close</button>
         </div>
 
@@ -73,7 +83,7 @@ export default function RightSidebar({ title, onClose, row, renderRowContent, do
           {row && renderRowContent ? (
             renderRowContent()
           ) : docsFilePath ? (
-            <div className="prose dark:prose-invert max-w-none">
+            <div className="prose dark:prose-invert max-w-none mt-6 relative z-0">
               <DocViewer filePath={docsFilePath} />
             </div>
           ) : (
