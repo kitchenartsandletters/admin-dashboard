@@ -109,7 +109,8 @@ const BlacklistManager = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortConfig, setSortConfig] = useState<{ key: keyof BlacklistEntry; direction: "asc" | "desc" } | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
-  const [docsOpen, setDocsOpen] = useState(false);
+  // Remove docsOpen, add docsFilePath state for right sidebar docs
+  const [docsFilePath, setDocsFilePath] = useState<string | null>(null);
   const removeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Moved renderSortIcon inside component to access sortConfig correctly
@@ -453,18 +454,12 @@ const BlacklistManager = () => {
         {loading ? "Exporting to Shopify..." : "Export to Shopify"}
       </button>
 
-        <button
-          className="text-sm underline text-blue-600"
-          onClick={() =>
-            window.dispatchEvent(
-              new CustomEvent('open-right-sidebar', {
-                detail: { docsFilePath: '/docs/blacklist-manager.md' }
-              })
-            )
-          }
-        >
-          Open Help Sidebar
-        </button>
+      <button
+        className="text-sm underline text-blue-600"
+        onClick={() => setDocsFilePath("/docs/blacklist-manager.md")}
+      >
+        Open Help Sidebar
+      </button>
 
       {errorModal && (
         <ConfirmModal
@@ -528,10 +523,12 @@ const BlacklistManager = () => {
           onCancel={() => setExportModal(null)}
         />
       )}
-      <RightSidebar
-        row={null}
-        onClose={() => window.dispatchEvent(new CustomEvent("close-right-sidebar"))}
-      />
+      {docsFilePath && (
+        <RightSidebar
+          docsFilePath={docsFilePath}
+          onClose={() => setDocsFilePath(null)}
+        />
+      )}
     </div>
   );
 };
