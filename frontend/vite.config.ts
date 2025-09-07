@@ -15,9 +15,4 @@ export default defineConfig({
   optimizeDeps: {
     include: ['react-markdown', 'remark-gfm'],
   },
-  build: {
-    rollupOptions: {
-      external: ['react-markdown', 'remark-gfm'],
-    },
-  },
 });
