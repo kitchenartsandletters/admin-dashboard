@@ -15,4 +15,7 @@ export default defineConfig({
   optimizeDeps: {
     include: ['react-markdown', 'remark-gfm'],
   },
+  ssr: {
+    noExternal: ['react-markdown', 'remark-gfm'], // 🔧 Ensures they are bundled in SSR/prod
+  },
 });
