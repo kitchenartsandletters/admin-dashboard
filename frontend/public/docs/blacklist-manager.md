@@ -26,7 +26,7 @@ STEP-BY-STEP USAGE
 ![Preview Modal](/docs-screenshots/blacklist-manager/preview-modal.png)
 
 5. Once your list is built, click “Export to Shopify”.
-![Export to Shopify](/docs-screenshots/blacklist-manager/export-shopify.png)
+![Export to Shopify](/docs-screenshots/blacklist-manager/export-shopify.gif)
    - This will:
      - Update blacklisted barcodes in the live theme.
 
