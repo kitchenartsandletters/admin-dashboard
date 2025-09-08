@@ -23,7 +23,7 @@ STEP-BY-STEP USAGE
    - Barcode
 
 4. Click “Confirm All” to save the entries to the database after previewing the products.
-![Preview Modal](/docs-screenshots/blacklist-manager/preview-modal.png)
+![Preview Modal](/docs-screenshots/blacklist-manager/preview-modal.gif)
 
 5. Once your list is built, click “Export to Shopify”.
 ![Export to Shopify](/docs-screenshots/blacklist-manager/export-shopify.gif)
