@@ -1,5 +1,3 @@
-{% assign blacklisted_barcodes = "JCA5VOL" | split: "," %}
-
 {% comment %}theme-check-disable TemplateLength{% endcomment %}
 {%- liquid
     assign current_variant = product.selected_or_first_available_variant
@@ -150,7 +148,16 @@
   {% assign languageValidations = "Arabic,Catalan,Chinese,Danish,Dutch,English,Faroese,French,German,Greek,Italian,Japanese,Korean,Portuguese,Serbian,Spanish,Swedish,Tagalog,Thai" | split: ',' %}
   
   {% assign symbols = "Vegan,Vegetarian,Gluten-Free,bookplate,signed,Language,preorder,waxmannom,waxmanwin" | split: ',' %}
-  {% assign colors = "#32a852,#7df59d,#BF40BF,#ff9933,#3366cc,#0047AB,#007474,#00008f,#3232a5" | split: ',' %}
+  {% assign colors = "
+    #32a852,
+    #7df59d,
+    #BF40BF,
+    #ff9933,
+    #3366cc,
+    #0047AB,
+    #007474,
+    #00008f,
+    #3232a5" | split: ',' %}
   {% assign symbolTexts = "Vegan,Vegetarian,Gluten-Free,Bookplate,Signed,Language,Preorder,Waxman Prize Nominee,Waxman Prize Winner" | split: ',' %}
   {% assign urls = "
       /collections/vegetarian,/collections/vegetarian,
@@ -617,10 +624,10 @@
                                   {% endif %}
 
                                   {% if product.available == false %}
-                                    {% assign current_barcode = product.variants.first.barcode | default: '' %}
-                                    {% assign current_id = product.id | split: '/' | last %}
+                                    {% assign blacklisted_barcodes = "JCA5VOL" | split: "," %}
+                                    {% assign current_barcode = product.variants.first.barcode | default: 'NO_BARCODE' %}
 
-                                    {% unless blacklisted_barcodes contains current_barcode or blacklisted_barcodes contains current_id %}
+                                    {% unless blacklisted_barcodes contains current_barcode %}
                                     <div id="notify-form-wrapper" class="product-form__line-item-field" style="margin-top: 1rem;">
                                       <label id="notify-label" for="notify-email" class="product-form__line-item-text-label">
                                         Want to be added to our request list?
@@ -1055,7 +1062,7 @@
 
                                                         <label for="line-item-text-{{ block.id }}" class="product-form__line-item-text-label f-family--{{ settings.type_product_form_headings_style }} f-caps--{{ settings.type_product_form_headings_capitalize }} f-space--{{ settings.type_product_form_headings_letterspace }}">{{ block.settings.line-item-text-label }}</label>
 
-                                                        {% if block.settings.line-item-text-long %}textarea {% else %}input {% endif %}
+                                                        <{% if block.settings.line-item-text-long %}textarea {% else %}input {% endif %}
                                                             {% if block.settings.line-item-text-required %}required{% endif %}
                                                             id="line-item-text-{{ block.id }}"
                                                             class="product-form__line-item-text-input"
