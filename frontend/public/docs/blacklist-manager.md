@@ -1,5 +1,3 @@
-Blacklist Manager Guide
-
 The Blacklist Manager allows staff to suppress the "Request Form" on product pages of items that are no longer relevant for restock. This is especially useful for permanently discontinued titles, one-time sets, or ephemeral imports.
 
 HOW IT WORKS
