@@ -16,11 +16,11 @@ STEP-BY-STEP USAGE
 ![Input Box](/docs-screenshots/blacklist-manager/input-box.gif)
 
 3. Preview product details returned by Shopify in a modal before confirming.
-   - Product Title
+   - Title
+   - Barcode
    - Author (SKU field)
    - Handle
    - Product ID
-   - Barcode
 
 4. Click “Confirm All” to save the entries to the database after previewing the products.
 ![Preview Modal](/docs-screenshots/blacklist-manager/preview-modal.gif)
