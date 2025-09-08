@@ -61,7 +61,10 @@ export default function RightSidebar({ title, onClose, row, renderRowContent, do
     <>
       <div
         className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40"
-        onClick={onClose}
+        onClick={() => {
+          setIsVisible(false);
+          setTimeout(onClose, 300);
+        }}
       />
       <div
         className={`fixed top-0 right-0 h-full w-full sm:w-[28rem] bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 shadow-xl z-50 transition-transform duration-300 transform ${isVisible ? 'translate-x-0' : 'translate-x-full'}`}
@@ -73,7 +76,15 @@ export default function RightSidebar({ title, onClose, row, renderRowContent, do
               : 'Help Docs'
               : 'Damaged Details'}
           </h3>
-          <button onClick={onClose} className="text-sm underline">Close</button>
+          <button
+            onClick={() => {
+              setIsVisible(false);
+              setTimeout(onClose, 300);
+            }}
+            className="text-sm underline"
+          >
+            Close
+          </button>
         </div>
 
         <div

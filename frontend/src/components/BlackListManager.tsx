@@ -419,6 +419,7 @@ const BlacklistManager = () => {
         </table>
       </div>
 
+      <div className="flex items-center gap-4">
       <button
         onClick={async () => {
           if (loading) return;
@@ -458,8 +459,9 @@ const BlacklistManager = () => {
         className="text-sm underline text-blue-600"
         onClick={() => setDocsFilePath("/docs/blacklist-manager.md")}
       >
-        Open Help Sidebar
+        View Guide
       </button>
+      </div>
 
       {errorModal && (
         <ConfirmModal

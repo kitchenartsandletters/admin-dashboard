@@ -10,7 +10,7 @@ HOW IT WORKS
 STEP-BY-STEP USAGE
 
 1. Navigate to the Blacklist tab in the Admin Dashboard. It is located within the Request Service menu item.
-![Tap UI](/docs-screenshots/blacklist-manager/tap-ui.gif)
+![Tap UI](/frontend/public/docs-screenshots/blacklist-manager/tab-ui.gif)
 
 2. In the input box, enter a barcode or Shopify Product ID to search (the entry field will accept either).
 ![Input Box](/docs-screenshots/blacklist-manager/input-box.gif)
