@@ -12,7 +12,7 @@ HOW IT WORKS
 STEP-BY-STEP USAGE
 
 1. Navigate to the Blacklist tab in the Admin Dashboard. It is located within the Request Service menu item.
-![Input Box](/docs-screenshots/blacklist-manager/tap-ui.gif)
+![Tap UI](/docs-screenshots/blacklist-manager/tap-ui.gif)
 
 2. In the input box, enter a barcode or Shopify Product ID to search (the entry field will accept either).
 ![Input Box](/docs-screenshots/blacklist-manager/input-box.gif)
@@ -25,12 +25,12 @@ STEP-BY-STEP USAGE
    - Barcode
 
 4. Click “Confirm All” to save the entries to the database after previewing the products.
-![Input Box](/docs-screenshots/blacklist-manager/preview-modal.png)
+![Preview Modal](/docs-screenshots/blacklist-manager/preview-modal.png)
 
 5. Once your list is built, click “Export to Shopify”.
    - This will:
      - Update blacklisted barcodes in the live theme.
-![Input Box](/docs-screenshots/blacklist-manager/export-shopify.png)
+![Export to Shopify](/docs-screenshots/blacklist-manager/export-shopify.png)
 
 6. You should now see the request form hidden on blacklisted product pages.
 
