@@ -77,6 +77,37 @@ async def create_interest(req: Request):
         print("Error inserting interest:", e)
         raise HTTPException(status_code=500, detail="Failed to record interest.")
 
+
+# Helper function to apply archived, collection_filter, and search filters to a Supabase query
+def apply_filters(q, archived_mode, cf, search):
+    # Archived filter
+    if archived_mode == "exclude":
+        q = q.eq("archived", False)
+    elif archived_mode == "only":
+        q = q.eq("archived", True)
+    # else: include (do not filter)
+
+    # Collection filter
+    if cf == "op":
+        q = q.or_(
+            "shopify_collection_handles.ov.{out-of-print-offers,out-of-print-offers-1},shopify_collections.ov.{Out-of-Print Offers,Past Out-of-Print Offers},product_tags.ov.{op,pastop},product_title.ilike.OP:%"
+        )
+    elif cf == "notop":
+        q = q.or_(
+            "and(product_title.not.ilike.OP:%,product_tags.not.ov.{op,pastop}),and(product_title.not.ilike.OP:%,or(product_tags.is.null,product_tags.eq.{}))"
+        )
+    # else: all, no filter
+
+    # Search filter
+    if search is not None and str(search).strip():
+        search_normalized = str(search).strip().lower()
+        like_val = f"%{search_normalized}%"
+        q = q.or_(
+            f"product_title.ilike.{like_val},email.ilike.{like_val},customer_name.ilike.{like_val},cr_id.ilike.{like_val}"
+        )
+    return q
+
+
 @router.get("/interest")
 async def get_interest_entries(
     token: str = "",
@@ -108,21 +139,11 @@ async def get_interest_entries(
     range_to = offset + limit - 1
 
     try:
-        # Build base query (apply filters first; order & range last)
-        q = supabase.table("product_interest_requests").select(
-            "id, product_id, product_title, email, customer_name, isbn, cr_id, status, cr_seq, archived, archived_at, created_at, shopify_collection_handles, product_tags, shopify_collections"
-        )
-
-        # Archived mode: exclude (default), include, only
+        # Normalize archived_mode and collection_filter before applying filters
         archived_mode = (archived or "exclude").strip().lower()
         if archived_mode not in {"exclude", "include", "only"}:
             archived_mode = "exclude"
-        if archived_mode == "exclude":
-            q = q.eq("archived", False)
-        elif archived_mode == "only":
-            q = q.eq("archived", True)
 
-        # Normalize: accept "All", "OP"/"Out-of-Print" variants, and "Not OP"
         raw_cf = (collection_filter or "All").strip().lower()
         norm = raw_cf.replace(" ", "-")  # normalize spaces -> hyphen
         if norm in {"op", "out-of-print", "out_of_print"}:
@@ -132,33 +153,30 @@ async def get_interest_entries(
         else:
             cf = "all"
 
-        if cf == "op":
-            # Out-of-Print definition
-            q = q.or_(
-                "shopify_collection_handles.ov.{out-of-print-offers,out-of-print-offers-1},shopify_collections.ov.{Out-of-Print Offers,Past Out-of-Print Offers},product_tags.ov.{op,pastop},product_title.ilike.OP:%"
-            )
-        elif cf == "notop":
-            # Not-OP definition (title not OP and tags don't contain OP markers, accounting for null/empty)
-            q = q.or_(
-                "and(product_title.not.ilike.OP:%,product_tags.not.ov.{op,pastop}),and(product_title.not.ilike.OP:%,or(product_tags.is.null,product_tags.eq.{}))"
-            )
-        # else: "all" -> no additional filter
+        # 1. Count query
+        count_query = supabase.table("product_interest_requests").select("id", count="exact")
+        count_query = apply_filters(count_query, archived_mode, cf, search)
+        count_result = count_query.execute()
+        total_count = getattr(count_result, "count", None)
+        if total_count is None:
+            # Fallback if not provided
+            total_count = len(getattr(count_result, "data", []) or [])
 
-        # Apply search filter if provided (across product_title, email, customer_name, cr_id)
-        if search is not None and str(search).strip():
-            search_normalized = str(search).strip().lower()
-            # Use .or_ with ilike for relevant fields
-            # Supabase syntax: .or_("f1.ilike.%foo%,f2.ilike.%foo%")
-            like_val = f"%{search_normalized}%"
-            q = q.or_(
-                f"product_title.ilike.{like_val},email.ilike.{like_val},customer_name.ilike.{like_val},cr_id.ilike.{like_val}"
-            )
+        # 2. Data query
+        data_query = supabase.table("product_interest_requests").select(
+            "id, product_id, product_title, email, customer_name, isbn, cr_id, status, cr_seq, archived, archived_at, created_at, shopify_collection_handles, product_tags, shopify_collections"
+        )
+        data_query = apply_filters(data_query, archived_mode, cf, search)
+        data_query = data_query.order("created_at", desc=True).range(offset, range_to)
+        data_result = data_query.execute()
 
-        # Finally, apply ordering and range (after all filters)
-        q = q.order("created_at", desc=True).range(offset, range_to)
-
-        result = q.execute()
-        return {"success": True, "data": result.data}
+        return {
+            "success": True,
+            "data": data_result.data,
+            "total": total_count,
+            "page": page,
+            "limit": limit
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
