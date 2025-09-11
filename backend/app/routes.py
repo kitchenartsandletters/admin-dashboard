@@ -84,6 +84,7 @@ async def get_interest_entries(
     archived: str | None = None,
     page: int = 1,
     limit: int = 100,
+    search: str | None = None,
 ):
     if token != os.getenv("VITE_ADMIN_TOKEN"):
         raise HTTPException(status_code=403, detail="Invalid token")
@@ -142,6 +143,16 @@ async def get_interest_entries(
                 "and(product_title.not.ilike.OP:%,product_tags.not.ov.{op,pastop}),and(product_title.not.ilike.OP:%,or(product_tags.is.null,product_tags.eq.{}))"
             )
         # else: "all" -> no additional filter
+
+        # Apply search filter if provided (across product_title, email, customer_name, cr_id)
+        if search is not None and str(search).strip():
+            search_normalized = str(search).strip().lower()
+            # Use .or_ with ilike for relevant fields
+            # Supabase syntax: .or_("f1.ilike.%foo%,f2.ilike.%foo%")
+            like_val = f"%{search_normalized}%"
+            q = q.or_(
+                f"product_title.ilike.{like_val},email.ilike.{like_val},customer_name.ilike.{like_val},cr_id.ilike.{like_val}"
+            )
 
         # Finally, apply ordering and range (after all filters)
         q = q.order("created_at", desc=True).range(offset, range_to)
