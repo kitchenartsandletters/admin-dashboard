@@ -292,6 +292,12 @@ useEffect(() => {
     clearSelection();
   }, [collectionFilter]);
 
+  // When search changes, always reset to page 1 to avoid empty pages
+  useEffect(() => {
+    setPage(1);
+    clearSelection();
+  }, [selectedFilter]);
+
   const onChangeLimit = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const next = parseInt(e.target.value, 10);
     setLimit(next);
