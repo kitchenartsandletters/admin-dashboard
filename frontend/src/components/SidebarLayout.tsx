@@ -105,7 +105,7 @@ const SidebarLayout = ({ children }: { children: React.ReactNode }) => {
                       setRequestMenuOpen(prev => !prev);
                     }
                   }}
-                  className={`px-3 py-2 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all
+                  className={`px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-all
                     ${location.pathname === path || location.pathname.startsWith('/blacklist') ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
                 >
                   <Link to={path}>
