@@ -415,7 +415,11 @@ VITE_API_BASE_URL=http://localhost:8000
 - Added full-featured **Blacklist Manager**:
   - Allows admin to search Shopify for a product by barcode or ID, preview results, and add to a server-side blacklist table.
   - Exporting the blacklist generates a Liquid snippet used by the Online Store to conditionally suppress the request form on select product pages.
-  - Snippet injection now writes directly to the live theme's `main-product.liquid`, replacing or inserting the assignment logic. 
+  - Snippet injection now writes directly to the live theme's `main-product.liquid`, replacing or inserting the assignment logic.
+  - Fixed search and filter so they now apply across the entire dataset, not just the current page.
+- Backend `/api/interest` updated with server-side filtering and pagination aware of filters.
+- Frontend now wires filters and search directly into backend fetch; local-only filtering removed.
+- Page reset on filter change now ensures dataset view is correct (always snaps to valid page).
 
 📌 Next Steps
 - UI polish: scale down table font size, explore per-option color cues for the status dropdown.

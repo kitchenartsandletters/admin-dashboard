@@ -228,53 +228,55 @@ const RequestService = () => {
     };
 
   
-  useEffect(() => {
-    const fetchData = async () => {
+useEffect(() => {
+  const fetchData = async () => {
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL}/api/interest?token=${import.meta.env.VITE_ADMIN_TOKEN}&collection_filter=${collectionFilter}&page=${page}&limit=${limit}&search=${encodeURIComponent(selectedFilter)}`
+      );
+      let json: any;
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/interest?token=${import.meta.env.VITE_ADMIN_TOKEN}&collection_filter=${collectionFilter}&page=${page}&limit=${limit}`)
-        let json: any
-        try {
-          json = await res.clone().json()
-        } catch (e) {
-          const errorText = await res.text()
-          console.error("Failed to parse JSON:", errorText)
-          throw new Error("Malformed JSON")
-        }
-        if (!res.ok || !json?.data || !Array.isArray(json.data)) {
-          throw new Error("Invalid data response")
-        }
-        setData(json.data)
-        // Prefer X-Total-Count header from API if present; otherwise fall back to json.meta.total
-        const totalHeaderRaw = res.headers.get('x-total-count') || res.headers.get('X-Total-Count');
-        const totalFromHeader = totalHeaderRaw ? parseInt(totalHeaderRaw, 10) : null;
-        const totalFromMeta = (typeof json.meta?.total === 'number') ? json.meta.total : null;
-        setTotal(Number.isFinite(totalFromHeader as number) ? (totalFromHeader as number) : totalFromMeta);
-        setLoading(false)
-      } catch (err: any) {
-        // fallback to mock data
-        setData([
-          {
-            id: 'mock-uuid-1',
-            email: 'test@example.com',
-            product_id: 12345,
-            product_title: 'The Book of Ferments',
-            created_at: new Date().toISOString(),
-          },
-          {
-            id: 'mock-uuid-2',
-            email: 'reader@example.com',
-            product_id: 98765,
-            product_title: 'Cooking in the Shadows',
-            created_at: new Date().toISOString(),
-          },
-        ])
-        setError(err.message)
-        setLoading(false)
+        json = await res.clone().json();
+      } catch (e) {
+        const errorText = await res.text();
+        console.error("Failed to parse JSON:", errorText);
+        throw new Error("Malformed JSON");
       }
+      if (!res.ok || !json?.data || !Array.isArray(json.data)) {
+        throw new Error("Invalid data response");
+      }
+      setData(json.data);
+      // Prefer X-Total-Count header from API if present; otherwise fall back to json.meta.total
+      const totalHeaderRaw = res.headers.get('x-total-count') || res.headers.get('X-Total-Count');
+      const totalFromHeader = totalHeaderRaw ? parseInt(totalHeaderRaw, 10) : null;
+      const totalFromMeta = (typeof json.meta?.total === 'number') ? json.meta.total : null;
+      setTotal(Number.isFinite(totalFromHeader as number) ? (totalFromHeader as number) : totalFromMeta);
+      setLoading(false);
+    } catch (err: any) {
+      // fallback to mock data
+      setData([
+        {
+          id: 'mock-uuid-1',
+          email: 'test@example.com',
+          product_id: 12345,
+          product_title: 'The Book of Ferments',
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: 'mock-uuid-2',
+          email: 'reader@example.com',
+          product_id: 98765,
+          product_title: 'Cooking in the Shadows',
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      setError(err.message);
+      setLoading(false);
     }
+  };
 
-    fetchData()
-  }, [collectionFilter, page, limit])
+  fetchData();
+}, [collectionFilter, page, limit, selectedFilter]);
 
   useEffect(() => {
     try {
@@ -289,6 +291,12 @@ const RequestService = () => {
     setPage(1);
     clearSelection();
   }, [collectionFilter]);
+
+  // When search changes, always reset to page 1 to avoid empty pages
+  useEffect(() => {
+    setPage(1);
+    clearSelection();
+  }, [selectedFilter]);
 
   const onChangeLimit = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const next = parseInt(e.target.value, 10);
@@ -368,22 +376,6 @@ const RequestService = () => {
   });
 
 
-  const filteredData = sortedData.filter((item) => {
-    const search = selectedFilter.toLowerCase();
-    return (
-      item.product_title?.toLowerCase().includes(search) ||
-      item.email?.toLowerCase().includes(search) ||
-      item.customer_name?.toLowerCase().includes(search) ||
-      item.cr_id?.toLowerCase().includes(search)
-    );
-  });
-
-  const filteredItems = data.filter(item =>
-    item.product_title.toLowerCase().includes(selectedFilter.toLowerCase()) ||
-    item.email.toLowerCase().includes(selectedFilter.toLowerCase()) ||
-    item.customer_name?.toLowerCase().includes(selectedFilter.toLowerCase()) ||
-    item.cr_id?.toLowerCase().includes(selectedFilter.toLowerCase())
-  );
 /*
   // Export CSV
   const handleExportCSV = () => {
@@ -545,7 +537,7 @@ const RequestService = () => {
 
         {/* ExportButtons on the right */}
         <ExportButtons
-          filteredData={filteredData}
+          filteredData={sortedData}
           decodeHTMLEntities={decodeHTMLEntities}
         />
       </div>
@@ -553,7 +545,7 @@ const RequestService = () => {
       {/* Desktop Table */}
       <div className="hidden sm:block">
         <RequestTable
-          filteredData={filteredData}
+          filteredData={sortedData}
           handleSort={handleSort}
           renderSortIcon={renderSortIcon}
           sortConfig={sortConfig}
@@ -571,7 +563,7 @@ const RequestService = () => {
       </div>
       {/* Mobile Cards */}
       <div className="block sm:hidden space-y-4">
-        {filteredData.map((entry, index) => (
+        {sortedData.map((entry, index) => (
           <MobileRequestCard key={index} entry={entry} />
         ))}
       </div>
