@@ -4,7 +4,8 @@ export type DamagedRow = {
   product_id: number;
   variant_id: number;
   handle: string;
-  condition: 'light' | 'moderate' | 'heavy' | string;
+  condition_raw: string | null;
+  condition_key: 'light' | 'moderate' | 'heavy' | string | null;
   available: number;
   last_shopify_sync_at: string;
   last_webhook_at: string;
