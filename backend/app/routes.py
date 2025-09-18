@@ -282,9 +282,15 @@ async def add_to_blacklist_debug(request: Request, token: str = ""):
 
         parsed_entries = []
         for entry_data in entries:
-            entry = BlacklistEntry(**entry_data)
-            print("✅ Parsed entry:", entry.model_dump())
-            parsed_entries.append(entry.model_dump())
+            try:
+                if "author" not in entry_data or entry_data["author"] is None:
+                    entry_data["author"] = "Unknown"
+                entry = BlacklistEntry(**entry_data)
+                print("✅ Parsed entry:", entry.model_dump())
+                parsed_entries.append(entry.model_dump())
+            except Exception as e:
+                print("❌ Failed to parse entry:", entry_data)
+                print("🪵 Exception:", str(e))
 
         # Bulk upsert
         supabase.table("blacklisted_barcodes").upsert(parsed_entries).execute()
