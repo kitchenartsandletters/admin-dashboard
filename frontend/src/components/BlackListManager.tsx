@@ -46,7 +46,7 @@ const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry
         barcode: variant.barcode,
         title: variant.product.title,
         handle: variant.product.handle,
-        author: variant.sku,
+        author: variant.sku || "Unknown",
         product_id: parseInt(variant.product.id.split("/").pop())
       };
     }
@@ -84,7 +84,7 @@ const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry
         barcode: pidVariant.barcode,
         title: product.title,
         handle: product.handle,
-        author: pidVariant.sku,
+        author: pidVariant.sku || "Unknown",
         product_id: parseInt(product.id.split("/").pop())
       };
     }

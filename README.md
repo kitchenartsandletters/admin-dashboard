@@ -437,6 +437,7 @@ VITE_API_BASE_URL=http://localhost:8000
 
 ### Phase 2 Planning
 
+* Remove ": Damaged" from table book titles
 * Add inline override controls:
   * PATCH /admin/damaged-inventory/:variant_id/override
   * Body includes: `publish: boolean`, optional `redirect_target`, and `notes`
