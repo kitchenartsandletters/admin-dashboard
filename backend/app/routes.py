@@ -330,11 +330,13 @@ async def export_blacklist_snippet(token: str = ""):
         raise HTTPException(status_code=403, detail="Invalid token")
     try:
         sb = supabase
-        response = sb.table("blacklisted_barcodes").select("barcode").execute()
+        response = sb.table("blacklisted_barcodes").select("barcode,product_id").execute()
+        product_ids = [str(row["product_id"]) for row in response.data if row.get("product_id")]
         barcodes = [row["barcode"] for row in response.data if row.get("barcode")]
 
-        csv_string = ",".join(barcodes)
-        snippet = f'{{% assign blacklisted_barcodes = "{csv_string}" | split: "," %}}'
+        id_snippet = f'{{% assign blacklisted_product_ids = "{",".join(product_ids)}" | split: "," %}}'
+        barcode_snippet = f'{{% assign blacklisted_barcodes = "{",".join(barcodes)}" | split: "," %}}'
+        snippet = id_snippet + "\n" + barcode_snippet
 
         # Step 1: Get the MAIN theme ID
         theme_resp = requests.post(
@@ -399,12 +401,20 @@ async def export_blacklist_snippet(token: str = ""):
             raise Exception(f"Failed to fetch main-product.liquid: {fetch_resp.text}")
         content = fetch_resp.json().get("asset", {}).get("value", "")
 
-        # Replace or insert the assign line using regex
-        pattern = r'{%\s*assign\s+blacklisted_barcodes\s*=.*?%}'
-        if re.search(pattern, content):
-            updated_content = re.sub(pattern, snippet, content, count=1)
+        # Replace or insert the assign lines using regex
+        id_pattern = r'{%\s*assign\s+blacklisted_product_ids\s*=.*?%}'
+        barcode_pattern = r'{%\s*assign\s+blacklisted_barcodes\s*=.*?%}'
+
+        updated_content = content
+        if re.search(id_pattern, updated_content):
+            updated_content = re.sub(id_pattern, id_snippet, updated_content, count=1)
         else:
-            updated_content = snippet + "\n" + content
+            updated_content = id_snippet + "\n" + updated_content
+
+        if re.search(barcode_pattern, updated_content):
+            updated_content = re.sub(barcode_pattern, barcode_snippet, updated_content, count=1)
+        else:
+            updated_content = barcode_snippet + "\n" + updated_content
 
         # Upload updated main-product.liquid
         upload_main_resp = requests.put(
@@ -425,6 +435,7 @@ async def export_blacklist_snippet(token: str = ""):
 
         sb.table("blacklist_snippet_logs").insert({
             "barcodes": barcodes,
+            "product_ids": product_ids,
             "exported_at": datetime.utcnow().isoformat()
         }).execute()
 
