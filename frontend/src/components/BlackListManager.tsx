@@ -194,8 +194,12 @@ const BlacklistManager = () => {
     for (const input of normalizedInputs) {
       const enriched = await fetchShopifyProductDetails(input);
       if (enriched) {
-        // Avoid duplicates in preview list
-        if (!fetchedEntries.some(e => e.barcode === enriched.barcode)) {
+        // Avoid duplicates in preview list (barcode OR product_id, but allow empty barcode with distinct product_id)
+        const isDuplicate = fetchedEntries.some(e =>
+          (e.barcode && e.barcode === enriched.barcode && enriched.barcode !== "") ||
+          (e.product_id && e.product_id === enriched.product_id)
+        );
+        if (!isDuplicate) {
           fetchedEntries.push(enriched);
         }
       }
