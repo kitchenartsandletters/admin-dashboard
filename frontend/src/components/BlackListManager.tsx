@@ -169,12 +169,12 @@ const BlacklistManager = () => {
       }
     }
 
-    // Check for duplicates in existing entries
+    // Check for duplicates in existing entries (by product_id only)
     const duplicates: string[] = [];
 
     for (const input of normalizedInputs) {
       const match = entries.find(e =>
-        e.barcode === input || e.product_id.toString() === input
+        e.product_id.toString() === input
       );
       if (match) {
         duplicates.push(`${match.title} (ID: ${match.product_id})`);
@@ -194,10 +194,9 @@ const BlacklistManager = () => {
     for (const input of normalizedInputs) {
       const enriched = await fetchShopifyProductDetails(input);
       if (enriched) {
-        // Avoid duplicates in preview list (barcode OR product_id, but allow empty barcode with distinct product_id)
+        // Avoid duplicates in preview list (by product_id)
         const isDuplicate = fetchedEntries.some(e =>
-          (e.barcode && e.barcode === enriched.barcode && enriched.barcode !== "") ||
-          (e.product_id && e.product_id === enriched.product_id)
+          e.product_id === enriched.product_id
         );
         if (!isDuplicate) {
           fetchedEntries.push(enriched);
@@ -214,8 +213,7 @@ const BlacklistManager = () => {
     // Check if any fetched entries are duplicates again (in case input was different but product same)
     const alreadyBlacklisted = fetchedEntries.filter(fe =>
       entries.some(e =>
-        (e.barcode && e.barcode === fe.barcode) ||
-        (e.product_id && e.product_id === fe.product_id)
+        e.product_id === fe.product_id
       )
     );
     if (alreadyBlacklisted.length > 0) {
@@ -260,18 +258,18 @@ const BlacklistManager = () => {
     setBarcodeInput("");
   };
 
-  const handleRemove = async (barcode: string) => {
+  const handleRemove = async (product_id: number) => {
     if (removing) return; // Prevent multiple removals at once
-    setRemoving(barcode);
+    setRemoving(product_id.toString());
     // Wait for animation to finish before removing from state
     removeTimeoutRef.current = setTimeout(async () => {
       try {
         await fetch(`${BLACKLIST_API_BASE}/api/blacklist/remove?token=${ADMIN_API_TOKEN}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ barcode })
+          body: JSON.stringify({ product_id })
         });
-        setEntries((prev) => prev.filter(e => e.barcode !== barcode));
+        setEntries((prev) => prev.filter(e => e.product_id !== product_id));
       } catch (err) {
         console.error("Failed to remove:", err);
       }
@@ -410,8 +408,8 @@ const BlacklistManager = () => {
           <tbody>
             {sortedFilteredEntries.map((e, idx) => (
               <tr
-                key={e.barcode}
-                className={`${removing === e.barcode ? "fade-out" : ""} ${
+                key={e.product_id}
+                className={`${removing === e.product_id.toString() ? "fade-out" : ""} ${
                   idx % 2 === 0 ? "even:bg-gray-50 dark:even:bg-gray-900" : ""
                 } transition-opacity duration-400`}
               >
@@ -422,7 +420,7 @@ const BlacklistManager = () => {
                 <td className="border px-4 py-2 dark:border-gray-700">{e.product_id}</td>
                 <td className="border px-4 py-2 dark:border-gray-700">
                   <button
-                    onClick={() => handleRemove(e.barcode)}
+                    onClick={() => handleRemove(e.product_id)}
                     className="text-red-600 hover:underline px-2 py-1 rounded"
                     disabled={!!removing}
                     aria-disabled={!!removing}

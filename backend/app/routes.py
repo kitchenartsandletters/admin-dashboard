@@ -294,8 +294,8 @@ async def add_to_blacklist_debug(request: Request, token: str = ""):
                 print("🧪 Types:", {k: type(v) for k, v in entry_data.items()})
                 print("🔍 repr():", repr(entry_data))
 
-        # Bulk upsert
-        supabase.table("blacklisted_barcodes").upsert(parsed_entries).execute()
+        # Bulk upsert with conflict on product_id
+        supabase.table("blacklisted_barcodes").upsert(parsed_entries, on_conflict="product_id").execute()
         return {"success": True, "count": len(parsed_entries)}
 
     except Exception as e:
@@ -306,16 +306,10 @@ async def add_to_blacklist_debug(request: Request, token: str = ""):
 async def remove_from_blacklist(entry: RemoveEntry, token: str = ""):
     if token != os.getenv("VITE_ADMIN_TOKEN"):
         raise HTTPException(status_code=403, detail="Invalid token")
-    conditions = []
-    if entry.barcode:
-        conditions.append(f"barcode.eq.{entry.barcode}")
-    if entry.product_id is not None:
-        conditions.append(f"product_id.eq.{entry.product_id}")
-    if not conditions:
-        raise HTTPException(status_code=422, detail="Must provide barcode and/or product_id")
-    delete_query = supabase.table("blacklisted_barcodes").delete().or_(
-        ",".join(conditions)
-    )
+    # Only allow deletion by product_id
+    if entry.product_id is None:
+        raise HTTPException(status_code=422, detail="Must provide product_id")
+    delete_query = supabase.table("blacklisted_barcodes").delete().eq("product_id", entry.product_id)
     result = delete_query.execute()
     print("🗑️ Delete result:", result.data)
     return {"success": True}
