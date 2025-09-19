@@ -211,11 +211,13 @@ const BlacklistManager = () => {
       return;
     }
 
+    console.log("📋 Preview entries ready:", fetchedEntries);
     setPreviewEntries(fetchedEntries);
   };
 
   const confirmAdd = async (entriesToAdd: BlacklistEntry[]) => {
     setLoading(true);
+    console.log("🔎 Submitting entries to /blacklist/add:", entriesToAdd);
     try {
       const res = await fetch(`${BLACKLIST_API_BASE}/api/blacklist/add?token=${ADMIN_API_TOKEN}`, {
         method: "POST",
