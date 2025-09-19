@@ -33,7 +33,7 @@ class ArchiveBulk(BaseModel):
     reason: str | None = None
 
 class BlacklistEntry(BaseModel):
-    barcode: str
+    barcode: str | None = None
     title: str
     handle: str
     author: str
@@ -291,6 +291,8 @@ async def add_to_blacklist_debug(request: Request, token: str = ""):
             except Exception as e:
                 print("❌ Failed to parse entry:", entry_data)
                 print("🪵 Exception:", str(e))
+                print("🧪 Types:", {k: type(v) for k, v in entry_data.items()})
+                print("🔍 repr():", repr(entry_data))
 
         # Bulk upsert
         supabase.table("blacklisted_barcodes").upsert(parsed_entries).execute()
