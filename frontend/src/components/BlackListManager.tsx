@@ -170,9 +170,17 @@ const BlacklistManager = () => {
     }
 
     // Check for duplicates in existing entries
-    const duplicates = normalizedInputs.filter(input =>
-      entries.some(e => e.barcode === input || e.product_id.toString() === input)
-    );
+    const duplicates: string[] = [];
+
+    for (const input of normalizedInputs) {
+      const match = entries.find(e =>
+        e.barcode === input || e.product_id.toString() === input
+      );
+      if (match) {
+        duplicates.push(`${match.title} (ID: ${match.product_id})`);
+      }
+    }
+
     if (duplicates.length > 0) {
       setErrorModal({
         title: "Duplicate Entry",
