@@ -286,9 +286,7 @@ async def add_to_blacklist_debug(request: Request, token: str = ""):
                 if "author" not in entry_data or entry_data["author"] is None:
                     entry_data["author"] = "Unknown"
                 if not entry_data.get("barcode"):
-                    # Remove barcode field entirely if empty or null
-                    if "barcode" in entry_data:
-                        del entry_data["barcode"]
+                    entry_data["barcode"] = ""
                 entry = BlacklistEntry(**entry_data)
                 model = entry.model_dump()
                 # Skip entries with missing product_id
