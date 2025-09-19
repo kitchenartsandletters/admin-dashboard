@@ -289,6 +289,10 @@ async def add_to_blacklist_debug(request: Request, token: str = ""):
                     entry_data["barcode"] = None  # Avoid inserting empty string
                 entry = BlacklistEntry(**entry_data)
                 model = entry.model_dump()
+                # Skip entries with empty or null barcode
+                if not model.get("barcode"):
+                    print("⚠️ Skipping entry due to empty barcode:", model)
+                    continue
                 if model["barcode"] == "":
                     del model["barcode"]  # Remove empty barcode to prevent DB conflict
                 parsed_entries.append(model)
