@@ -304,6 +304,9 @@ async def add_to_blacklist_debug(request: Request, token: str = ""):
                 print("🔍 repr():", repr(entry_data))
 
         # Bulk upsert with conflict on product_id
+        if not parsed_entries:
+            print("🛑 No valid entries to upsert.")
+            return {"success": False, "message": "No valid entries to add."}
         supabase.table("blacklisted_barcodes").upsert(parsed_entries, on_conflict="product_id").execute()
         return {"success": True, "count": len(parsed_entries)}
 
