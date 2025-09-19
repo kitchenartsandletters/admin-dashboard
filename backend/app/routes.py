@@ -285,9 +285,14 @@ async def add_to_blacklist_debug(request: Request, token: str = ""):
             try:
                 if "author" not in entry_data or entry_data["author"] is None:
                     entry_data["author"] = "Unknown"
+                if not entry_data.get("barcode"):
+                    entry_data["barcode"] = None  # Avoid inserting empty string
                 entry = BlacklistEntry(**entry_data)
-                print("✅ Parsed entry:", entry.model_dump())
-                parsed_entries.append(entry.model_dump())
+                model = entry.model_dump()
+                if model["barcode"] == "":
+                    del model["barcode"]  # Remove empty barcode to prevent DB conflict
+                parsed_entries.append(model)
+                print("✅ Parsed entry:", model)
             except Exception as e:
                 print("❌ Failed to parse entry:", entry_data)
                 print("🪵 Exception:", str(e))
