@@ -209,12 +209,15 @@ const BlacklistManager = () => {
 
     // Check if any fetched entries are duplicates again (in case input was different but product same)
     const alreadyBlacklisted = fetchedEntries.filter(fe =>
-      entries.some(e => e.barcode === fe.barcode)
+      entries.some(e =>
+        (e.barcode && e.barcode === fe.barcode) ||
+        (e.product_id && e.product_id === fe.product_id)
+      )
     );
     if (alreadyBlacklisted.length > 0) {
       setErrorModal({
         title: "Duplicate Entry",
-        message: `This product${alreadyBlacklisted.length > 1 ? "s are" : " is"} already on the blacklist: ${alreadyBlacklisted.map(e => e.barcode).join(", ")}`
+        message: `This product${alreadyBlacklisted.length > 1 ? "s are" : " is"} already on the blacklist: ${alreadyBlacklisted.map(e => `${e.title} (ID: ${e.product_id})`).join(", ")}`
       });
       return;
     }
