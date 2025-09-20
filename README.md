@@ -437,22 +437,35 @@ VITE_API_BASE_URL=http://localhost:8000
 
 ### Phase 2 Planning
 
+✅ Recently Completed
+- Variant-level management now operational, and stable
+- Added manual “Reconcile Now” button at table-level (visible to admins)
+
+📌 Next Steps
 * Add inline override controls:
   * PATCH /admin/damaged-inventory/:variant_id/override
   * Body includes: `publish: boolean`, optional `redirect_target`, and `notes`
   * UI control: dropdown or toggle with conditionally rendered inputs for redirect + notes
 * Build reconciliation status badge or column per row (e.g., last_sync status)
-* Add manual “Reconcile Now” button at table-level (visible to admins)
-* Add inline notes editor with audit logging
+* Add inline notes editor with audit logging?
 * Filter/search controls by:
-  * Condition
-  * Stock status
-  * Handle (substring match)
+  * Condition (dropdown)
+  * Stock status ✅
+  * Author (SKU)
+  * Barcode
+  * Handle
+  * Product/Variant ID
 * Add pagination or virtual scroll to support >2,000 rows
-* Enable markdown rendering inside the Docs tab instead of link-only view
-* Expose standalone Docs & Logs routes via top-level nav (with shared drawer UI)
-* Add bulk actions (archive, delete, publish/unpublish, etc.)
+* Enable markdown rendering inside the Docs tab instead of link-only view (this is good to go just need to expose in AD)
+* Add bulk actions (need to plan/ideate what would be useful)
 * Create server-side audit log (damaged.changelog) with Supabase triggers
+* RightSideBar
+  - Relocate "Live" url link
+  - Add:
+    - product.id
+    - product.handle
+    - variant.id
+
 
 ---
 
