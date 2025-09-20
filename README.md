@@ -400,7 +400,7 @@ VITE_API_BASE_URL=http://localhost:8000
 
 ## #request-service
 
-✅ Recently Completed
+-✅ Recently Completed
 - Added Shopify frontend **customer name** field alongside email; payload now includes `customer_name`.
 - Backend updated to accept and store `customer_name`; UI shows a **Customer** column with sorting/search support.
 - Implemented **Status** column with 6-phase dropdown; sorts by phase order (not alphabetically) and re-sorts optimistically on change.
@@ -417,6 +417,17 @@ VITE_API_BASE_URL=http://localhost:8000
   - Exporting the blacklist generates a Liquid snippet used by the Online Store to conditionally suppress the request form on select product pages.
   - Snippet injection now writes directly to the live theme's `main-product.liquid`, replacing or inserting the assignment logic.
   - Fixed search and filter so they now apply across the entire dataset, not just the current page.
+- Replaced barcode-based blacklist logic with product ID-first logic across all layers:
+  - Backend routes (`/blacklist/add`, `/blacklist/remove`, `/blacklist/export_snippet`) now use `product_id` as the primary identifier.
+  - Supabase schema updated to enforce uniqueness on `product_id`, with `barcode` downgraded to secondary/indexed field.
+  - Snippet generation (`export_blacklist_snippet`) now emits product IDs into `product_ids` instead of `barcodes`.
+  - Shopify theme snippet updated to suppress notify form via product ID matching.
+- Added safeguard to ignore empty barcodes during blacklist insert.
+- Fixed long-standing 408/499 timeout issue with Railway-hosted frontend:
+  - Root cause was invalid or missing `VITE_API_BASE_URL`.
+  - Hardened `server.js` logic to validate and log missing or malformed `.env` values.
+  - Proxy path rewriting and error handling improved.
+  - Deployment restored and verified after rollback and redeploy using SHA: `d6cf520ee3201281a0791ed0d8ce3200cf662eb9`.
 - Backend `/api/interest` updated with server-side filtering and pagination aware of filters.
 - Frontend now wires filters and search directly into backend fetch; local-only filtering removed.
 - Page reset on filter change now ensures dataset view is correct (always snaps to valid page).
