@@ -33,7 +33,7 @@ class ArchiveBulk(BaseModel):
     reason: str | None = None
 
 class BlacklistEntry(BaseModel):
-    barcode: str
+    barcode: str | None = None
     title: str
     handle: str
     author: str
@@ -282,12 +282,30 @@ async def add_to_blacklist_debug(request: Request, token: str = ""):
 
         parsed_entries = []
         for entry_data in entries:
-            entry = BlacklistEntry(**entry_data)
-            print("✅ Parsed entry:", entry.model_dump())
-            parsed_entries.append(entry.model_dump())
+            try:
+                if "author" not in entry_data or entry_data["author"] is None:
+                    entry_data["author"] = "Unknown"
+                if not entry_data.get("barcode"):
+                    entry_data["barcode"] = ""
+                entry = BlacklistEntry(**entry_data)
+                model = entry.model_dump()
+                # Skip entries with missing product_id
+                if not model.get("product_id"):
+                    print("⚠️ Skipping entry due to missing product_id:", model)
+                    continue
+                parsed_entries.append(model)
+                print("✅ Parsed entry:", model)
+            except Exception as e:
+                print("❌ Failed to parse entry:", entry_data)
+                print("🪵 Exception:", str(e))
+                print("🧪 Types:", {k: type(v) for k, v in entry_data.items()})
+                print("🔍 repr():", repr(entry_data))
 
-        # Bulk upsert
-        supabase.table("blacklisted_barcodes").upsert(parsed_entries).execute()
+        # Bulk upsert with conflict on product_id
+        if not parsed_entries:
+            print("🛑 No valid entries to upsert.")
+            return {"success": False, "message": "No valid entries to add."}
+        supabase.table("blacklisted_barcodes").upsert(parsed_entries, on_conflict="product_id").execute()
         return {"success": True, "count": len(parsed_entries)}
 
     except Exception as e:
@@ -298,16 +316,10 @@ async def add_to_blacklist_debug(request: Request, token: str = ""):
 async def remove_from_blacklist(entry: RemoveEntry, token: str = ""):
     if token != os.getenv("VITE_ADMIN_TOKEN"):
         raise HTTPException(status_code=403, detail="Invalid token")
-    conditions = []
-    if entry.barcode:
-        conditions.append(f"barcode.eq.{entry.barcode}")
-    if entry.product_id is not None:
-        conditions.append(f"product_id.eq.{entry.product_id}")
-    if not conditions:
-        raise HTTPException(status_code=422, detail="Must provide barcode and/or product_id")
-    delete_query = supabase.table("blacklisted_barcodes").delete().or_(
-        ",".join(conditions)
-    )
+    # Only allow deletion by product_id
+    if entry.product_id is None:
+        raise HTTPException(status_code=422, detail="Must provide product_id")
+    delete_query = supabase.table("blacklisted_barcodes").delete().eq("product_id", entry.product_id)
     result = delete_query.execute()
     print("🗑️ Delete result:", result.data)
     return {"success": True}
@@ -318,11 +330,13 @@ async def export_blacklist_snippet(token: str = ""):
         raise HTTPException(status_code=403, detail="Invalid token")
     try:
         sb = supabase
-        response = sb.table("blacklisted_barcodes").select("barcode").execute()
+        response = sb.table("blacklisted_barcodes").select("barcode,product_id").execute()
+        product_ids = [str(row["product_id"]) for row in response.data if row.get("product_id")]
         barcodes = [row["barcode"] for row in response.data if row.get("barcode")]
 
-        csv_string = ",".join(barcodes)
-        snippet = f'{{% assign blacklisted_barcodes = "{csv_string}" | split: "," %}}'
+        id_snippet = f'{{% assign blacklisted_product_ids = "{",".join(product_ids)}" | split: "," %}}'
+        barcode_snippet = f'{{% assign blacklisted_barcodes = "{",".join(barcodes)}" | split: "," %}}'
+        snippet = id_snippet + "\n" + barcode_snippet
 
         # Step 1: Get the MAIN theme ID
         theme_resp = requests.post(
@@ -387,12 +401,20 @@ async def export_blacklist_snippet(token: str = ""):
             raise Exception(f"Failed to fetch main-product.liquid: {fetch_resp.text}")
         content = fetch_resp.json().get("asset", {}).get("value", "")
 
-        # Replace or insert the assign line using regex
-        pattern = r'{%\s*assign\s+blacklisted_barcodes\s*=.*?%}'
-        if re.search(pattern, content):
-            updated_content = re.sub(pattern, snippet, content, count=1)
+        # Replace or insert the assign lines using regex
+        id_pattern = r'{%\s*assign\s+blacklisted_product_ids\s*=.*?%}'
+        barcode_pattern = r'{%\s*assign\s+blacklisted_barcodes\s*=.*?%}'
+
+        updated_content = content
+        if re.search(id_pattern, updated_content):
+            updated_content = re.sub(id_pattern, id_snippet, updated_content, count=1)
         else:
-            updated_content = snippet + "\n" + content
+            updated_content = id_snippet + "\n" + updated_content
+
+        if re.search(barcode_pattern, updated_content):
+            updated_content = re.sub(barcode_pattern, barcode_snippet, updated_content, count=1)
+        else:
+            updated_content = barcode_snippet + "\n" + updated_content
 
         # Upload updated main-product.liquid
         upload_main_resp = requests.put(
@@ -413,6 +435,7 @@ async def export_blacklist_snippet(token: str = ""):
 
         sb.table("blacklist_snippet_logs").insert({
             "barcodes": barcodes,
+            "product_ids": product_ids,
             "exported_at": datetime.utcnow().isoformat()
         }).execute()
 
