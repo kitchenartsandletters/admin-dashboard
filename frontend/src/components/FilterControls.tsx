@@ -28,7 +28,7 @@ const FilterControls: React.FC<FilterControlsProps> = ({
 }) => {
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   return (
-    <div className="flex gap-3 flex-wrap items-center">
+    <div className="flex items-center gap-3">
       <input
         type="text"
         placeholder="Filter by title, email or ID..."

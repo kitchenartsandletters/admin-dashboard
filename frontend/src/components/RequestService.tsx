@@ -255,7 +255,7 @@ useEffect(() => {
   const fetchData = async () => {
     try {
       const res = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL}/api/interest?token=${import.meta.env.VITE_ADMIN_TOKEN}&collection_filter=${collectionFilter}&page=${page}&limit=${limit}&search=${encodeURIComponent(selectedFilter)}&sort_field=${sortConfig?.key || ''}&sort_order=${sortConfig?.direction || ''}&_ts=${Date.now()}`
+        `${import.meta.env.VITE_API_BASE_URL}/api/interest?token=${import.meta.env.VITE_ADMIN_TOKEN}&collection_filter=${collectionFilter}&page=${page}&limit=${limit}&search=${encodeURIComponent(selectedFilter)}&statuses=${encodeURIComponent(selectedStatuses.join(","))}&sort_field=${sortConfig?.key || ''}&sort_order=${sortConfig?.direction || ''}&_ts=${Date.now()}`
       );
       let json: any;
       try {

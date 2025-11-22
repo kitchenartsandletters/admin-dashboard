@@ -83,6 +83,8 @@ async def get_interest_entries(
     token: str = "",
     collection_filter: str | None = None,
     archived: str | None = None,
+    search: str | None = None,
+    statuses: str | None = None,
     page: int = 1,
     limit: int = 100,
     sort_field: str | None = None,
@@ -149,6 +151,22 @@ async def get_interest_entries(
                 "and(product_title.not.ilike.OP:%,or(product_tags.is.null,product_tags.eq.{}))"
             )
         # else: "all" -> no additional filter
+
+        # --- Begin: Apply backend filtering for search and statuses ---
+        # Apply search filter across product_title, email, customer_name
+        if search:
+            pattern = f"%{search}%"
+            q = q.or_(
+                f"product_title.ilike.{pattern},email.ilike.{pattern},customer_name.ilike.{pattern}"
+            )
+
+        # Apply status filtering
+        if statuses:
+            status_list = [s.strip() for s in statuses.split(",") if s.strip()]
+            if status_list:
+                or_clauses = ",".join([f"status.eq.{s}" for s in status_list])
+                q = q.or_(or_clauses)
+        # --- End: Apply backend filtering ---
 
         # Dynamic ordering
         allowed_sort_fields = {
