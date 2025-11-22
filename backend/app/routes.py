@@ -136,14 +136,18 @@ async def get_interest_entries(
 
         if cf == "op":
             # Out-of-Print definition
-            q = q.or_("shopify_collection_handles.ov.{out-of-print-offers,out-of-print-offers-1}")
-            q = q.or_("shopify_collections.ov.{Out-of-Print Offers,Past Out-of-Print Offers}")
-            q = q.or_("product_tags.ov.{op,pastop}")
-            q = q.or_("product_title.ilike.OP:%")
+            q = q.or_(
+                "shopify_collection_handles.ov.{out-of-print-offers,out-of-print-offers-1},"
+                "shopify_collections.ov.{Out-of-Print Offers,Past Out-of-Print Offers},"
+                "product_tags.ov.{op,pastop},"
+                "product_title.ilike.OP:%"
+            )
         elif cf == "notop":
             # Not-OP definition (title not OP and tags don't contain OP markers, accounting for null/empty)
-            q = q.or_("and(product_title.not.ilike.OP:%,product_tags.not.ov.{op,pastop})")
-            q = q.or_("and(product_title.not.ilike.OP:%,or(product_tags.is.null,product_tags.eq.{}))")
+            q = q.or_(
+                "and(product_title.not.ilike.OP:%,product_tags.not.ov.{op,pastop}),"
+                "and(product_title.not.ilike.OP:%,or(product_tags.is.null,product_tags.eq.{}))"
+            )
         # else: "all" -> no additional filter
 
         # Dynamic ordering
