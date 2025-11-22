@@ -156,6 +156,7 @@ const RequestService = () => {
       }
       return { key, direction: 'asc' };
     });
+    setPage(1);
   };
 
   const renderSortIcon = (key: keyof InterestEntry) => {
@@ -231,10 +232,8 @@ const RequestService = () => {
 useEffect(() => {
   const fetchData = async () => {
     try {
-      const sortKey = sortConfig?.key ?? '';
-      const sortDir = sortConfig?.direction ?? '';
       const res = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL}/api/interest?token=${import.meta.env.VITE_ADMIN_TOKEN}&collection_filter=${collectionFilter}&page=${page}&limit=${limit}&search=${encodeURIComponent(selectedFilter)}&sort=${sortKey}&direction=${sortDir}`
+        `${import.meta.env.VITE_API_BASE_URL}/api/interest?token=${import.meta.env.VITE_ADMIN_TOKEN}&collection_filter=${collectionFilter}&page=${page}&limit=${limit}&search=${encodeURIComponent(selectedFilter)}&sort_field=${sortConfig?.key || ''}&sort_order=${sortConfig?.direction || ''}`
       );
       let json: any;
       try {
@@ -324,58 +323,20 @@ useEffect(() => {
   console.log("Row IDs from backend:", data.map(d => d.id));
   console.log("Admin dashboard data:", data)
 
-  // Sort helper
-  //const statusOrder = [
-  //  "New",
-  //  "In Progress",
-  //  "Request Filed",
-  //  "Complete"
-  //];
+  // Client-side filtering (reintroduced)
+  const filteredData = data.filter((entry) => {
+    const q = selectedFilter.toLowerCase();
+    if (!q) return true;
 
-  const sortedData = [...data].sort((a, b) => {
-    if (!sortConfig) return 0;
-    const { key, direction } = sortConfig;
-    const aVal = a[key];
-    const bVal = b[key];
-
-    if (aVal == null || bVal == null) return 0;
-
-    // Special case for status sorting
-    if (key === 'status') {
-      const aIndex = getStatusIndex(aVal as string);
-      const bIndex = getStatusIndex(bVal as string);
-      return (aIndex - bIndex) * (direction === 'asc' ? 1 : -1);
-    }
-
-    if (key === 'cr_id') {
-      return aVal.toString().localeCompare(bVal.toString()) * (direction === 'asc' ? 1 : -1);
-    }
-
-    if (typeof aVal === 'string' && typeof bVal === 'string') {
-      const stripLeadingArticle = (str: string) =>
-        str.replace(/^\s*(a |an |the )/i, '').trim();
-      return stripLeadingArticle(aVal).localeCompare(stripLeadingArticle(bVal)) * (direction === 'asc' ? 1 : -1);
-    }
-
-    if (key === 'created_at') {
-      const aDate = Date.parse(aVal as string);
-      const bDate = Date.parse(bVal as string);
-      return (aDate - bDate) * (direction === 'asc' ? 1 : -1);
-    }
-
-    if (typeof aVal === 'number' && typeof bVal === 'number') {
-      return (aVal - bVal) * (direction === 'asc' ? 1 : -1);
-    }
-
-    if (key === 'customer_name') {
-      const aEmpty = !aVal || aVal === '—';
-      const bEmpty = !bVal || bVal === '—';
-      if (aEmpty && !bEmpty) return 1;
-      if (!aEmpty && bEmpty) return -1;
-    }
-
-    return aVal.toString().localeCompare(bVal.toString()) * (direction === 'asc' ? 1 : -1);
+    return (
+      entry.email?.toLowerCase().includes(q) ||
+      entry.product_title?.toLowerCase().includes(q) ||
+      entry.customer_name?.toLowerCase().includes(q) ||
+      entry.isbn?.toLowerCase().includes(q)
+    );
   });
+
+  const sortedData = filteredData;
 
 
 /*
