@@ -42,7 +42,7 @@ const FilterControls: React.FC<FilterControlsProps> = ({
           onClick={() => setShowStatusDropdown(!showStatusDropdown)}
           className="px-3 py-2 border rounded text-sm bg-white dark:bg-gray-800 dark:text-white"
         >
-          Status Filter ▾
+          Status▾
         </button>
 
         {showStatusDropdown && (
