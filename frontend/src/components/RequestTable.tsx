@@ -12,6 +12,7 @@ interface RequestTableProps {
   selectedIds: Set<string>;
   onRowSelect: (id: string, checked: boolean) => void;
   onHeaderToggle: (checked: boolean, visibleIds: string[]) => void;
+  selectedStatuses: StatusPhase[];
 }
 
 const statuses = STATUS_ORDER;
@@ -25,7 +26,8 @@ const RequestTable: React.FC<RequestTableProps> = ({
   onStatusChange,
   selectedIds,
   onRowSelect,
-  onHeaderToggle
+  onHeaderToggle,
+  selectedStatuses
 }) => {
   const headerCbRef = React.useRef<HTMLInputElement>(null);
   const idsOnPage = React.useMemo(() => filteredData.map(r => r.id), [filteredData]);
@@ -104,7 +106,12 @@ const RequestTable: React.FC<RequestTableProps> = ({
           </tr>
         </thead>
         <tbody>
-          {filteredData.map((entry, index) => (
+          {filteredData
+            .filter(entry => {
+              const status = (entry.status ?? "New") as StatusPhase;
+              return selectedStatuses.includes(status);
+            })
+            .map((entry, index) => (
             <tr key={index} className="even:bg-gray-50 dark:even:bg-gray-700">
               <td className="border px-3 py-2 dark:border-gray-700">
                 <input

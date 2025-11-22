@@ -73,6 +73,28 @@ const RequestService = () => {
   const [error, setError] = useState<string | null>(null)
   const [sortConfig, setSortConfig] = useState<{ key: keyof InterestEntry; direction: 'asc' | 'desc' } | null>(null)
   const [selectedFilter, setSelectedFilter] = useState('');
+  // Status filter state (defaults to all statuses)
+  const ALL_STATUSES: StatusPhase[] = [
+    "New",
+    "Request Filed",
+    "In Progress",
+    "Complete"
+  ];
+  const [selectedStatuses, setSelectedStatuses] = useState<StatusPhase[]>(ALL_STATUSES);
+
+  const handleStatusToggle = (status: StatusPhase) => {
+    setSelectedStatuses(prev =>
+      prev.includes(status)
+        ? prev.filter(s => s !== status)
+        : [...prev, status]
+    );
+    setPage(1);
+  };
+
+  const clearStatusFilter = () => {
+    setSelectedStatuses(ALL_STATUSES);
+    setPage(1);
+  };
   // Selection model for bulk actions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -325,6 +347,13 @@ useEffect(() => {
 
   // Client-side filtering (reintroduced)
   const filteredData = data.filter((entry) => {
+    // Status filtering
+    const status = (entry.status ?? "New") as StatusPhase;
+    if (!selectedStatuses.includes(status)) {
+      return false;
+    }
+
+    // Text search filtering
     const q = selectedFilter.toLowerCase();
     if (!q) return true;
 
@@ -444,6 +473,9 @@ useEffect(() => {
         <FilterControls
           selectedFilter={selectedFilter}
           handleFilterChange={handleFilterChange}
+          selectedStatuses={selectedStatuses}
+          onStatusToggle={handleStatusToggle}
+          clearStatusFilter={clearStatusFilter}
         />
         <select
           value={collectionFilter}
@@ -517,6 +549,7 @@ useEffect(() => {
           selectedIds={selectedIds}
           onRowSelect={handleRowSelect}
           onHeaderToggle={handleHeaderToggle}
+          selectedStatuses={selectedStatuses}
         />
       </div>
       {/* Footer Summary (duplicates above) */}
