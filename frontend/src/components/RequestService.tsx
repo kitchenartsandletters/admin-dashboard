@@ -231,8 +231,10 @@ const RequestService = () => {
 useEffect(() => {
   const fetchData = async () => {
     try {
+      const sortKey = sortConfig?.key ?? '';
+      const sortDir = sortConfig?.direction ?? '';
       const res = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL}/api/interest?token=${import.meta.env.VITE_ADMIN_TOKEN}&collection_filter=${collectionFilter}&page=${page}&limit=${limit}&search=${encodeURIComponent(selectedFilter)}`
+        `${import.meta.env.VITE_API_BASE_URL}/api/interest?token=${import.meta.env.VITE_ADMIN_TOKEN}&collection_filter=${collectionFilter}&page=${page}&limit=${limit}&search=${encodeURIComponent(selectedFilter)}&sort=${sortKey}&direction=${sortDir}`
       );
       let json: any;
       try {
@@ -276,7 +278,7 @@ useEffect(() => {
   };
 
   fetchData();
-}, [collectionFilter, page, limit, selectedFilter]);
+}, [collectionFilter, page, limit, selectedFilter, sortConfig]);
 
   useEffect(() => {
     try {
