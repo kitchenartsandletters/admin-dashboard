@@ -71,8 +71,31 @@ const RequestService = () => {
   const [data, setData] = useState<InterestEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [sortConfig, setSortConfig] = useState<{ key: keyof InterestEntry; direction: 'asc' | 'desc' } | null>(null)
-  const [selectedFilter, setSelectedFilter] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ key: keyof InterestEntry; direction: 'asc' | 'desc' } | null>(() => {
+    try {
+      const saved = localStorage.getItem("sortConfig");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  });
+  useEffect(() => {
+    try {
+      if (sortConfig) localStorage.setItem("sortConfig", JSON.stringify(sortConfig));
+      else localStorage.removeItem("sortConfig");
+    } catch {}
+  }, [sortConfig]);
+  const [selectedFilter, setSelectedFilter] = useState(() => {
+    try {
+      return localStorage.getItem("selectedFilter") || "";
+    } catch {
+      return "";
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("selectedFilter", selectedFilter);
+    } catch {}
+  }, [selectedFilter]);
   // Status filter state (defaults to all statuses)
   const ALL_STATUSES: StatusPhase[] = [
     "New",
@@ -80,7 +103,21 @@ const RequestService = () => {
     "In Progress",
     "Complete"
   ];
-  const [selectedStatuses, setSelectedStatuses] = useState<StatusPhase[]>(ALL_STATUSES);
+  const [selectedStatuses, setSelectedStatuses] = useState<StatusPhase[]>(() => {
+    try {
+      const saved = localStorage.getItem("selectedStatuses");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return ALL_STATUSES;
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("selectedStatuses", JSON.stringify(selectedStatuses));
+    } catch {}
+  }, [selectedStatuses]);
 
   const handleStatusToggle = (status: StatusPhase) => {
     setSelectedStatuses(prev =>
@@ -155,8 +192,24 @@ const RequestService = () => {
     return 'all';
   });
 
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(50); // options: 20, 50, 100
+  const [page, setPage] = useState(() => {
+    try {
+      const saved = localStorage.getItem("page");
+      return saved ? parseInt(saved, 10) : 1;
+    } catch { return 1; }
+  });
+  const [limit, setLimit] = useState(() => {
+    try {
+      const saved = localStorage.getItem("limit");
+      return saved ? parseInt(saved, 10) : 50;
+    } catch { return 50; }
+  }); // options: 20, 50, 100
+  useEffect(() => {
+    try {
+      localStorage.setItem("page", String(page));
+      localStorage.setItem("limit", String(limit));
+    } catch {}
+  }, [page, limit]);
   const [total, setTotal] = useState<number | null>(null);
 
   const showUndo = (message: string, onUndo: () => void) => {
@@ -345,27 +398,7 @@ useEffect(() => {
   console.log("Row IDs from backend:", data.map(d => d.id));
   console.log("Admin dashboard data:", data)
 
-  // Client-side filtering (reintroduced)
-  const filteredData = data.filter((entry) => {
-    // Status filtering
-    const status = (entry.status ?? "New") as StatusPhase;
-    if (!selectedStatuses.includes(status)) {
-      return false;
-    }
-
-    // Text search filtering
-    const q = selectedFilter.toLowerCase();
-    if (!q) return true;
-
-    return (
-      entry.email?.toLowerCase().includes(q) ||
-      entry.product_title?.toLowerCase().includes(q) ||
-      entry.customer_name?.toLowerCase().includes(q) ||
-      entry.isbn?.toLowerCase().includes(q)
-    );
-  });
-
-  const sortedData = filteredData;
+  const sortedData = data;
 
 
 /*
