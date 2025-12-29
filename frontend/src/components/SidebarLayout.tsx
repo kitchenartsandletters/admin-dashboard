@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X } from 'lucide-react'; // optional, you can swap icons
-import DarkModeToggle from './DarkModeToggle';
+import { useAuth } from '../auth/AuthProvider';
 
 console.log('Initial window width:', window.innerWidth);
 
@@ -10,35 +10,37 @@ const navItems = [
   {
     label: 'Request Service',
     path: '/requests',
+    roles: ['admin', 'editor'],
     children: [
-      { label: 'Blacklist', path: '/blacklist' },
-    ]
+      {
+        label: 'Blacklist',
+        path: '/blacklist',
+        roles: ['admin', 'editor'],
+      },
+    ],
   },
-  { label: 'Damaged Books', path: '/damaged' },
-  { label: 'System Status', path: '/status' },
+  {
+    label: 'Damaged Books',
+    path: '/damaged',
+    roles: ['admin', 'editor'],
+  },
+  {
+    label: 'System Status',
+    path: '/status',
+    roles: ['admin'],
+  },
+  {
+    label: 'Account',
+    path: '/account',
+    roles: ['admin', 'editor', 'user'],
+  },
 ];
 
 const SidebarLayout = ({ children }: { children: React.ReactNode }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [requestMenuOpen, setRequestMenuOpen] = useState(false);
   const location = useLocation();
-
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    return localStorage.getItem('theme') === 'dark';
-  });
-
-  const toggleDarkMode = () => {
-    setIsDarkMode(prev => {
-      const newTheme = !prev;
-      localStorage.setItem('theme', newTheme ? 'dark' : 'light');
-      if (newTheme) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-      return newTheme;
-    });
-  };
+  const { role } = useAuth();
 
   const toggleSidebar = () => {
     console.log('[Toggle] clicked');
@@ -77,6 +79,15 @@ const SidebarLayout = ({ children }: { children: React.ReactNode }) => {
     );
   }, [location.pathname]);
 
+  const visibleNavItems = navItems
+    .filter(item => role && item.roles.includes(role))
+    .map(item => ({
+      ...item,
+      children: item.children?.filter(
+        child => role && child.roles.includes(role)
+      ),
+    }));
+
     const sidebarClass = `
         fixed z-40 top-0 left-0 h-full w-64 bg-white dark:bg-gray-800 shadow-lg transform transition-transform duration-300 ease-in-out min-w-64
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -95,7 +106,7 @@ const SidebarLayout = ({ children }: { children: React.ReactNode }) => {
           </button>
         </div>
         <nav className="flex flex-col p-4 gap-2">
-          {navItems.map(({ label, path, children }) => (
+          {visibleNavItems.map(({ label, path, children }) => (
             <div key={path}>
               {label === 'Request Service' ? (
                 <div
@@ -136,9 +147,6 @@ const SidebarLayout = ({ children }: { children: React.ReactNode }) => {
             </div>
           ))}
         </nav>
-        <div className="mt-auto p-4 border-t dark:border-gray-700">
-            <DarkModeToggle isDarkMode={isDarkMode} setIsDarkMode={toggleDarkMode} />
-        </div>
       </aside>
 
       {/* Overlay for mobile */}

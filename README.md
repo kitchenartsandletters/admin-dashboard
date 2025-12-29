@@ -21,6 +21,382 @@ The Admin Dashboard is designed to support modular services. Each service is ren
 
 ---
 
+## 🔐 Authentication & Access Control  
+### Phase 1A — Supabase Auth Integration (Completed)
+
+> **Phase Status:** ✅ Phase 1 complete (Auth, Access Control, Identity v1)
+
+The Admin Dashboard has transitioned from a single shared Basic Auth gate to a **role-aware, user-based authentication model** built on **Supabase Auth**.
+
+A **dedicated Supabase project** (`kal-admin-dashboard`) is now the canonical source of truth for:
+- authentication
+- user identity
+- role assignment
+- session lifecycle
+
+This establishes a secure foundation for fine-grained access control across all Admin Dashboard modules.
+
+---
+
+### 🎯 Design Goals
+
+- Eliminate shared credentials
+- Support multiple admins concurrently
+- Enable role-based access (admin / editor / user)
+- Distinguish **authentication** from **authorization**
+- Allow local development without Railway dependency
+- Keep Phase 1A focused on correctness, not polish
+
+---
+
+## 🧩 Auth Model Overview
+
+### Supported Login Methods
+- **Primary:** Email + password
+- **Secondary:** Email magic link
+- **Not supported:** Public signups, OAuth providers (for now)
+
+All users are **invited explicitly** by an Admin via the Supabase UI.  
+There are **no public signups** for the Admin Dashboard.
+
+---
+
+### User Lifecycle States
+
+The system intentionally distinguishes between three states:
+
+1. **Unauthenticated**
+   - No Supabase session
+   - Redirected to `/login`
+
+2. **Authenticated but Unprovisioned**
+   - Supabase `auth.users` row exists
+   - No matching row in `public.profiles`
+   - User is blocked with an explicit message:
+     > “Account not fully provisioned. Please contact an administrator.”
+
+3. **Authenticated + Provisioned**
+   - Supabase auth session
+   - `profiles` row exists
+   - Role resolved
+   - Dashboard access granted
+
+This separation prevents partially onboarded users from accessing any Admin UI.
+
+---
+
+## 🗄️ Database Model (Auth)
+
+### `profiles` table
+
+- Primary key: `id` (UUID)
+- Foreign key: `auth.users.id`
+- Roles stored as string enum:
+  - `admin`
+  - `editor`
+  - `user`
+
+```
+profiles
+──────────────
+id (uuid, pk)
+email (text)
+display_name (text)
+role (text)
+is_active (bool)
+notes (text)
+created_at
+updated_at
+```
+
+> **Phase 1A note:**  
+> No Row-Level Security (RLS) policies are enforced yet.  
+> This will be revisited once UI-level role enforcement is complete.
+
+---
+
+## 🔄 Auth Flow Summary
+
+1. User visits `/login`
+2. User signs in via:
+   - email + password **or**
+   - magic link
+3. Supabase session is established
+4. `AuthProvider` hydrates session on load
+5. App fetches `profiles` row
+6. One of three outcomes:
+   - Redirect to dashboard (success)
+   - “Account not fully provisioned” screen
+   - Redirect back to `/login` (unauthenticated)
+
+### Logout
+- Implemented via `supabase.auth.signOut()`
+- Clears session
+- User is returned to `/login`
+
+---
+
+## 🧪 Local Development (Auth)
+
+Auth can be fully tested **locally**, without Railway.
+
+### Required Frontend Env Vars
+
+```
+VITE_SUPABASE_URL=https://<project>.supabase.co
+VITE_SUPABASE_ANON_KEY=<public anon key>
+```
+
+- Env file may be `.env` or `.env.local`
+- Must live in `frontend/`
+- Vite requires restart after env changes
+
+### Known Setup Issues (Resolved)
+
+- Missing named exports from `supabase.ts`
+- Env var typos (`VITE_SUPABASE_ANON_KEY`)
+- Duplicate Supabase client instances
+- Login page not redirecting after successful auth
+- Blank page caused by missing `/` route
+- Auth state updating correctly but UI not navigating
+
+---
+
+## 🧱 Architecture Snapshot (Current)
+
+As of this snapshot:
+
+- **Frontend**
+  - Vite + React + TypeScript
+  - Tailwind CSS (dark mode supported)
+  - Supabase Auth integration complete
+  - Protected routing in place
+  - Logout implemented
+
+- **Backend**
+  - FastAPI services unchanged
+  - Still token-protected internally
+  - Access now gated by authenticated UI
+
+- **Database**
+  - Supabase Postgres
+  - `profiles` table live
+  - No RLS yet (intentional)
+
+- **UI State**
+  - Sidebar and routes mounted
+  - Role-based sidebar filtering enforced (admin / editor / user)
+  - Logout available globally in header
+  - Account management intentionally deferred
+  - `/welcome` is now the neutral default landing page for `user` role accounts.
+  - `/requests` is restricted to `admin` and `editor` roles via route-level enforcement.
+  - Direct URL access is now authoritatively blocked by role
+  - Sidebar and router-level enforcement are fully consistent
+
+---
+
+## ✅ Phase 1 Completion Snapshot (Locked)
+
+Phase 1 establishes a **production‑grade authentication and authorization foundation** for the Admin Dashboard.
+
+**What Phase 1 definitively delivers:**
+
+- Supabase Auth fully integrated (password + magic link)
+- No public signups; invite‑only access
+- Canonical `profiles` table keyed to `auth.users`
+- Clear separation of:
+  - authentication
+  - provisioning
+  - authorization
+- Role model locked: `admin`, `editor`, `user`
+- Route‑level role enforcement (authoritative)
+- Sidebar visibility aligned with router enforcement
+- Neutral `/welcome` entry point for limited users
+- `/requests` no longer acts as an implicit gateway
+- `/account` page for identity + preferences (non‑privileged)
+- Password self‑service via Supabase Auth
+- Logout globally available
+- Auth hydration hardened (no unauthorized flashes)
+- Shared `AuthLoading` gating for consistent UX
+- Stable Fast Refresh / DX (no HMR invalidation warnings)
+
+> ⚠️ Phase 1 is **feature‑complete and locked**.  
+> Future work must not weaken or bypass these guarantees.
+
+---
+
+## 🛣️ Roadmap
+
+### Phase 1A (Completed)
+- Supabase Auth integration
+- Password + magic link login
+- No public signups
+- Profile + role model
+- Missing-profile enforcement
+- Logout
+
+---
+
+### Phase 1A.3 (Completed)
+- Sidebar filtering by role
+- Editor access limited to Requests, Damaged Books, Blacklist
+- User access no longer includes Requests; users land on `/welcome`
+- Sidebar filtering and route-level enforcement are now aligned
+- Global logout button added to header
+
+---
+
+### Phase 1B (Completed)
+
+Phase 1B is split into the following ordered sub-phases:
+
+- **Phase 1B.1 — Route-level role enforcement** (**Completed**)
+- **Phase 1B.2 — Role-aware default landing** (**Completed**)
+- **Phase 1B.2b — Welcome page (neutral dashboard entry)** (**Completed**)
+- **Phase 1B.2c — Requests lockdown** (**Completed**)
+- **Phase 1B.3 — `/account` page (identity & preferences)**
+- **Phase 1B.4 — Auth UX polish**
+
+#### Phase 1B.1 — Route-level role enforcement (**Completed**)
+- Sidebar filtering is not authoritative: users can still access restricted routes directly via URL.
+- Direct URL navigation must be blocked based on user role.
+- Introduce `requiredRoles` prop on `ProtectedRoute` components to enforce access control at the route level.
+- **Note:** `user` role is now blocked from `/requests`, `/damaged`, and `/status` at the router level (manual URL access returns Unauthorized).
+
+#### Phase 1B.2 — Role-aware default landing (**Completed**)
+- Default route resolution now lands on `/requests` for admin/editor, `/welcome` for user.
+- Routing is resolved centrally; LoginPage no longer performs hard redirects.
+- Admin/editor default → `/requests`
+- User default → `/welcome`
+
+#### Phase 1B.2b — Welcome page (neutral dashboard entry) (**Completed**)
+- Introduced a role-agnostic Welcome page inside the Admin Dashboard.
+- Welcome page now acts as the primary dashboard surface for `user` role accounts.
+- Contains no operational modules; safe landing for limited-access users.
+- Decouples dashboard entry from the Request Service.
+- Contains no permissions logic and no operational functionality.
+
+### Phase 1B.2c — Requests lockdown (**Completed**)
+- `/requests` is no longer accessible to `user`
+- Sidebar visibility and router enforcement are fully consistent
+- Removes implicit 'gateway' behavior from Requests
+
+#### Phase 1B.3 — `/account` page (identity & preferences)
+
+The `/account` page is a self-service identity and preferences surface for authenticated users.  
+It does **not** participate in routing, permissions, onboarding, or access recovery.
+
+**Non-goals**
+- No role or permission management
+- No routing or landing logic
+- No admin user management
+- No access request or escalation workflows
+
+Authorization remains exclusively enforced at the router level via `ProtectedRoute`.
+
+##### Phase 1B.3a — Route + shell
+- Introduce `/account` route wrapped in `ProtectedRoute`
+- Accessible to all authenticated roles (`admin`, `editor`, `user`)
+- Render basic page layout with empty sections
+- No Supabase writes
+- No redirects or mutations
+
+_Status: 🧱 Scaffold_
+
+##### Phase 1B.3b — Read-only identity panel
+- Display authenticated user identity:
+  - Email (from Supabase session)
+  - Role (from `profiles`)
+  - Account status
+- Role displayed as read-only with copy clarifying admin-managed access
+- No mutation actions
+
+_Status: ⚠️ Beta (read-only)_
+
+##### Phase 1B.3c — Preferences (Dark Mode relocation)
+- Move `DarkModeToggle` from global header into `/account`
+- Persist existing behavior (localStorage + `html.dark`)
+- Header remains limited to navigation + logout
+
+_Status: ✅ Production-ready_
+
+##### Phase 1B.3d — Password management (**Completed**)
+- Users can change their password via Supabase Auth
+- Inline form with validation (password match required)
+- Success and error feedback surfaced directly from Supabase
+- No routing changes, no forced logout
+- Session remains active after password change
+
+_Status: ✅ Production‑ready (v1)_
+
+##### Phase 1B.3e — Email change (deferred / future)
+- Allow users to initiate email address changes
+- Requires Supabase email confirmation flow
+- Must clearly indicate pending / unverified state
+- Needs careful UX to avoid account lockout
+
+_Status: 💤 Deferred (not implemented in Phase 1B)_
+
+> **Phase 1B Status:** ✅ Complete  
+> Access control, routing, identity, and preferences are stable and production‑ready.
+
+---
+
+### Phase 1C — Auth Hardening & DX (Completed)
+
+Phase 1C focused on correctness, stability, and developer experience.
+
+**Delivered:**
+- Tightened auth hydration lifecycle
+- Eliminated “account not provisioned” flash during navigation
+- Centralized auth loading states
+- Removed redirect logic from LoginPage
+- Centralized default landing via router
+- Stable `AuthProvider` exports (Fast Refresh safe)
+- Consistent auth gating across:
+  - `ProtectedRoute`
+  - `DefaultRedirect`
+  - `/welcome`
+  - `/account`
+
+> **Phase 1C Status:** ✅ Complete
+
+---
+
+## 🚫 Explicit Non‑Goals of Phase 1
+
+The following are **intentionally not part of Phase 1**:
+
+- Admin UI for managing users or roles
+- Invite flows outside Supabase UI
+- Email address change (deferred)
+- MFA
+- Audit log UI
+- Row‑level security (RLS)
+- Fine‑grained permission matrices
+- Self‑service role escalation
+- Public authentication or OAuth providers
+
+These will be evaluated in **Phase 2+** only after Phase 1 stability is preserved in production.
+
+---
+
+### Phase 2+
+- MFA
+- Admin user management UI
+- Invite management flows
+- Audit & activity logs
+- Optional RLS enforcement
+- Permission matrices (if needed)
+
+---
+
+## 🔒 Legacy Auth (Deprecated)
+
+The original env-based Basic Auth gate is now considered **deprecated** and will be fully removed once Phase 1A.3 is complete and deployed.
+
+---
+
 ## 🌗 Dark Mode Support
 
 The admin dashboard supports dark mode via Tailwind CSS and a custom toggle component.
@@ -397,8 +773,13 @@ VITE_API_BASE_URL=http://localhost:8000
 
 ## 🧩 Next Steps
 
+### Phase 2 — Admin & Governance (Upcoming)
 
-## #request-service
+- Admin user management UI (invites, roles)
+- Audit & activity logs
+- Optional RLS enforcement
+- MFA (selective, admin‑first)
+- Permission matrices (only if proven necessary)
 
 -✅ Recently Completed
 - Added Shopify frontend **customer name** field alongside email; payload now includes `customer_name`.
@@ -478,7 +859,6 @@ VITE_API_BASE_URL=http://localhost:8000
     - product.handle
     - variant.id
 
-
 ---
 
 ## 🎨 Tailwind Style Guide
@@ -499,3 +879,15 @@ All services and shared components should conform to the following Tailwind conv
   - Use `border-t border-gray-200 dark:border-gray-700` on rows to visually separate them.
   - Apply `even:bg-gray-50 dark:even:bg-gray-800` to alternate row backgrounds for readability.
   - Use `border` or `border-r` on `<td>` elements for vertical column delineation.
+## 🔒 Phase 1 Lock
+
+This README reflects the **final locked state of Phase 1**.
+
+Any future changes to authentication, routing, or access control must:
+1. Preserve all Phase 1 guarantees
+2. Be explicitly documented as Phase 2+ work
+3. Avoid regressions in role enforcement or auth hydration
+
+_Last updated: Phase 1 complete_
+
+---
