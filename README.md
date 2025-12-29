@@ -879,15 +879,34 @@ All services and shared components should conform to the following Tailwind conv
   - Use `border-t border-gray-200 dark:border-gray-700` on rows to visually separate them.
   - Apply `even:bg-gray-50 dark:even:bg-gray-800` to alternate row backgrounds for readability.
   - Use `border` or `border-r` on `<td>` elements for vertical column delineation.
-## 🔒 Phase 1 Lock
+---
+## 🔒 Phase 1 Lock (Final)
 
-This README reflects the **final locked state of Phase 1**.
+This README reflects the **final, production‑locked state of Phase 1** of the Admin Dashboard.
 
-Any future changes to authentication, routing, or access control must:
-1. Preserve all Phase 1 guarantees
-2. Be explicitly documented as Phase 2+ work
-3. Avoid regressions in role enforcement or auth hydration
+**Phase 1 guarantees are now frozen**, including:
+- Supabase‑based authentication (password + magic link)
+- Invite‑only access (no public signups)
+- Canonical `profiles` table keyed to `auth.users`
+- Three‑state user lifecycle (unauthenticated / unprovisioned / provisioned)
+- Role model: `admin`, `editor`, `user`
+- Authoritative route‑level role enforcement
+- Sidebar visibility fully aligned with router enforcement
+- Neutral `/welcome` landing for limited users
+- `/requests` restricted to `admin` and `editor`
+- `/account` self‑service page (identity, preferences, password)
+- Hardened auth hydration (no unauthorized flashes)
+- Stable DX (Fast Refresh safe, no auth reload flicker)
 
-_Last updated: Phase 1 complete_
+**From this point forward:**
+1. No changes may weaken or bypass Phase 1 auth or access guarantees.
+2. Any auth, routing, or permission changes must be explicitly scoped as **Phase 2+** work.
+3. Phase 1 behavior is the baseline for all future development and production validation.
+
+**Git state**
+- Phase 1 is considered complete and locked as of the latest commit on the `development` branch.
+- All future work must preserve Phase 1 invariants.
+
+_Last updated: Phase 1 fully complete and locked_
 
 ---

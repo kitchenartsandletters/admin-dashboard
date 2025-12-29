@@ -99,6 +99,15 @@ const SidebarLayout = ({ children }: { children: React.ReactNode }) => {
       <aside
         className={sidebarClass}
       >
+        <div className="flex justify-center items-center py-6">
+          <Link to="/welcome" onClick={closeSidebar}>
+            <img
+              src="https://rcrfakzdutwiuxsmsbkr.supabase.co/storage/v1/object/public/Images/KALInitialsOnly.png"
+              alt="Kitchen Arts & Letters"
+              className="h-16 w-auto"
+            />
+          </Link>
+        </div>
         <div className="flex items-center justify-between px-4 py-4 border-b dark:border-gray-700 md:hidden">
           <h2 className="text-xl font-bold">Menu</h2>
           <button onClick={closeSidebar}>
@@ -108,31 +117,23 @@ const SidebarLayout = ({ children }: { children: React.ReactNode }) => {
         <nav className="flex flex-col p-4 gap-2">
           {visibleNavItems.map(({ label, path, children }) => (
             <div key={path}>
-              {label === 'Request Service' ? (
-                <div
-                  onClick={() => {
-                    // toggle submenu visibility only if not already on child route
-                    if (!location.pathname.startsWith('/blacklist')) {
-                      setRequestMenuOpen(prev => !prev);
-                    }
-                  }}
-                  className={`px-3 py-2 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all
-                    ${location.pathname === path || location.pathname.startsWith('/blacklist') ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
-                >
-                  <Link to={path}>
-                    {label}
-                  </Link>
-                </div>
-              ) : (
-                <Link
-                  to={path}
-                  onClick={closeSidebar}
-                  className={`px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-all
-                    ${location.pathname === path ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
-                >
-                  {label}
-                </Link>
-              )}
+              <Link
+                to={path}
+                onClick={() => {
+                  if (children?.length) {
+                    setRequestMenuOpen(prev => !prev);
+                  } else {
+                    closeSidebar();
+                  }
+                }}
+                className={`px-3 py-2 rounded block transition-all hover:bg-gray-100 dark:hover:bg-gray-700
+                  ${location.pathname === path ||
+                    (path === '/requests' && location.pathname.startsWith('/blacklist'))
+                    ? 'bg-gray-200 dark:bg-gray-700 font-semibold'
+                    : ''}`}
+              >
+                {label}
+              </Link>
               {label === "Request Service" && requestMenuOpen && children?.map(child => (
                 <Link
                   key={child.path}
