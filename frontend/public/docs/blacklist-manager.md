@@ -39,8 +39,4 @@ If you have multiple barcodes or product IDs to add:
 - The system will iterate through them and attempt to add each.
 - If a barcode is invalid or does not resolve to a product, it will be skipped.
 
-GITHUB WORKFLOW
-
-The Export Blacklist Snippet in Github Actions requires the same ${BLACKLIST_API_BASE}/api/blacklist/export_snippet?token=${ADMIN_API_TOKEN} to run. It is currently set to run every day at midnight.
-
 ⚠️ Reminder: “Export to Shopify” must be clicked to publish changes to Shopify. This applies to adding or removing entries.
