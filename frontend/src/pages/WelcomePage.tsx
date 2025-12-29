@@ -8,7 +8,7 @@ export default function WelcomePage() {
   return (
     <div className="p-8">
       <h1 className="text-2xl font-semibold mb-4">
-        Welcome to the Admin Dashboard
+        Welcome to the KAL Admin Dashboard
       </h1>
 
       <p className="text-gray-600 mb-6">

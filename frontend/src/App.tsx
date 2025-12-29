@@ -11,8 +11,47 @@ import WelcomePage from './pages/WelcomePage';
 import AccountPage from './pages/AccountPage';
 import { supabase } from './lib/supabase';
 import DefaultRedirect from './auth/DefaultRedirect';
+import { useState, useEffect } from 'react';
 
 const App = () => {
+  // 1. Logic for the ticking clock
+  const [dateTime, setDateTime] = useState({ date: "", time: "" });
+
+  useEffect(() => {
+    // Formatter for: Monday, December 29, 2025
+    const dateOptions: Intl.DateTimeFormatOptions = {
+      timeZone: 'America/New_York',
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    };
+
+    // Formatter for: 5:03:29 PM (hour: 'numeric' removes the leading zero)
+    const timeOptions: Intl.DateTimeFormatOptions = {
+      timeZone: 'America/New_York',
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    };
+
+    const dateFormatter = new Intl.DateTimeFormat('en-US', dateOptions);
+    const timeFormatter = new Intl.DateTimeFormat('en-US', timeOptions);
+
+    const updateDateTime = () => {
+      const now = new Date();
+      setDateTime({
+        date: dateFormatter.format(now),
+        time: timeFormatter.format(now),
+      });
+    };
+
+    updateDateTime();
+    const timer = setInterval(updateDateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <AuthProvider>
       <Router>
@@ -29,7 +68,15 @@ const App = () => {
                   {/* Global header (shown across all pages) */}
                   <div className="bg-white dark:bg-gray-900">
                     <header className="flex items-center justify-between px-4 py-4 border-b dark:border-gray-800">
-                      <h1 className="text-xl md:text-2xl font-semibold">Admin Dashboard</h1>
+                      {/* Two-line Header */}
+                      <div className="flex flex-col">
+                        <span className="text-xs md:text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          {dateTime.date || "Loading..."}
+                        </span>
+                        <span className="text-xl md:text-2xl font-bold font-mono tabular-nums text-gray-900 dark:text-white">
+                          {dateTime.time}
+                        </span>
+                      </div>
                       <button
                         onClick={() => supabase.auth.signOut()}
                         className="text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
