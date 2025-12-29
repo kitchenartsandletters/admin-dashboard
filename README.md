@@ -932,6 +932,206 @@ This README reflects the **final, production‑locked state of Phase 1** of the 
 - Phase 1 is considered complete and locked as of the latest commit on the `development` branch.
 - All future work must preserve Phase 1 invariants.
 
-_Last updated: Phase 1 fully complete and locked_
+_Last updated: December 29, 2025 - Phase 1 fully complete and locked_
 
 ---
+# Appendix — Reports Module (Phase 1 Scope)
+
+## 📊 Reports Module — Phase 1 Scope (Locked)
+
+### 🔒 Phase 1 Lock Statement
+
+**Reports Phase 1 is strictly control-only**: the Admin Dashboard provides only a trigger interface for existing reports.
+No report output rendering, persistence of results, or scheduling UI is included in Phase 1.
+The scope for Reports Phase 1 is **explicitly locked** and will not expand until a future phase.
+
+### ⚙️ Execution Model (Phase 1 — Locked)
+
+- **Manual trigger only:** Reports may only be run on demand by authorized users via the Admin Dashboard; no new scheduling or automation is introduced.
+- **Delivery via existing email workflows:** All report outputs are delivered exclusively through the current email channels (CSV/PDF attachments).
+- **sr-ops-suite remains execution engine:** All report logic and execution continues to run in the `sr-ops-suite` repository; the Admin Dashboard does not execute or render reports directly.
+- **Admin Dashboard only sends authenticated trigger requests:** The dashboard issues authenticated HTTP requests to trigger reports; it does not perform any report processing.
+- **Cron jobs remain unchanged and authoritative:** Existing scheduled (cron) executions of reports are not affected and remain the official mechanism for regular report delivery.
+
+### 🚫 Explicit Non-Goals (Phase 1)
+
+- No UI rendering of report outputs
+- No report history or run log
+- No report parameter expansion beyond date range
+- No scheduling or scheduling UI
+
+### 🎯 Phase 1 Goal
+
+Enable authorized staff to **manually trigger existing reports on demand**, with
+basic parameter overrides (initially date range), while preserving all current
+cron-based behavior and delivery mechanisms.
+
+---
+
+## 🧠 Design Principles (Phase 1)
+
+- Reports are **jobs**, not views
+- AD is a **trigger + audit surface**, not a data renderer
+- Existing cron logic remains the source of truth
+- Manual runs must behave identically to scheduled runs, aside from inputs
+- No refactors unless required to support parameter overrides
+
+---
+
+## 🧪 Phase 1 Test Subjects (Concrete Reports)
+
+Phase 1 will be built and validated against the following existing scripts,
+currently housed in the `sr-ops-suite` repository and deployed independently
+on Railway:
+
+### 1. Daily Sales Report
+
+**Script:** `daily_sales_report.py`  
+**Outputs:**
+- CSV (product-level aggregation)
+- PDF (formatted report)  
+**Delivery:** Email (Mailtrap)
+
+**Current behavior:**
+- Runs on business days only
+- Uses a strict ET-based reporting window
+- Aggregates Shopify orders, inventory, collections, and attributes
+
+**Phase 1 manual trigger additions:**
+- Override start and end date
+- Preserve all existing enrichment, bucketing, and delivery logic
+
+---
+
+### 2. Weekly Maintenance Report
+
+**Script:** `weekly_maintenance_report.py`  
+**Outputs:**
+- Three CSVs:
+  - Negative inventory with no unfulfilled orders
+  - Published to Online Store but not in any collection
+  - OOS / negative with unfulfilled orders and not in Preorder  
+**Delivery:** Email (Mailtrap)
+
+**Current behavior:**
+- Intended for weekly cron execution
+- Operates independently of business calendar logic
+
+**Phase 1 manual trigger additions:**
+- Allow on-demand execution
+- No changes to report logic or classification rules
+
+---
+
+### 3. LOP Unfulfilled Orders Report
+
+**Script:** `lop_unfulfilled_report.py`  
+**Outputs:**
+- CSV with:
+  - Section A: detailed order/product rows
+  - Section B: summarized product quantities
+
+**Current behavior:**
+- Anchored to most recent order tagged `LOP`
+- Collects unfulfilled / partially fulfilled shipping orders
+
+**Phase 1 manual trigger additions:**
+- Allow staff to trigger manually
+- Preserve existing LOP anchor logic
+
+---
+
+## 🔌 Execution Model (Phase 1)
+
+### sr-ops-suite remains the execution engine
+
+- All reports continue to live and execute in `sr-ops-suite`
+- Cron jobs remain unchanged and active
+- Admin Dashboard does **not** run report logic directly
+
+### New capability: Manual trigger endpoint
+
+`sr-ops-suite` will expose a thin HTTP interface for manual runs, e.g.:
+
+```
+POST /reports/{report_id}/run
+```
+
+Payload (initial shape):
+
+```json
+{
+  "start_date": "YYYY-MM-DD",
+  "end_date": "YYYY-MM-DD",
+  "triggered_by": "<admin_dashboard_user_id>",
+  "trigger_source": "admin_dashboard"
+}
+```
+
+- Authentication via shared secret (Phase 1)
+- Cron jobs and manual triggers call the **same internal functions**
+
+---
+
+## 🔐 Access Control (Phase 1)
+
+- `admin`: can trigger all reports
+- `editor`: can trigger operational reports
+- `user`: no access to Reports module
+
+Access is enforced at:
+- Sidebar visibility
+- Route level
+- Trigger action
+
+---
+
+## 🖥️ Admin Dashboard UX (Phase 1)
+
+The Reports module will initially provide:
+
+- A list of available reports
+- A short description per report
+- A “Run” action
+- A modal for entering parameters (date range)
+
+Upon successful trigger:
+- User receives immediate confirmation
+- Report results are delivered via existing email workflows
+
+No report contents are rendered in the AD in Phase 1.
+
+---
+
+## 🚫 Explicitly Out of Scope (Phase 1)
+
+- Rendering CSV or PDF contents inside the AD
+- Persisting report outputs in the database
+- Historical run dashboards
+- Scheduling UI
+- Report parameter dimensions beyond date range
+- Refactoring existing report logic for structure or performance
+
+---
+
+## 🔜 Future Phases (Indicative, Not Committed)
+
+Possible later enhancements include:
+
+- Persistent report run history
+- Inline viewing and download of report outputs
+- Expanded parameterization (markets, channels, filters)
+- Saved configurations and recurring manual runs
+- Execution logs and error surfaces
+
+### Email Delivery Personalization (Phase 2)
+
+- **Manual report executions triggered from the Admin Dashboard will override cron-based or env-var-configured email recipients.**
+  - When an admin manually runs a report via the AD, the report output will be delivered to the triggering Admin Dashboard user's email address (as determined by their Supabase auth email).
+  - Existing cron-based or environment-configured email recipients will be used **only** for scheduled (cron) executions.
+- **This behavior applies to Phase 2 only.**  
+  - Phase 1 continues to deliver all reports (manual or scheduled) to the same cron/env recipients.
+  - Personalization of delivery is explicitly out of scope for Phase 1.
+
+These are intentionally deferred to avoid coupling Phase 1 delivery
+to long-term architectural decisions.

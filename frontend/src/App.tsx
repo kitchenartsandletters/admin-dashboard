@@ -9,6 +9,7 @@ import ProtectedRoute from './auth/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
 import WelcomePage from './pages/WelcomePage';
 import AccountPage from './pages/AccountPage';
+import ReportsPage from './reports/ReportsPage';
 import { supabase } from './lib/supabase';
 import DefaultRedirect from './auth/DefaultRedirect';
 import { useState, useEffect } from 'react';
@@ -112,6 +113,15 @@ const App = () => {
                         element={
                           <ProtectedRoute requiredRoles={['admin', 'editor']}>
                             <DamagedBooksTable />
+                          </ProtectedRoute>
+                        }
+                      />
+
+                      <Route
+                        path="/reports"
+                        element={
+                          <ProtectedRoute requiredRoles={['admin']}>
+                            <ReportsPage />
                           </ProtectedRoute>
                         }
                       />

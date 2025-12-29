@@ -30,6 +30,11 @@ const navItems = [
     roles: ['admin'],
   },
   {
+    label: 'Reports',
+    path: '/reports',
+    roles: ['admin'],
+  },
+  {
     label: 'Account',
     path: '/account',
     roles: ['admin', 'editor', 'user'],
