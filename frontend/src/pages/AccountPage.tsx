@@ -139,7 +139,11 @@ export default function AccountPage() {
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
-            className="w-full rounded-md border px-3 py-2 text-sm"
+            className="w-full rounded-md border px-3 py-2 text-sm
+  bg-white text-gray-900 caret-gray-900
+  dark:bg-gray-900 dark:text-gray-100 dark:caret-gray-100
+  border-gray-300 dark:border-gray-700
+  focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-gray-600"
           />
         </div>
 
@@ -151,7 +155,11 @@ export default function AccountPage() {
             type="password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            className="w-full rounded-md border px-3 py-2 text-sm"
+            className="w-full rounded-md border px-3 py-2 text-sm
+  bg-white text-gray-900 caret-gray-900
+  dark:bg-gray-900 dark:text-gray-100 dark:caret-gray-100
+  border-gray-300 dark:border-gray-700
+  focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-gray-600"
           />
         </div>
 

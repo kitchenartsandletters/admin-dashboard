@@ -361,6 +361,30 @@ Phase 1C focused on correctness, stability, and developer experience.
 
 > **Phase 1C Status:** ✅ Complete
 
+### Phase 1C.x — Sidebar & Account UX Polish (Completed)
+
+This mini‑phase focused on visual consistency, usability, and accessibility improvements
+without altering any auth, routing, or permission guarantees.
+
+**Delivered:**
+- Sidebar logo added (centered, clickable, routes to `/welcome`)
+- Logo served from public Supabase Storage (no client auth dependency)
+- Sidebar navigation normalized so all top‑level items use the same `<Link>` semantics
+- Removed inconsistent padding and hover behavior from Request Service
+- Corrected active‑state logic so `/blacklist` highlights only:
+  - Request Service
+  - Blacklist sub‑item
+- Removed fragile horizontal divider under sidebar logo
+- Improved logo visual prominence
+- Fixed password field visibility in dark mode:
+  - Explicit text, caret, background, and border colors
+  - Password masking dots now visible in both themes
+- No routing, auth, or role enforcement behavior changed
+
+> **Guarantee:**  
+> These changes are purely presentational and do not affect Phase 1 access control,
+> routing authority, or authentication lifecycle.
+
 ---
 
 ## 🚫 Explicit Non‑Goals of Phase 1
@@ -897,6 +921,7 @@ This README reflects the **final, production‑locked state of Phase 1** of the 
 - `/account` self‑service page (identity, preferences, password)
 - Hardened auth hydration (no unauthorized flashes)
 - Stable DX (Fast Refresh safe, no auth reload flicker)
+- Sidebar and Account UI semantics are normalized and visually stable
 
 **From this point forward:**
 1. No changes may weaken or bypass Phase 1 auth or access guarantees.
