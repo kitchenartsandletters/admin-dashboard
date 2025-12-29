@@ -6,6 +6,7 @@ import {
   useCallback,
   useMemo,
   ReactNode,
+  useRef,
 } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
@@ -25,18 +26,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<Role | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const hasHydratedOnceRef = useRef(false);
 
   /**
    * Hydrate auth + profile state from a Supabase user.
    * Missing profile is treated as a valid but blocked state.
    */
   const hydrateFromUser = async (supabaseUser: User | null) => {
-    setAuthReady(false);
+    // Only show global loading on the very first hydration
+    if (!hasHydratedOnceRef.current) {
+      setAuthReady(false);
+    }
 
     if (!supabaseUser) {
       setUser(null);
       setRole(null);
       setAuthReady(true);
+      hasHydratedOnceRef.current = true;
       return;
     }
 
@@ -55,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setAuthReady(true);
+    hasHydratedOnceRef.current = true;
   };
 
   useEffect(() => {

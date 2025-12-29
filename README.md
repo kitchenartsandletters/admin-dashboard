@@ -530,8 +530,8 @@ Each route in the dashboard uses `SystemStatusService.ts` to call and evaluate t
 ### Frontend `.env`
 
 ```env
-ADMIN_PASS="1435lex"
-ADMIN_USER="admin"
+(deprecated) ADMIN_PASS="1435lex"
+(deprecated) ADMIN_USER="admin"
 VITE_ADMIN_TOKEN="devtesttoken123"
 VITE_API_BASE_URL="https://outofstock-notify-frontend-production.up.railway.app"
 ```
