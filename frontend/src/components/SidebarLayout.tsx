@@ -22,7 +22,7 @@ const navItems = [
   {
     label: 'Damaged Books',
     path: '/damaged',
-    roles: ['admin', 'editor'],
+    roles: ['admin', 'editor', 'user'],
   },
   {
     label: 'System Status',

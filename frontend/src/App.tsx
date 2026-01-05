@@ -111,7 +111,7 @@ const App = () => {
                       <Route
                         path="/damaged"
                         element={
-                          <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
                             <DamagedBooksTable />
                           </ProtectedRoute>
                         }
