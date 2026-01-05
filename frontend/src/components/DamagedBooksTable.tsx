@@ -95,7 +95,7 @@ export default function DamagedBooksTable() {
       <div className="flex gap-3 flex-wrap items-left">
         <input
           type="text"
-          placeholder="Search title or barcode..."
+          placeholder="Search title or handle..."
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
           className="px-3 py-2 border rounded text-sm dark:bg-gray-800 dark:text-white"
@@ -119,7 +119,7 @@ export default function DamagedBooksTable() {
               <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Condition</th>
               <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Available</th>
               <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Author</th>
-              <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Barcode</th>
+              <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Handle</th>
               <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700 cursor-pointer" onClick={() => handleSort('stock_status')}>Status</th>
               <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Shopify</th>
               <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Online</th>
