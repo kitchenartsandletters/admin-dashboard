@@ -937,7 +937,7 @@ _Last updated: December 29, 2025 - Phase 1 fully complete and locked_
 ---
 # Appendix — Reports Module (Phase 1 Scope)
 
-## 📊 Reports Module — Phase 1 Scope (Locked)
+## 📊 (Locked)
 
 ### 🔒 Phase 1 Lock Statement
 
