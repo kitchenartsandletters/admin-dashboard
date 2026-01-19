@@ -122,36 +122,28 @@ const SidebarLayout = ({ children }: { children: React.ReactNode }) => {
         <nav className="flex flex-col p-4 gap-2">
           {visibleNavItems.map(({ label, path, children }) => (
             <div key={path}>
-              {children?.length ? (
-                <button
-                  type="button"
-                  onClick={() => setRequestMenuOpen(prev => !prev)}
-                  className={`px-3 py-2 rounded text-left transition-all hover:bg-gray-100 dark:hover:bg-gray-700
-                    ${
-                      location.pathname.startsWith(path)
-                        ? 'bg-gray-200 dark:bg-gray-700 font-semibold'
-                        : ''
-                    }`}
-                >
-                  {label}
-                </button>
-              ) : (
-                <Link
-                  to={path}
-                  onClick={closeSidebar}
-                  className={`px-3 py-2 rounded block transition-all hover:bg-gray-100 dark:hover:bg-gray-700
-                    ${location.pathname === path ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
-                >
-                  {label}
-                </Link>
-              )}
+              <Link
+                to={path}
+                onClick={() => {
+                  if (children?.length) {
+                    setRequestMenuOpen(prev => !prev);
+                  } else {
+                    closeSidebar();
+                  }
+                }}
+                className={`px-3 py-2 rounded block transition-all hover:bg-gray-100 dark:hover:bg-gray-700
+                  ${location.pathname === path ||
+                    (path === '/requests' && location.pathname.startsWith('/blacklist'))
+                    ? 'bg-gray-200 dark:bg-gray-700 font-semibold'
+                    : ''}`}
+              >
+                {label}
+              </Link>
               {label === "Request Service" && requestMenuOpen && children?.map(child => (
                 <Link
                   key={child.path}
                   to={child.path}
-                  onClick={() => {
-                    if (window.innerWidth < 768) closeSidebar();
-                  }}
+                  onClick={closeSidebar}
                   className={`pl-6 py-2 block rounded text-sm transition-all transform duration-300 ease-in-out hover:bg-gray-100 dark:hover:bg-gray-700 
                     ${location.pathname === child.path ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
                 >
