@@ -23,13 +23,6 @@ const navItems = [
     label: 'Damaged Books',
     path: '/damaged',
     roles: ['admin', 'editor', 'user'],
-    children: [
-      {
-        label: 'Bulk Create',
-        path: '/damaged/bulk-create',
-        roles: ['admin'],
-      },
-    ],
   },
   {
     label: 'System Status',
@@ -51,7 +44,6 @@ const navItems = [
 const SidebarLayout = ({ children }: { children: React.ReactNode }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [requestMenuOpen, setRequestMenuOpen] = useState(false);
-  const [damagedMenuOpen, setDamagedMenuOpen] = useState(false);
   const location = useLocation();
   const { role } = useAuth();
 
@@ -92,10 +84,6 @@ const SidebarLayout = ({ children }: { children: React.ReactNode }) => {
     );
   }, [location.pathname]);
 
-  useEffect(() => {
-    setDamagedMenuOpen(location.pathname.startsWith('/damaged'));
-  }, [location.pathname]);
-
   const visibleNavItems = navItems
     .filter(item => role && item.roles.includes(role))
     .map(item => ({
@@ -134,51 +122,36 @@ const SidebarLayout = ({ children }: { children: React.ReactNode }) => {
         <nav className="flex flex-col p-4 gap-2">
           {visibleNavItems.map(({ label, path, children }) => (
             <div key={path}>
-              <Link
-                to={path}
-                onClick={(e) => {
-                  if (children?.length) {
-                    e.preventDefault();
-
-                    if (label === "Request Service") {
-                      setRequestMenuOpen(prev => !prev);
-                    } else if (label === "Damaged Books") {
-                      setDamagedMenuOpen(prev => !prev);
-                    }
-                  } else {
-                    closeSidebar();
-                  }
-                }}
-                className={`px-3 py-2 rounded block transition-all hover:bg-gray-100 dark:hover:bg-gray-700
-                  ${
-                    label === "Request Service"
-                      ? (location.pathname === path ||
-                        (path === '/requests' && location.pathname.startsWith('/blacklist')))
-                      : label === "Damaged Books"
-                      ? (location.pathname === path || location.pathname.startsWith('/damaged/'))
-                      : location.pathname === path
-                  ? 'bg-gray-200 dark:bg-gray-700 font-semibold'
-                  : ''
-                  }`}
-              >
-                {label}
-              </Link>
+              {children?.length ? (
+                <button
+                  type="button"
+                  onClick={() => setRequestMenuOpen(prev => !prev)}
+                  className={`px-3 py-2 rounded text-left transition-all hover:bg-gray-100 dark:hover:bg-gray-700
+                    ${
+                      location.pathname.startsWith(path)
+                        ? 'bg-gray-200 dark:bg-gray-700 font-semibold'
+                        : ''
+                    }`}
+                >
+                  {label}
+                </button>
+              ) : (
+                <Link
+                  to={path}
+                  onClick={closeSidebar}
+                  className={`px-3 py-2 rounded block transition-all hover:bg-gray-100 dark:hover:bg-gray-700
+                    ${location.pathname === path ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
+                >
+                  {label}
+                </Link>
+              )}
               {label === "Request Service" && requestMenuOpen && children?.map(child => (
                 <Link
                   key={child.path}
                   to={child.path}
-                  onClick={closeSidebar}
-                  className={`pl-6 py-2 block rounded text-sm transition-all transform duration-300 ease-in-out hover:bg-gray-100 dark:hover:bg-gray-700 
-                    ${location.pathname === child.path ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
-                >
-                  {child.label.replace("Form ", "")}
-                </Link>
-              ))}
-              {label === "Damaged Books" && damagedMenuOpen && children?.map(child => (
-                <Link
-                  key={child.path}
-                  to={child.path}
-                  onClick={closeSidebar}
+                  onClick={() => {
+                    if (window.innerWidth < 768) closeSidebar();
+                  }}
                   className={`pl-6 py-2 block rounded text-sm transition-all transform duration-300 ease-in-out hover:bg-gray-100 dark:hover:bg-gray-700 
                     ${location.pathname === child.path ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
                 >
