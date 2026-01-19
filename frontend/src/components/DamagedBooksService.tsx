@@ -41,6 +41,26 @@ async function get<T>(path: string, params?: Record<string, string | number | bo
   return { json: await res.json() as T, countHeader };
 }
 
+async function post<TReq, TRes>(path: string, body: TReq) {
+  const res = await fetch(new URL(path, BASE), {
+    method: 'POST',
+    headers: {
+      'X-Admin-Token': ADMIN_API_TOKEN,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    credentials: 'omit',
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`${res.status} ${res.statusText}: ${text}`);
+  }
+
+  return (await res.json()) as TRes;
+}
+
 export const DamagedBooksService = {
   async listDamagedInventory(opts?: { limit?: number; in_stock?: boolean }) {
     const { json, countHeader } = await get<DamagedInventoryResponse>(
@@ -85,7 +105,20 @@ export const DamagedBooksService = {
     });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     return await res.json();
-  }
+  },
+
+  async previewBulkCreate(payload: {
+    inputs: { type: 'isbn' | 'product_id'; value: string }[];
+    inventory: { light: number; moderate: number; heavy: number };
+  }): Promise<
+    | { ok: true; preview: any[] }
+    | { ok: false; errors: { input: string; reason: string }[] }
+  > {
+    return post(
+      '/api/damaged/bulk-create/preview',
+      payload
+    );
+  },
 };
 
 export default DamagedBooksService;
