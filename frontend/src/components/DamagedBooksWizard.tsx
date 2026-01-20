@@ -1,24 +1,3 @@
-function deriveConfirmPayload(preview: PreviewItem[]) {
-  const byCanonical: Record<string, InventorySeed> = {};
-
-  for (const row of preview) {
-    if (!byCanonical[row.canonical_handle]) {
-      byCanonical[row.canonical_handle] = {
-        light: 0,
-        moderate: 0,
-        heavy: 0,
-      };
-    }
-    byCanonical[row.canonical_handle][row.condition] = row.inventory_seed;
-  }
-
-  return {
-    items: Object.entries(byCanonical).map(([canonical_handle, inventory]) => ({
-      canonical_handle,
-      inventory,
-    })),
-  };
-}
 import React, { useState } from 'react';
 import ConfirmModal from './ConfirmModal';
 import DamagedBooksService from './DamagedBooksService';
@@ -44,6 +23,7 @@ type InventorySeed = {
  * Keep this aligned with DBS response
  */
 type PreviewItem = {
+  canonical_product_id: string;
   canonical_handle: string;
   condition: 'light' | 'moderate' | 'heavy';
   title: string;
@@ -89,6 +69,20 @@ export default function DamagedBooksWizard() {
         // Everything else is treated as an explicit product_id
         return { type: 'product_id', value };
         });
+    }
+
+  /* -----------------------------
+   * Flat Mapper for Confirm Payload
+   * ----------------------------- */
+ function deriveConfirmPayload(preview: PreviewItem[]) {
+    return {
+        items: preview.map(row => ({
+        canonical_product_id: row.canonical_product_id,
+        canonical_handle: row.canonical_handle,
+        condition_key: row.condition,
+        inventory: row.inventory_seed ?? 0,
+        })),
+    };
     }
 
   /* -----------------------------

@@ -126,10 +126,15 @@ export const DamagedBooksService = {
 
   async confirmBulkCreate(payload: {
     items: {
+      canonical_product_id: string;
       canonical_handle: string;
-      inventory: { light: number; moderate: number; heavy: number };
+      condition_key: 'light' | 'moderate' | 'heavy';
+      inventory: number;
     }[];
-  }): Promise<{ ok: true; created: number } | { ok: false; error: string }> {
+  }): Promise<
+    | { ok: true; created: number }
+    | { ok: false; error: string }
+  > {
     return post('/admin/bulk-create', payload);
   },
 };
