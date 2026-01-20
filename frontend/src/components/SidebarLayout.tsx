@@ -23,6 +23,13 @@ const navItems = [
     label: 'Damaged Books',
     path: '/damaged',
     roles: ['admin', 'editor', 'user'],
+    children: [
+      {
+        label: 'Bulk Create',
+        path: '/damaged/bulk-create',
+        roles: ['admin'],
+      },
+    ],
   },
   {
     label: 'System Status',
