@@ -12,6 +12,8 @@ export interface ConfirmModalProps {
   children?: React.ReactNode;
   /** Optional text under the title (if you don't pass children) */
   description?: string;
+  /** Disable confirm button if items.length === 0 */
+  confirmDisabled?: boolean;
   /** Confirm button label */
   confirmLabel?: string;
   /** Cancel button label */
@@ -32,6 +34,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
   title,
   children,
   description,
+  confirmDisabled = false,
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   variant = 'primary',
@@ -141,7 +144,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
               type="button"
               ref={confirmBtnRef}
               onClick={onConfirm}
-              disabled={busy}
+              disabled={busy || confirmDisabled}
               className={`
                 px-3.5 py-2 rounded-lg text-white
                 focus:outline-none focus:ring-2 focus:ring-offset-0

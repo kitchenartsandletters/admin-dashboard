@@ -1,3 +1,24 @@
+function deriveConfirmPayload(preview: PreviewItem[]) {
+  const byCanonical: Record<string, InventorySeed> = {};
+
+  for (const row of preview) {
+    if (!byCanonical[row.canonical_handle]) {
+      byCanonical[row.canonical_handle] = {
+        light: 0,
+        moderate: 0,
+        heavy: 0,
+      };
+    }
+    byCanonical[row.canonical_handle][row.condition] = row.inventory_seed;
+  }
+
+  return {
+    items: Object.entries(byCanonical).map(([canonical_handle, inventory]) => ({
+      canonical_handle,
+      inventory,
+    })),
+  };
+}
 import React, { useState } from 'react';
 import ConfirmModal from './ConfirmModal';
 import DamagedBooksService from './DamagedBooksService';
@@ -23,20 +44,14 @@ type InventorySeed = {
  * Keep this aligned with DBS response
  */
 type PreviewItem = {
-  canonical: {
-    product_id: number;
-    title: string;
-    handle: string;
-  };
-  damaged_product: {
-    handle: string;
-    title: string;
-    variants: {
-      condition: 'light' | 'moderate' | 'heavy';
-      price_modifier: number;
-      inventory: number;
-    }[];
-  };
+  canonical_handle: string;
+  condition: 'light' | 'moderate' | 'heavy';
+  title: string;
+  price: string;
+  discount_pct: number;
+  inventory_seed: number;
+  sku: string;
+  barcode: string;
 };
 
 export default function DamagedBooksWizard() {
@@ -122,22 +137,14 @@ export default function DamagedBooksWizard() {
     setError(null);
 
     try {
-      /**
-       * 🔒 CONTRACT:
-       * POST /api/damaged/bulk-create/confirm
-       *
-       * Body:
-       * {
-       * confirmed: true,
-       * items: [{
-       * canonical_product_id,
-       * inventory
-       * }]
-       * }
-       *
-       * ⛔️ Stubbed for now
-       */
-      console.warn('Confirm request not yet wired', preview);
+      const payload = deriveConfirmPayload(preview);
+
+      const response = await DamagedBooksService.confirmBulkCreate(payload);
+
+      if (!response.ok) {
+        setError(response.error || 'Creation failed.');
+        return;
+      }
 
       setPreview(null);
       setRawInput('');
@@ -152,6 +159,20 @@ export default function DamagedBooksWizard() {
   /* -----------------------------
    * Render
    * ----------------------------- */
+
+  const confirmItemsCount = preview ? deriveConfirmPayload(preview).items.length : 0;
+  const confirmDisabled = busy || confirmItemsCount === 0;
+
+  // Group preview items by canonical_handle for presentational grouping
+  const groupedPreview = preview
+    ? preview.reduce<Record<string, PreviewItem[]>>((acc, item) => {
+        if (!acc[item.canonical_handle]) {
+          acc[item.canonical_handle] = [];
+        }
+        acc[item.canonical_handle].push(item);
+        return acc;
+      }, {})
+    : {};
 
   return (
     <div className="p-6 space-y-4 text-gray-900 dark:text-gray-100">
@@ -214,6 +235,7 @@ export default function DamagedBooksWizard() {
           busy={busy}
           onConfirm={handleConfirm}
           onCancel={() => setPreview(null)}
+          confirmDisabled={confirmDisabled}
         >
           <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
             {preview.length === 0 && (
@@ -221,25 +243,29 @@ export default function DamagedBooksWizard() {
                 (Preview stub — backend not yet wired)
               </p>
             )}
-            {preview.map(item => (
-              <div
-                key={item.canonical.product_id}
-                className="border rounded p-2 bg-gray-50 border-gray-200 
-                  dark:bg-gray-800 dark:border-gray-700"
-              >
-                <p className="text-gray-900 dark:text-gray-100">
-                  <strong>{item.canonical.title}</strong>
-                </p>
-                <p className="text-xs text-gray-600 dark:text-gray-400">
-                  Canonical ID: {item.canonical.product_id}
-                </p>
-                <ul className="mt-1 text-xs text-gray-800 dark:text-gray-300">
-                  {item.damaged_product.variants.map(v => (
-                    <li key={v.condition}>
-                      {v.condition}: {v.inventory} @ {v.price_modifier}%
-                    </li>
-                  ))}
-                </ul>
+            {Object.entries(groupedPreview).map(([canonical_handle, items]) => (
+              <div key={canonical_handle} className="mb-4">
+                <h3 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">{canonical_handle}</h3>
+                {items.map(item => (
+                  <div
+                    key={item.condition}
+                    className="border rounded p-2 bg-gray-50 border-gray-200 
+                      dark:bg-gray-800 dark:border-gray-700 mb-2"
+                  >
+                    <p className="text-gray-900 dark:text-gray-100">
+                      <strong>{item.title}</strong>
+                    </p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
+                      Condition: {item.condition}
+                    </p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
+                      Inventory Seed: {item.inventory_seed}
+                    </p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
+                      Discount: {item.discount_pct}%
+                    </p>
+                  </div>
+                ))}
               </div>
             ))}
           </div>

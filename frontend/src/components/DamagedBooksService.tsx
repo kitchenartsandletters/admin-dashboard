@@ -107,7 +107,7 @@ export const DamagedBooksService = {
     return await res.json();
   },
 
-  /**
+    /**
    * Preview bulk damaged-product creation
    * Zero writes. Safe to retry.
    */
@@ -118,10 +118,19 @@ export const DamagedBooksService = {
     | { ok: true; preview: any[] }
     | { ok: false; errors: { input: string; reason: string }[] }
   > {
-    return post('/admin/bulk-create', {
+    return post('/admin/bulk-create/preview', {
       ...payload,
       dry_run: true,
     });
+  },
+
+  async confirmBulkCreate(payload: {
+    items: {
+      canonical_handle: string;
+      inventory: { light: number; moderate: number; heavy: number };
+    }[];
+  }): Promise<{ ok: true; created: number } | { ok: false; error: string }> {
+    return post('/admin/bulk-create', payload);
   },
 };
 
