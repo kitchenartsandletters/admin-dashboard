@@ -118,7 +118,10 @@ export const DamagedBooksService = {
     | { ok: true; preview: any[] }
     | { ok: false; errors: { input: string; reason: string }[] }
   > {
-    return post('/api/damaged/bulk-create/preview', payload);
+    return post('/admin/bulk-create', {
+      ...payload,
+      dry_run: true,
+    });
   },
 };
 
