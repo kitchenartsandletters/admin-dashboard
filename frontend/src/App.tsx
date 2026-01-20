@@ -4,6 +4,7 @@ import RequestService from './components/RequestService';
 import SystemStatusDashboard from './components/SystemStatusDashboard'; // placeholder for now
 import DamagedBooksTable from './components/DamagedBooksTable';
 import BlacklistManager from './components/BlackListManager';
+import DamagedBooksWizard from './components/DamagedBooksWizard';
 import { AuthProvider } from './auth/AuthProvider';
 import ProtectedRoute from './auth/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
@@ -113,6 +114,15 @@ const App = () => {
                         element={
                           <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
                             <DamagedBooksTable />
+                          </ProtectedRoute>
+                        }
+                      />
+
+                      <Route
+                        path="/damaged/bulk-create"
+                        element={
+                          <ProtectedRoute requiredRoles={['admin']}>
+                            <DamagedBooksWizard />
                           </ProtectedRoute>
                         }
                       />

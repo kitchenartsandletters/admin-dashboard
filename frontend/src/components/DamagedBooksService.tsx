@@ -107,6 +107,10 @@ export const DamagedBooksService = {
     return await res.json();
   },
 
+  /**
+   * Preview bulk damaged-product creation
+   * Zero writes. Safe to retry.
+   */
   async previewBulkCreate(payload: {
     inputs: { type: 'isbn' | 'product_id'; value: string }[];
     inventory: { light: number; moderate: number; heavy: number };
@@ -114,10 +118,7 @@ export const DamagedBooksService = {
     | { ok: true; preview: any[] }
     | { ok: false; errors: { input: string; reason: string }[] }
   > {
-    return post(
-      '/api/damaged/bulk-create/preview',
-      payload
-    );
+    return post('/api/damaged/bulk-create/preview', payload);
   },
 };
 

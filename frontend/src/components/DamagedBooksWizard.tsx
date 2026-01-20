@@ -76,40 +76,40 @@ export default function DamagedBooksWizard() {
    * ----------------------------- */
 
   async function handlePreview() {
-  setError(null);
+    setError(null);
 
-  const normalized = normalizeInputs();
-  if (normalized.length === 0) {
-    setError('Please enter at least one ISBN or Product ID.');
-    return;
-  }
-
-  setInputs(normalized);
-  setBusy(true);
-
-  try {
-    const response = await DamagedBooksService.previewBulkCreate({
-      inputs: normalized,
-      inventory,
-    });
-
-    if (!response.ok) {
-      setError(
-        response.errors
-          .map(e => `${e.input}: ${e.reason}`)
-          .join(', ')
-      );
+    const normalized = normalizeInputs();
+    if (normalized.length === 0) {
+      setError('Please enter at least one ISBN or Product ID.');
       return;
     }
 
-    setPreview(response.preview);
-  } catch (err) {
-    console.error(err);
-    setError('Failed to generate preview.');
-  } finally {
-    setBusy(false);
+    setInputs(normalized);
+    setBusy(true);
+
+    try {
+      const response = await DamagedBooksService.previewBulkCreate({
+        inputs: normalized,
+        inventory,
+      });
+
+      if (!response.ok) {
+        setError(
+          response.errors
+            .map(e => `${e.input}: ${e.reason}`)
+            .join(', ')
+        );
+        return;
+      }
+
+      setPreview(response.preview);
+    } catch (err) {
+      console.error(err);
+      setError('Failed to generate preview.');
+    } finally {
+      setBusy(false);
+    }
   }
-}
 
   /* -----------------------------
    * Phase 2: Confirm + Create
@@ -128,11 +128,11 @@ export default function DamagedBooksWizard() {
        *
        * Body:
        * {
-       *   confirmed: true,
-       *   items: [{
-       *     canonical_product_id,
-       *     inventory
-       *   }]
+       * confirmed: true,
+       * items: [{
+       * canonical_product_id,
+       * inventory
+       * }]
        * }
        *
        * ⛔️ Stubbed for now
@@ -154,20 +154,22 @@ export default function DamagedBooksWizard() {
    * ----------------------------- */
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-6 space-y-4 text-gray-900 dark:text-gray-100">
       <h2 className="text-xl font-semibold">Bulk Create Damaged Books</h2>
 
       <textarea
         value={rawInput}
         onChange={e => setRawInput(e.target.value)}
         placeholder="Enter ISBNs or Product IDs (space or comma separated)"
-        className="w-full min-h-[80px] border rounded p-2 text-sm"
+        className="w-full min-h-[80px] border rounded p-2 text-sm
+          bg-white border-gray-300 placeholder-gray-400
+          dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:placeholder-gray-500"
       />
 
       <div className="grid grid-cols-3 gap-3">
         {(['light', 'moderate', 'heavy'] as const).map(level => (
           <div key={level}>
-            <label className="block text-xs uppercase mb-1">
+            <label className="block text-xs uppercase mb-1 opacity-80">
               {level} inventory
             </label>
             <input
@@ -180,19 +182,21 @@ export default function DamagedBooksWizard() {
                   [level]: Number(e.target.value),
                 })
               }
-              className="w-full border rounded px-2 py-1"
+              className="w-full border rounded px-2 py-1
+                bg-white border-gray-300
+                dark:bg-gray-800 dark:border-gray-700 dark:text-white"
             />
           </div>
         ))}
       </div>
 
-      {error && <div className="text-red-600 text-sm">{error}</div>}
+      {error && <div className="text-red-600 dark:text-red-400 text-sm">{error}</div>}
 
       <div className="flex justify-end gap-2">
         <button
           onClick={handlePreview}
           disabled={busy}
-          className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
+          className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50 hover:bg-blue-700 transition-colors"
         >
           {busy ? 'Working…' : 'Preview'}
         </button>
@@ -211,22 +215,25 @@ export default function DamagedBooksWizard() {
           onConfirm={handleConfirm}
           onCancel={() => setPreview(null)}
         >
-          <div className="space-y-3 max-h-96 overflow-y-auto">
+          <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
             {preview.length === 0 && (
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
                 (Preview stub — backend not yet wired)
               </p>
             )}
             {preview.map(item => (
               <div
                 key={item.canonical.product_id}
-                className="border rounded p-2 bg-gray-50"
+                className="border rounded p-2 bg-gray-50 border-gray-200 
+                  dark:bg-gray-800 dark:border-gray-700"
               >
-                <p><strong>{item.canonical.title}</strong></p>
-                <p className="text-xs text-gray-600">
+                <p className="text-gray-900 dark:text-gray-100">
+                  <strong>{item.canonical.title}</strong>
+                </p>
+                <p className="text-xs text-gray-600 dark:text-gray-400">
                   Canonical ID: {item.canonical.product_id}
                 </p>
-                <ul className="mt-1 text-xs">
+                <ul className="mt-1 text-xs text-gray-800 dark:text-gray-300">
                   {item.damaged_product.variants.map(v => (
                     <li key={v.condition}>
                       {v.condition}: {v.inventory} @ {v.price_modifier}%
