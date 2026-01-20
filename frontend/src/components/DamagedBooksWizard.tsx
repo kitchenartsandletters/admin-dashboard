@@ -77,14 +77,19 @@ export default function DamagedBooksWizard() {
 
   function normalizeInputs(): WizardInput[] {
     return rawInput
-      .split(/[\s,]+/)
-      .map(v => v.trim())
-      .filter(Boolean)
-      .map(value => ({
-        type: /^\d+$/.test(value) ? 'product_id' : 'isbn',
-        value,
-      }));
-  }
+        .split(/[\s,]+/)
+        .map(v => v.trim())
+        .filter(Boolean)
+        .map(value => {
+        // ISBNs are typically 10 or 13 digits
+        if (/^\d{10}(\d{3})?$/.test(value)) {
+            return { type: 'isbn', value };
+        }
+
+        // Everything else is treated as an explicit product_id
+        return { type: 'product_id', value };
+        });
+    }
 
   /* -----------------------------
    * Phase 1: Preview
