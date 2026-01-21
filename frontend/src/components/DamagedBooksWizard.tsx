@@ -158,16 +158,21 @@ export default function DamagedBooksWizard() {
 
       const response = await DamagedBooksService.confirmBulkCreate(payload);
 
+      console.log('[CONFIRM] raw response →', response);
+      console.log('[CONFIRM] response.ok →', response?.ok);
+
       if (!response.ok) {
         setError(response.error || 'Creation failed.');
         setPhase('preview');
         return;
       }
 
+      console.log('[CONFIRM] success — setting result + phase=result');
       setResult(response);
       setPhase('result');
+
     } catch (err) {
-      console.error(err);
+      console.error('[CONFIRM] exception thrown', err);
       setError('Creation failed.');
       setPhase('preview');
     } finally {
