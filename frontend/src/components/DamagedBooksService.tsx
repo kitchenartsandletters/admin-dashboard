@@ -131,11 +131,50 @@ export const DamagedBooksService = {
       condition_key: 'light' | 'moderate' | 'heavy';
       inventory: number;
     }[];
-  }): Promise<
-    | { ok: true; created: number }
-    | { ok: false; error: string }
-  > {
-    return post('/admin/bulk-create', payload);
+  }): Promise<{
+    ok: boolean;
+    summary?: {
+      created: number;
+      skipped: number;
+      errors: number;
+    };
+    items?: any[];
+    error?: string;
+  }> {
+    const res = await fetch(new URL('/admin/bulk-create', BASE), {
+      method: 'POST',
+      headers: {
+        'X-Admin-Token': ADMIN_API_TOKEN,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      credentials: 'omit',
+      body: JSON.stringify(payload),
+    });
+
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      return {
+        ok: false,
+        error: `Invalid JSON response (${res.status})`,
+      };
+    }
+
+    // 🔒 Normalize backend execution result into stable UI contract
+    if (!res.ok || data?.ok !== true) {
+      return {
+        ok: false,
+        error: data?.detail || data?.error || 'Bulk create failed',
+      };
+    }
+
+    return {
+      ok: true,
+      summary: data.summary,
+      items: data.items,
+    };
   },
 };
 
