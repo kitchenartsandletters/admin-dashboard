@@ -170,6 +170,11 @@ export default function DamagedBooksWizard() {
       console.log('[CONFIRM] success — setting result + phase=result');
       setResult(response);
       setPhase('result');
+      setInventory({
+        light: 0,
+        moderate: 0,
+        heavy: 0,
+      });
 
     } catch (err) {
       console.error('[CONFIRM] exception thrown', err);
@@ -269,11 +274,13 @@ export default function DamagedBooksWizard() {
           confirmDisabled={confirmDisabled}
         >
           <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+             {/* -----------------------------
             {preview.length === 0 && (
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 (Preview stub — backend not yet wired)
               </p>
             )}
+              ----------------------------- */}
             {Object.entries(groupedPreview).map(([canonical_handle, items]) => (
               <div key={canonical_handle} className="mb-4">
                 <h3 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">{canonical_handle}</h3>
@@ -307,9 +314,10 @@ export default function DamagedBooksWizard() {
         <ConfirmModal
           open={true}
           title="Success"
-          confirmLabel="Close"
+          confirmLabel=""
           cancelLabel=""
           busy={false}
+          confirmDisabled={true}
           onConfirm={() => {
             setPreview(null);
             setInputs([]);
@@ -326,7 +334,6 @@ export default function DamagedBooksWizard() {
             setPhase('idle');
             setError(null);
           }}
-          confirmDisabled={false}
         >
           <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
             <p className="text-green-600 dark:text-green-400 text-sm">
