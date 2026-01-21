@@ -164,6 +164,11 @@ export default function DamagedBooksWizard() {
     try {
       const payload = deriveConfirmPayload(preview);
 
+      console.log(
+        '[CONFIRM PAYLOAD]',
+        JSON.stringify(payload, null, 2)
+      );
+
       const response = await DamagedBooksService.confirmBulkCreate(payload);
 
       if (!response.ok) {
