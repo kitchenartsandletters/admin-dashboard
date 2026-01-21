@@ -34,6 +34,14 @@ type PreviewItem = {
   barcode: string;
 };
 
+type ConfirmResponse = {
+  ok: boolean;
+  message?: string;
+  error?: string;
+};
+
+type WizardPhase = 'idle' | 'preview' | 'confirming' | 'result';
+
 export default function DamagedBooksWizard() {
   /* -----------------------------
    * Core wizard state
@@ -50,6 +58,9 @@ export default function DamagedBooksWizard() {
   const [preview, setPreview] = useState<PreviewItem[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [phase, setPhase] = useState<WizardPhase>('idle');
+  const [result, setResult] = useState<ConfirmResponse | null>(null);
 
   /* -----------------------------
    * Helpers
@@ -117,6 +128,7 @@ export default function DamagedBooksWizard() {
       }
 
       setPreview(response.preview);
+      setPhase('preview');
     } catch (err) {
       console.error(err);
       setError('Failed to generate preview.');
@@ -134,6 +146,7 @@ export default function DamagedBooksWizard() {
 
     setBusy(true);
     setError(null);
+    setPhase('confirming');
 
     try {
       const payload = deriveConfirmPayload(preview);
@@ -147,14 +160,16 @@ export default function DamagedBooksWizard() {
 
       if (!response.ok) {
         setError(response.error || 'Creation failed.');
+        setPhase('preview');
         return;
       }
 
-      setPreview(null);
-      setRawInput('');
+      setResult(response);
+      setPhase('result');
     } catch (err) {
       console.error(err);
       setError('Creation failed.');
+      setPhase('preview');
     } finally {
       setBusy(false);
     }
@@ -189,6 +204,7 @@ export default function DamagedBooksWizard() {
         className="w-full min-h-[80px] border rounded p-2 text-sm
           bg-white border-gray-300 placeholder-gray-400
           dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:placeholder-gray-500"
+        disabled={phase !== 'idle'}
       />
 
       <div className="grid grid-cols-3 gap-3">
@@ -210,6 +226,7 @@ export default function DamagedBooksWizard() {
               className="w-full border rounded px-2 py-1
                 bg-white border-gray-300
                 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+              disabled={phase !== 'idle'}
             />
           </div>
         ))}
@@ -220,17 +237,17 @@ export default function DamagedBooksWizard() {
       <div className="flex justify-end gap-2">
         <button
           onClick={handlePreview}
-          disabled={busy}
+          disabled={busy || phase !== 'idle'}
           className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50 hover:bg-blue-700 transition-colors"
         >
-          {busy ? 'Working…' : 'Preview'}
+          {busy && phase === 'idle' ? 'Working…' : 'Preview'}
         </button>
       </div>
 
       {/* -----------------------------
           Preview / Confirm Modal
          ----------------------------- */}
-      {preview && (
+      {phase === 'preview' && preview && (
         <ConfirmModal
           open={true}
           title={`Preview ${preview.length} Damaged Product${preview.length !== 1 ? 's' : ''}`}
@@ -238,7 +255,12 @@ export default function DamagedBooksWizard() {
           cancelLabel="Cancel"
           busy={busy}
           onConfirm={handleConfirm}
-          onCancel={() => setPreview(null)}
+          onCancel={() => {
+            setPreview(null);
+            setInputs([]);
+            setPhase('idle');
+            setError(null);
+          }}
           confirmDisabled={confirmDisabled}
         >
           <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
@@ -272,6 +294,39 @@ export default function DamagedBooksWizard() {
                 ))}
               </div>
             ))}
+          </div>
+        </ConfirmModal>
+      )}
+
+      {phase === 'result' && result && (
+        <ConfirmModal
+          open={true}
+          title="Success"
+          confirmLabel="Close"
+          cancelLabel=""
+          busy={false}
+          onConfirm={() => {
+            setPreview(null);
+            setInputs([]);
+            setRawInput('');
+            setResult(null);
+            setPhase('idle');
+            setError(null);
+          }}
+          onCancel={() => {
+            setPreview(null);
+            setInputs([]);
+            setRawInput('');
+            setResult(null);
+            setPhase('idle');
+            setError(null);
+          }}
+          confirmDisabled={false}
+        >
+          <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+            <p className="text-green-600 dark:text-green-400 text-sm">
+              {result.message || 'Damaged books have been successfully created.'}
+            </p>
           </div>
         </ConfirmModal>
       )}
