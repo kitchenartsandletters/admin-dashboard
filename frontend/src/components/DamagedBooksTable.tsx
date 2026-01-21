@@ -118,8 +118,10 @@ export default function DamagedBooksTable() {
               <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700 cursor-pointer" onClick={() => handleSort('title')}>Title</th>
               <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Condition</th>
               <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Available</th>
-              <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Author</th>
-              <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Handle</th>
+              <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700 w-48 max-w-48">
+                Author
+              </th>
+              <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700 w-64 max-w-64">Handle</th>
               <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700 cursor-pointer" onClick={() => handleSort('stock_status')}>Status</th>
               <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Shopify</th>
               <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Online</th>
@@ -134,8 +136,16 @@ export default function DamagedBooksTable() {
                   {r.condition_raw ?? r.condition_key ?? '—'}
                 </td>
                 <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-center">{r.available}</td>
-                <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700">{r.sku ?? '—'}</td>
-                <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700">{r.barcode ?? '—'}</td>
+                <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 w-48 max-w-48">
+                  <div className="truncate" title={r.sku ?? ''}>
+                    {r.sku ?? '—'}
+                  </div>
+                </td>
+                <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 w-64 max-w-64">
+                  <div className="truncate" title={r.barcode ?? ''}>
+                    {r.barcode ?? '—'}
+                  </div>
+                </td>
                 <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700">{r.stock_status === 'in_stock' ? 'In Stock' : 'Out of Stock'}</td>
                 <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700">
                   <a
