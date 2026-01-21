@@ -68,26 +68,26 @@ export default function DamagedBooksWizard() {
 
   function normalizeInputs(): WizardInput[] {
     return rawInput
-        .split(/[\s,]+/)
-        .map(v => v.trim())
-        .filter(Boolean)
-        .map(value => {
+      .split(/[\s,]+/)
+      .map(v => v.trim())
+      .filter(Boolean)
+      .map(value => {
         // ISBNs are typically 10 or 13 digits
         if (/^\d{10}(\d{3})?$/.test(value)) {
-            return { type: 'isbn', value };
+          return { type: 'isbn', value };
         }
 
         // Everything else is treated as an explicit product_id
         return { type: 'product_id', value };
-        });
-    }
+      });
+  }
 
   /* -----------------------------
    * Flat Mapper for Confirm Payload
    * ----------------------------- */
-  function deriveConfirmPayload(preview: PreviewItem[]) {
+  function deriveConfirmPayload(previewRows: PreviewItem[]) {
     return {
-      items: preview.map(item => ({
+      items: previewRows.map(item => ({
         canonical_product_id: item.canonical_product_id,
         canonical_handle: item.canonical_handle,
         condition_key: item.condition,
@@ -151,10 +151,7 @@ export default function DamagedBooksWizard() {
     try {
       const payload = deriveConfirmPayload(preview);
 
-      console.log(
-        '[CONFIRM PAYLOAD]',
-        JSON.stringify(payload, null, 2)
-      );
+      console.log('[CONFIRM PAYLOAD]', JSON.stringify(payload, null, 2));
 
       const response = await DamagedBooksService.confirmBulkCreate(payload);
 
@@ -170,12 +167,13 @@ export default function DamagedBooksWizard() {
       console.log('[CONFIRM] success — setting result + phase=result');
       setResult(response);
       setPhase('result');
+
+      // zero-out inventory inputs after success
       setInventory({
         light: 0,
         moderate: 0,
         heavy: 0,
       });
-
     } catch (err) {
       console.error('[CONFIRM] exception thrown', err);
       setError('Creation failed.');
@@ -274,16 +272,11 @@ export default function DamagedBooksWizard() {
           confirmDisabled={confirmDisabled}
         >
           <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-             {/* -----------------------------
-            {preview.length === 0 && (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                (Preview stub — backend not yet wired)
-              </p>
-            )}
-              ----------------------------- */}
             {Object.entries(groupedPreview).map(([canonical_handle, items]) => (
               <div key={canonical_handle} className="mb-4">
-                <h3 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">{canonical_handle}</h3>
+                <h3 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">
+                  {canonical_handle}
+                </h3>
                 {items.map(item => (
                   <div
                     key={item.condition}
@@ -314,10 +307,10 @@ export default function DamagedBooksWizard() {
         <ConfirmModal
           open={true}
           title="Success"
-          confirmLabel=""
+          confirmLabel="Close"
           cancelLabel=""
           busy={false}
-          confirmDisabled={true}
+          confirmDisabled={false}
           onConfirm={() => {
             setPreview(null);
             setInputs([]);

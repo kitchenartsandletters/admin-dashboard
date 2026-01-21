@@ -126,34 +126,38 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
           {/* Footer */}
           <div className="px-5 py-4 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={onCancel}
-              disabled={busy}
-              className="
-                px-3.5 py-2 rounded-lg border border-gray-300 dark:border-gray-600
-                text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800
-                hover:bg-gray-50 dark:hover:bg-gray-700
-                focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-gray-400
-                disabled:opacity-60
-              "
-            >
-              {cancelLabel}
-            </button>
-            <button
-              type="button"
-              ref={confirmBtnRef}
-              onClick={onConfirm}
-              disabled={busy || confirmDisabled}
-              className={`
-                px-3.5 py-2 rounded-lg text-white
-                focus:outline-none focus:ring-2 focus:ring-offset-0
-                disabled:opacity-60
-                ${confirmBtnClasses}
-              `}
-            >
-              {busy ? 'Working…' : confirmLabel}
-            </button>
+            {cancelLabel && cancelLabel !== '' && (
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={busy}
+                className="
+                  px-3.5 py-2 rounded-lg border border-gray-300 dark:border-gray-600
+                  text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800
+                  hover:bg-gray-50 dark:hover:bg-gray-700
+                  focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-gray-400
+                  disabled:opacity-60
+                "
+              >
+                {cancelLabel}
+              </button>
+            )}
+            {confirmLabel && confirmLabel !== '' && (
+              <button
+                type="button"
+                ref={confirmBtnRef}
+                onClick={onConfirm}
+                disabled={busy || confirmDisabled}
+                className={`
+                  px-3.5 py-2 rounded-lg text-white
+                  focus:outline-none focus:ring-2 focus:ring-offset-0
+                  disabled:opacity-60
+                  ${confirmBtnClasses}
+                `}
+              >
+                {busy ? 'Working…' : confirmLabel}
+              </button>
+            )}
           </div>
         </div>
       </div>
