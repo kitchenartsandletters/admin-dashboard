@@ -74,42 +74,16 @@ export default function DamagedBooksWizard() {
   /* -----------------------------
    * Flat Mapper for Confirm Payload
    * ----------------------------- */
-    function deriveConfirmPayload(preview: PreviewItem[]) {
-    const byProduct: Record<
-        string,
-        {
-        canonical_product_id: string;
-        canonical_handle: string;
-        inventory: {
-            light: number;
-            moderate: number;
-            heavy: number;
-        };
-        }
-    > = {};
-
-    for (const row of preview) {
-        const key = row.canonical_product_id;
-
-        if (!byProduct[key]) {
-        byProduct[key] = {
-            canonical_product_id: row.canonical_product_id,
-            canonical_handle: row.canonical_handle,
-            inventory: {
-            light: 0,
-            moderate: 0,
-            heavy: 0,
-            },
-        };
-        }
-
-        byProduct[key].inventory[row.condition] = row.inventory_seed ?? 0;
-    }
-
+  function deriveConfirmPayload(preview: PreviewItem[]) {
     return {
-        items: Object.values(byProduct),
+      items: preview.map(item => ({
+        canonical_product_id: item.canonical_product_id,
+        canonical_handle: item.canonical_handle,
+        condition_key: item.condition,
+        inventory: item.inventory_seed ?? 0,
+      })),
     };
-    }
+  }
 
   /* -----------------------------
    * Phase 1: Preview

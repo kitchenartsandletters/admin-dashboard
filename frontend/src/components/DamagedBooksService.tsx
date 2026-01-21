@@ -128,7 +128,8 @@ export const DamagedBooksService = {
     items: {
       canonical_product_id: string;
       canonical_handle: string;
-      inventory: { light: number; moderate: number; heavy: number };
+      condition_key: 'light' | 'moderate' | 'heavy';
+      inventory: number;
     }[];
   }): Promise<
     | { ok: true; created: number }
