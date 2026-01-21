@@ -186,7 +186,7 @@ export default function DamagedBooksTable() {
           <>
             <div><strong>Title:</strong> {selected.title}</div>
             <div><strong>Barcode:</strong> {selected.barcode}</div>
-            <div><strong>SKU:</strong> {selected.sku}</div>
+            <div><strong>Author:</strong> {selected.sku}</div>
             {/* Add more fields as needed */}
           </>
         )}
