@@ -1,7 +1,7 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import SidebarLayout from './components/SidebarLayout';
 import RequestService from './components/RequestService';
-import SystemStatusDashboard from './components/SystemStatusDashboard'; // placeholder for now
+import SystemStatusDashboard from './components/SystemStatusDashboard';
 import DamagedBooksTable from './components/DamagedBooksTable';
 import BlacklistManager from './components/BlackListManager';
 import DamagedBooksWizard from './components/DamagedBooksWizard';
@@ -66,9 +66,10 @@ const App = () => {
             path="/*"
             element={
               <ProtectedRoute>
-                <SidebarLayout>
+                <SidebarLayout dateTime={dateTime}>
                   {/* Global header (shown across all pages) */}
-                  <div className="bg-white dark:bg-gray-900">
+                  {/* ADDED: hidden md:block to hide this large header on mobile */}
+                  <div className="bg-white dark:bg-gray-900 hidden md:block">
                     <header className="flex items-center justify-between px-4 py-4 border-b dark:border-gray-800">
                       {/* Two-line Header */}
                       <div className="flex flex-col">
