@@ -98,15 +98,10 @@ const SidebarLayout = ({ children, dateTime }: SidebarLayoutProps) => {
             return (
               <div key={item.path} className="flex flex-col">
                 <div className="flex items-center">
+                    {/* UPDATED: Always close sidebar on click, regardless of children */}
                     <Link
                         to={item.path}
-                        onClick={() => {
-                            if (hasChildren) {
-                                setExpandedMenus(prev => ({ ...prev, [item.path]: true }));
-                            } else {
-                                closeSidebar();
-                            }
-                        }}
+                        onClick={closeSidebar}
                         className={`flex-1 px-3 py-2 rounded transition-all hover:bg-gray-100 dark:hover:bg-gray-700
                             ${isActive ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
                     >
@@ -114,7 +109,10 @@ const SidebarLayout = ({ children, dateTime }: SidebarLayoutProps) => {
                     </Link>
                     {hasChildren && (
                         <button 
-                            onClick={() => toggleMenu(item.path)}
+                            onClick={(e) => {
+                                e.stopPropagation(); // Prevent affecting the link click
+                                toggleMenu(item.path);
+                            }}
                             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                         >
                             {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
