@@ -505,7 +505,7 @@ VITE_DBS_ADMIN_TOKEN=your_token_here
 **Setup Notes**
 - Token must be passed as `X-Admin-Token` in request headers
 - `import.meta.env.VITE_DBS_*` values must be defined at build time
-- DBS must allow CORS from the Admin Dashboard origin
+- DBS must allow  from the Admin Dashboard origin
 - The sidebar now includes a “Damaged Books” tab if the route is mounted
 
 ## 📡 System Status Module
@@ -709,7 +709,7 @@ Logs both the incoming payload and Supabase RPC response for debugging.
 
 * ✅ Ensure `VITE_API_BASE_URL` is fully qualified (https\://…)
 * ✅ Fixed fetch URLs to remove stray `=` in query params
-* ✅ Added FastAPI CORS middleware to allow frontend requests
+* ✅ Added FastAPI  middleware to allow frontend requests
 * ✅ Mounted all backend routes under `/api`
 * ✅ Unified `InterestEntry` type into `src/types.ts` to prevent TS conflicts
 * ✅ Updated dropdown `onChange` to use `entry.id` (UUID from DB) instead of `cr_id`
@@ -756,12 +756,12 @@ Initial Setup
 
 VITE_ADMIN_TOKEN=your_admin_token_here
 
-Enable CORS (in main.py)
+Enable  (in main.py)
 
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware. import Middleware
 
 app.add_middleware(
-    CORSMiddleware,
+    Middleware,
     allow_origins=["https://admin.kitchenartsandletters.com",
                    "https://www.kitchenartsandletters.com"
                    ],
