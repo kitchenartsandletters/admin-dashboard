@@ -29,10 +29,10 @@ const ONLINE_STORE_PREFIX = 'https://www.kitchenartsandletters.com/products/';
 const API_BASE = import.meta.env.VITE_BLACKLIST_URL || import.meta.env.VITE_REQUEST_URL;
 const ADMIN_TOKEN = import.meta.env.VITE_DBS_ADMIN_TOKEN;
 
-// GraphQL Fetcher for Handle with DEBUG LOGGING
+// GraphQL Fetcher for Handle
 const fetchShopifyHandle = async (productId: number): Promise<string | null> => {
   if (!API_BASE) {
-    console.warn("[RequestService] API_BASE is undefined. Check .env variables.");
+    console.warn("[RequestService] API_BASE is missing.");
     return null;
   }
 
@@ -42,9 +42,8 @@ const fetchShopifyHandle = async (productId: number): Promise<string | null> => 
     }
   }`;
 
-  console.log(`[RequestService] 🚀 Fetching handle for Product ID: ${productId} to ${API_BASE}/api/shopify/graphql`);
-
   try {
+    console.log(`[RequestService] 🚀 Sending GraphQL for ${productId}...`);
     const res = await fetch(`${API_BASE}/api/shopify/graphql`, {
       method: "POST",
       headers: { 
@@ -54,22 +53,19 @@ const fetchShopifyHandle = async (productId: number): Promise<string | null> => 
       body: JSON.stringify({ query })
     });
 
-    console.log(`[RequestService] 📡 Response Status: ${res.status} ${res.statusText}`);
-
     if (!res.ok) {
-      const errText = await res.text();
-      console.error(`[RequestService] ❌ Request failed. Response body:`, errText);
+      console.error(`[RequestService] ❌ HTTP Error: ${res.status}`);
       return null;
     }
 
     const json = await res.json();
-    console.log(`[RequestService] ✅ JSON Received:`, json);
+    console.log(`[RequestService] ✅ JSON Received for ${productId}`, json);
     
+    // Safety check for deep nesting
     const handle = json?.data?.product?.handle;
     return handle || null;
-
   } catch (err) {
-    console.error("[RequestService] 💥 Network/Parsing Error:", err);
+    console.error("[RequestService] 💥 Exception:", err);
     return null;
   }
 };
@@ -143,19 +139,27 @@ const MobileRequestCard: React.FC<MobileRequestCardProps> = ({
   // Fetch handle only when expanded to save bandwidth
   useEffect(() => {
     let isMounted = true;
-    
-    // Logic: If expanded, and handle hasn't been fetched (null), and not currently loading...
-    if (expanded && handle === null && !isLoadingHandle) {
-      setIsLoadingHandle(true);
-      
-      fetchShopifyHandle(entry.product_id).then((h) => {
+
+    const fetchData = async () => {
+      // Only fetch if expanded, no handle yet, and not already loading
+      if (expanded && handle === null && !isLoadingHandle) {
+        setIsLoadingHandle(true);
+        console.log(`[MobileCard] Starting fetch logic for ${entry.product_id}`);
+        
+        const fetchedHandle = await fetchShopifyHandle(entry.product_id);
+        
+        console.log(`[MobileCard] Promise resolved. Handle: "${fetchedHandle}". Component Mounted: ${isMounted}`);
+
         if (isMounted) {
           // Use empty string if null to indicate "checked but failed"
-          setHandle(h || ''); 
+          setHandle(fetchedHandle || '');
           setIsLoadingHandle(false);
         }
-      });
-    }
+      }
+    };
+
+    fetchData();
+
     return () => { isMounted = false; };
   }, [expanded, entry.product_id, handle, isLoadingHandle]);
 
