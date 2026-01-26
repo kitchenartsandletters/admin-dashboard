@@ -1,8 +1,5 @@
 import { useEffect, useState } from 'react'
-import FilterControls, { FilterControlsProps } from './FilterControls';
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
-import DashboardHeader from './DashboardHeader';
+import FilterControls from './FilterControls';
 import ExportButtons from "./ExportButtons";
 import RequestTable from './RequestTable';
 import { InterestEntry, StatusPhase, STATUS_ORDER, getStatusIndex } from '../types';
@@ -132,11 +129,16 @@ const MobileRequestCard: React.FC<MobileRequestCardProps> = ({
   // Fetch handle only when expanded to save bandwidth
   useEffect(() => {
     let isMounted = true;
-    if (expanded && !handle && !isLoadingHandle) {
+    
+    // Logic: If expanded, and handle hasn't been fetched (null), and not currently loading...
+    if (expanded && handle === null && !isLoadingHandle) {
+      console.log(`[MobileCard] Fetching handle for ${entry.id} (Product ${entry.product_id})`);
       setIsLoadingHandle(true);
+      
       fetchShopifyHandle(entry.product_id).then((h) => {
         if (isMounted) {
-          // Use empty string if null to indicate "checked but failed" to prevent loops
+          console.log(`[MobileCard] Got handle: ${h}`);
+          // Set handle to the result, or empty string if null (to indicate "checked but failed" and stop loop)
           setHandle(h || ''); 
           setIsLoadingHandle(false);
         }
@@ -228,7 +230,7 @@ const MobileRequestCard: React.FC<MobileRequestCardProps> = ({
                   <span className="text-xs font-bold text-blue-600 dark:text-blue-400">Shopify Admin</span>
                 </a>
                 
-                {/* Public Page Link (Async Handle Resolution) */}
+                {/* Public Page Link - Strictly Handle Based */}
                 <a
                   href={handle ? `${ONLINE_STORE_PREFIX}${handle}` : '#'}
                   target={handle ? "_blank" : undefined}
