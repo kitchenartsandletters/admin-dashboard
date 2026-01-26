@@ -22,7 +22,48 @@ function decodeHTMLEntities(str: string) {
 }
 
 // ------------------------------------------------------------------
-// Sub-Components (Defined OUTSIDE to prevent re-render bugs)
+// Constants & Helpers
+// ------------------------------------------------------------------
+
+const SHOPIFY_ADMIN_PREFIX = 'https://admin.shopify.com/store/castironbooks/products/';
+const ONLINE_STORE_PREFIX = 'https://www.kitchenartsandletters.com/products/';
+
+// Fallback logic to ensure we have a URL to hit
+const API_BASE = import.meta.env.VITE_BLACKLIST_URL || import.meta.env.VITE_REQUEST_URL;
+const ADMIN_TOKEN = import.meta.env.VITE_DBS_ADMIN_TOKEN;
+
+// GraphQL Fetcher for Handle
+const fetchShopifyHandle = async (productId: number): Promise<string | null> => {
+  if (!API_BASE) return null;
+
+  const query = `{
+    product(id: "gid://shopify/Product/${productId}") {
+      handle
+    }
+  }`;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/shopify/graphql`, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        "X-Admin-Token": ADMIN_TOKEN || "", 
+      },
+      body: JSON.stringify({ query })
+    });
+
+    if (!res.ok) return null;
+
+    const json = await res.json();
+    return json?.data?.product?.handle || null;
+  } catch (err) {
+    console.error("Error fetching Shopify handle:", err);
+    return null;
+  }
+};
+
+// ------------------------------------------------------------------
+// Sub-Components
 // ------------------------------------------------------------------
 
 // Inline bulk actions toolbar - Hidden on Mobile
@@ -85,6 +126,24 @@ const MobileRequestCard: React.FC<MobileRequestCardProps> = ({
   onArchiveClick 
 }) => {
   const [expanded, setExpanded] = useState(false);
+  const [handle, setHandle] = useState<string | null>(null);
+  const [isLoadingHandle, setIsLoadingHandle] = useState(false);
+
+  // Fetch handle only when expanded to save bandwidth
+  useEffect(() => {
+    let isMounted = true;
+    if (expanded && !handle && !isLoadingHandle) {
+      setIsLoadingHandle(true);
+      fetchShopifyHandle(entry.product_id).then((h) => {
+        if (isMounted) {
+          // Use empty string if null to indicate "checked but failed" to prevent loops
+          setHandle(h || ''); 
+          setIsLoadingHandle(false);
+        }
+      });
+    }
+    return () => { isMounted = false; };
+  }, [expanded, entry.product_id, handle, isLoadingHandle]);
 
   return (
     <div className="border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm bg-white dark:bg-gray-800 overflow-hidden">
@@ -158,23 +217,33 @@ const MobileRequestCard: React.FC<MobileRequestCardProps> = ({
                 </select>
               </div>
 
-              {/* Links - Using IDs as fallbacks for simplicity in list view */}
+              {/* Links */}
               <div className="grid grid-cols-2 gap-3">
                 <a
-                  href={`https://admin.shopify.com/store/castironbooks/products/${entry.product_id}`}
+                  href={`${SHOPIFY_ADMIN_PREFIX}${entry.product_id}`}
                   target="_blank"
                   rel="noreferrer"
                   className="flex flex-col items-center justify-center p-2 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-center hover:bg-gray-50 dark:hover:bg-gray-600"
                 >
                   <span className="text-xs font-bold text-blue-600 dark:text-blue-400">Shopify Admin</span>
                 </a>
+                
+                {/* Public Page Link (Async Handle Resolution) */}
                 <a
-                  href={`https://www.kitchenartsandletters.com/products/${entry.product_id}`} 
-                  target="_blank"
+                  href={handle ? `${ONLINE_STORE_PREFIX}${handle}` : '#'}
+                  target={handle ? "_blank" : undefined}
                   rel="noreferrer"
-                  className="flex flex-col items-center justify-center p-2 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-center hover:bg-gray-50 dark:hover:bg-gray-600"
+                  onClick={(e) => { if (!handle) e.preventDefault(); }}
+                  className={`flex flex-col items-center justify-center p-2 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-center 
+                    ${handle ? 'hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer' : 'opacity-60 cursor-default'}`}
                 >
-                  <span className="text-xs font-bold text-blue-600 dark:text-blue-400">Public Page</span>
+                  <span className="text-xs font-bold text-blue-600 dark:text-blue-400">
+                    {isLoadingHandle 
+                      ? 'Fetching Link...' 
+                      : handle 
+                        ? 'Public Page' 
+                        : 'Link Unavailable'}
+                  </span>
                 </a>
               </div>
 
@@ -505,7 +574,6 @@ useEffect(() => {
       </div>
 
       {/* Main Controls Bar - STICKY ON MOBILE */}
-      {/* Added sticky, top-0, z-30, and removed opacity from background for readability */}
       <div className="sticky top-0 z-30 flex flex-col lg:flex-row items-center gap-3 bg-gray-50 dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm print-hidden">
         
         {/* Left: Filters */}
