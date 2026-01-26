@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import FilterControls from './FilterControls';
+import FilterControls, { FilterControlsProps } from './FilterControls';
 import ExportButtons from "./ExportButtons";
 import RequestTable from './RequestTable';
 import { InterestEntry, StatusPhase, STATUS_ORDER, getStatusIndex } from '../types';
@@ -29,15 +29,20 @@ const ONLINE_STORE_PREFIX = 'https://www.kitchenartsandletters.com/products/';
 const API_BASE = import.meta.env.VITE_BLACKLIST_URL || import.meta.env.VITE_REQUEST_URL;
 const ADMIN_TOKEN = import.meta.env.VITE_DBS_ADMIN_TOKEN;
 
-// GraphQL Fetcher for Handle
+// GraphQL Fetcher for Handle with DEBUG LOGGING
 const fetchShopifyHandle = async (productId: number): Promise<string | null> => {
-  if (!API_BASE) return null;
+  if (!API_BASE) {
+    console.warn("[RequestService] API_BASE is undefined. Check .env variables.");
+    return null;
+  }
 
   const query = `{
     product(id: "gid://shopify/Product/${productId}") {
       handle
     }
   }`;
+
+  console.log(`[RequestService] 🚀 Fetching handle for Product ID: ${productId} to ${API_BASE}/api/shopify/graphql`);
 
   try {
     const res = await fetch(`${API_BASE}/api/shopify/graphql`, {
@@ -49,12 +54,22 @@ const fetchShopifyHandle = async (productId: number): Promise<string | null> => 
       body: JSON.stringify({ query })
     });
 
-    if (!res.ok) return null;
+    console.log(`[RequestService] 📡 Response Status: ${res.status} ${res.statusText}`);
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[RequestService] ❌ Request failed. Response body:`, errText);
+      return null;
+    }
 
     const json = await res.json();
-    return json?.data?.product?.handle || null;
+    console.log(`[RequestService] ✅ JSON Received:`, json);
+    
+    const handle = json?.data?.product?.handle;
+    return handle || null;
+
   } catch (err) {
-    console.error("Error fetching Shopify handle:", err);
+    console.error("[RequestService] 💥 Network/Parsing Error:", err);
     return null;
   }
 };
@@ -70,7 +85,6 @@ const BulkActionsBar: React.FC<{
   onBulkArchive: () => void;
 }> = ({ selectionCount, onBulkStatus, onBulkArchive }) => {
   const disabled = selectionCount === 0;
-  // hidden sm:flex ensures this is gone on mobile
   return (
     <div className="hidden sm:flex print-hidden items-center gap-2 text-sm">
       <span className="text-xs text-gray-600 dark:text-gray-300">
@@ -132,13 +146,11 @@ const MobileRequestCard: React.FC<MobileRequestCardProps> = ({
     
     // Logic: If expanded, and handle hasn't been fetched (null), and not currently loading...
     if (expanded && handle === null && !isLoadingHandle) {
-      console.log(`[MobileCard] Fetching handle for ${entry.id} (Product ${entry.product_id})`);
       setIsLoadingHandle(true);
       
       fetchShopifyHandle(entry.product_id).then((h) => {
         if (isMounted) {
-          console.log(`[MobileCard] Got handle: ${h}`);
-          // Set handle to the result, or empty string if null (to indicate "checked but failed" and stop loop)
+          // Use empty string if null to indicate "checked but failed"
           setHandle(h || ''); 
           setIsLoadingHandle(false);
         }
