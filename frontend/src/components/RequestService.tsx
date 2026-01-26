@@ -21,15 +21,20 @@ function decodeHTMLEntities(str: string) {
   return txt.value;
 }
 
-// Inline bulk actions toolbar (scaffold). Replace with a dedicated file later if desired.
+// ------------------------------------------------------------------
+// Sub-Components (Defined OUTSIDE to prevent re-render bugs)
+// ------------------------------------------------------------------
+
+// Inline bulk actions toolbar - Hidden on Mobile
 const BulkActionsBar: React.FC<{
   selectionCount: number;
   onBulkStatus: (status: StatusPhase) => void;
   onBulkArchive: () => void;
 }> = ({ selectionCount, onBulkStatus, onBulkArchive }) => {
   const disabled = selectionCount === 0;
+  // hidden sm:flex ensures this is gone on mobile
   return (
-    <div className="print-hidden flex items-center gap-2 text-sm">
+    <div className="hidden sm:flex print-hidden items-center gap-2 text-sm">
       <span className="text-xs text-gray-600 dark:text-gray-300">
         {selectionCount > 0 ? `${selectionCount} selected` : 'No rows selected'}
       </span>
@@ -37,17 +42,16 @@ const BulkActionsBar: React.FC<{
         <label className="text-xs text-gray-600 dark:text-gray-300" htmlFor="bulk-status">Bulk:</label>
         <select
           id="bulk-status"
-          className="border rounded px-2 py-1 bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+          className="text-xs border-blue-200 rounded px-2 py-1 bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
           disabled={disabled}
           onChange={(e) => {
             const val = e.target.value as StatusPhase | '';
             if (val) {
               onBulkStatus(val);
-              // reset back to placeholder after firing
               e.currentTarget.selectedIndex = 0;
             }
           }}
-          value=""
+          defaultValue=""
         >
           <option value="" disabled>Change status…</option>
           {STATUS_ORDER.map(s => (
@@ -57,7 +61,7 @@ const BulkActionsBar: React.FC<{
         <button
           type="button"
           disabled={disabled}
-          className="px-3 py-1 rounded border bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600 disabled:opacity-50"
+          className="text-xs px-3 py-1 rounded border border-red-200 bg-white text-red-700 hover:bg-red-50 dark:bg-gray-800 dark:text-red-300 dark:border-red-900 dark:hover:bg-red-900/20 transition-colors"
           onClick={onBulkArchive}
         >
           Archive selected
@@ -66,6 +70,132 @@ const BulkActionsBar: React.FC<{
     </div>
   );
 };
+
+// Props definition for the mobile card
+interface MobileRequestCardProps {
+  entry: InterestEntry;
+  onRequestStatusChange: (id: string, newStatus: StatusPhase) => void;
+  onArchiveClick: (id: string) => void;
+}
+
+// Mobile Card Component - Mimics RightSidebar content
+const MobileRequestCard: React.FC<MobileRequestCardProps> = ({ 
+  entry, 
+  onRequestStatusChange, 
+  onArchiveClick 
+}) => {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm bg-white dark:bg-gray-800 overflow-hidden">
+      {/* Card Header (Always Visible) */}
+      <div className="p-4 cursor-pointer" onClick={() => setExpanded(!expanded)}>
+        <div className="flex justify-between items-start gap-3">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white line-clamp-2 leading-tight">
+              {decodeHTMLEntities(entry.product_title)}
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">
+              {entry.email}
+            </p>
+          </div>
+          
+          {/* Status Badge */}
+          <span className={`
+            shrink-0 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide
+            ${entry.status === 'Complete' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 
+              entry.status === 'New' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' :
+              'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'}
+          `}>
+            {entry.status || 'New'}
+          </span>
+        </div>
+        
+        <div className="flex justify-between items-center mt-3 border-t border-gray-100 dark:border-gray-700/50 pt-2">
+           <span className="text-[10px] text-gray-400 font-mono">
+              {entry.cr_id || entry.id.slice(0,8)}
+           </span>
+           <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+             {expanded ? 'Hide Details' : 'Show Details'}
+           </span>
+        </div>
+      </div>
+
+      {/* Expanded Details */}
+      {expanded && (
+        <div className="px-4 pb-4 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700">
+          <div className="space-y-4 pt-4">
+            
+            {/* Data Grid */}
+            <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-xs">
+              <div>
+                <span className="block text-gray-500 font-semibold uppercase">Customer</span>
+                <span className="text-gray-900 dark:text-white">{entry.customer_name || '—'}</span>
+              </div>
+              <div>
+                <span className="block text-gray-500 font-semibold uppercase">Submitted</span>
+                <span className="text-gray-900 dark:text-white">{new Date(entry.created_at).toLocaleDateString()}</span>
+              </div>
+              <div className="col-span-2">
+                <span className="block text-gray-500 font-semibold uppercase">ISBN</span>
+                <span className="text-gray-900 dark:text-white font-mono select-all">{entry.isbn || '—'}</span>
+              </div>
+            </div>
+
+            <hr className="border-gray-200 dark:border-gray-700" />
+
+            {/* Actions Section */}
+            <div className="space-y-3">
+              {/* Status Changer */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Update Status</label>
+                <select
+                  value={entry.status || "New"}
+                  onChange={(e) => onRequestStatusChange(entry.id, e.target.value as StatusPhase)}
+                  className="w-full text-sm border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 dark:text-white p-2"
+                >
+                  {STATUS_ORDER.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+
+              {/* Links - Using IDs as fallbacks for simplicity in list view */}
+              <div className="grid grid-cols-2 gap-3">
+                <a
+                  href={`https://admin.shopify.com/store/castironbooks/products/${entry.product_id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex flex-col items-center justify-center p-2 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-center hover:bg-gray-50 dark:hover:bg-gray-600"
+                >
+                  <span className="text-xs font-bold text-blue-600 dark:text-blue-400">Shopify Admin</span>
+                </a>
+                <a
+                  href={`https://www.kitchenartsandletters.com/products/${entry.product_id}`} 
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex flex-col items-center justify-center p-2 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-center hover:bg-gray-50 dark:hover:bg-gray-600"
+                >
+                  <span className="text-xs font-bold text-blue-600 dark:text-blue-400">Public Page</span>
+                </a>
+              </div>
+
+              {/* Archive */}
+              <button
+                onClick={() => onArchiveClick(entry.id)}
+                className="w-full py-2 text-xs font-semibold text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900 rounded bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/30"
+              >
+                Archive Request
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ------------------------------------------------------------------
+// Main Component
+// ------------------------------------------------------------------
 
 const RequestService = () => {
   const [data, setData] = useState<InterestEntry[]>([])
@@ -96,13 +226,8 @@ const RequestService = () => {
       localStorage.setItem("selectedFilter", selectedFilter);
     } catch {}
   }, [selectedFilter]);
-  // Status filter state (defaults to all statuses)
-  const ALL_STATUSES: StatusPhase[] = [
-    "New",
-    "Request Filed",
-    "In Progress",
-    "Complete"
-  ];
+  
+  const ALL_STATUSES: StatusPhase[] = ["New", "Request Filed", "In Progress", "Complete"];
   const [selectedStatuses, setSelectedStatuses] = useState<StatusPhase[]>(() => {
     try {
       const saved = localStorage.getItem("selectedStatuses");
@@ -132,10 +257,9 @@ const RequestService = () => {
     setSelectedStatuses(ALL_STATUSES);
     setPage(1);
   };
-  // Selection model for bulk actions
+  
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // Toggle a single row
   const handleRowSelect = (id: string, checked: boolean) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -144,7 +268,6 @@ const RequestService = () => {
     });
   };
 
-  // Header checkbox toggles all visible row IDs (current page)
   const handleHeaderToggle = (checked: boolean, visibleIds: string[]) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -157,11 +280,8 @@ const RequestService = () => {
     });
   };
 
-  // Helper to clear selection (e.g., after bulk action)
   const clearSelection = () => setSelectedIds(new Set());
-    // Undo toast state
   const [undoToast, setUndoToast] = useState<{ message: string; onUndo: () => void } | null>(null);
-  // Confirm modal state for status changes
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [pendingChange, setPendingChange] = useState<{
@@ -169,17 +289,16 @@ const RequestService = () => {
     newStatus: StatusPhase;
     prevStatus: StatusPhase;
   } | null>(null);
-  // Called when a row requests a status change; opens confirm dialog
+
   const requestStatusChange = (requestId: string, newStatus: StatusPhase) => {
     const current = (data.find(d => d.id === requestId)?.status as StatusPhase) ?? "New";
     setPendingChange({ id: requestId, newStatus, prevStatus: current });
     setConfirmOpen(true);
   };
-  // Bulk status change modal state
+
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkTargetStatus, setBulkTargetStatus] = useState<StatusPhase | null>(null);
-  // Bulk archive modal state
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
   const [archiveBusy, setArchiveBusy] = useState(false);
   const [collectionFilter, setCollectionFilter] = useState<'all' | 'op' | 'notop'>(() => {
@@ -203,7 +322,7 @@ const RequestService = () => {
       const saved = localStorage.getItem("limit");
       return saved ? parseInt(saved, 10) : 50;
     } catch { return 50; }
-  }); // options: 20, 50, 100
+  });
   useEffect(() => {
     try {
       localStorage.setItem("page", String(page));
@@ -239,69 +358,57 @@ const RequestService = () => {
     return sortConfig.direction === 'asc' ? '↑' : '↓';
   };
 
-    const handleStatusChange = async (
-      requestId: string,
-      newStatus: StatusPhase,
-      opts?: { skipUndo?: boolean }
-    ) => {
-      // Capture previous status BEFORE optimistic update for undo/revert
-      const prevStatus = ((data.find(d => d.id === requestId)?.status) as StatusPhase) ?? "New";
+  const handleStatusChange = async (
+    requestId: string,
+    newStatus: StatusPhase,
+    opts?: { skipUndo?: boolean }
+  ) => {
+    const prevStatus = ((data.find(d => d.id === requestId)?.status) as StatusPhase) ?? "New";
 
-      try {
-        // Optimistic UI update
-        setData(prev => {
-          const updated = prev.map(item =>
-            item.id === requestId ? { ...item, status: newStatus } : item
-          );
-
-          // If we're currently sorting, re-sort immediately after update
-          if (sortConfig) {
-            return [...updated].sort((a, b) => {
-              const { key, direction } = sortConfig;
-              if (key === 'status') {
-                const aIndex = getStatusIndex(a.status);
-                const bIndex = getStatusIndex(b.status);
-                return (aIndex - bIndex) * (direction === 'asc' ? 1 : -1);
-              }
-              return 0; // Other sorts fall back to default sorter in sortedData
-            });
-          }
-
-          return updated;
-        });
-
-        // Backend update
-        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/update_status?token=${import.meta.env.VITE_ADMIN_TOKEN}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            request_id: requestId,
-            new_status: newStatus,
-            changed_by: "admin" // Replace with real admin identity if available
-          })
-        });
-
-        if (!res.ok) throw new Error("Failed to update status");
-
-        const json = await res.json();
-        console.log("Status updated:", json);
-
-        // Show Undo toast only for direct user actions (not when we are reverting via undo)
-        if (!opts?.skipUndo) {
-          showUndo(`Status changed to "${newStatus}". Undo?`, () => {
-            // Call again but skip showing another Undo toast to prevent loops
-            handleStatusChange(requestId, prevStatus, { skipUndo: true });
+    try {
+      setData(prev => {
+        const updated = prev.map(item =>
+          item.id === requestId ? { ...item, status: newStatus } : item
+        );
+        if (sortConfig) {
+          return [...updated].sort((a, b) => {
+            const { key, direction } = sortConfig;
+            if (key === 'status') {
+              const aIndex = getStatusIndex(a.status);
+              const bIndex = getStatusIndex(b.status);
+              return (aIndex - bIndex) * (direction === 'asc' ? 1 : -1);
+            }
+            return 0;
           });
         }
+        return updated;
+      });
 
-      } catch (err) {
-        console.error("Error updating status (reverting optimistic change):", err);
-        // Revert optimistic change on failure
-        setData(prev => prev.map(item =>
-          item.id === requestId ? { ...item, status: prevStatus } : item
-        ));
+      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/update_status?token=${import.meta.env.VITE_ADMIN_TOKEN}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          request_id: requestId,
+          new_status: newStatus,
+          changed_by: "admin"
+        })
+      });
+
+      if (!res.ok) throw new Error("Failed to update status");
+
+      if (!opts?.skipUndo) {
+        showUndo(`Status changed to "${newStatus}". Undo?`, () => {
+          handleStatusChange(requestId, prevStatus, { skipUndo: true });
+        });
       }
-    };
+
+    } catch (err) {
+      console.error("Error updating status:", err);
+      setData(prev => prev.map(item =>
+        item.id === requestId ? { ...item, status: prevStatus } : item
+      ));
+    }
+  };
 
   
 useEffect(() => {
@@ -322,30 +429,13 @@ useEffect(() => {
         throw new Error("Invalid data response");
       }
       setData(json.data);
-      // Prefer X-Total-Count header from API if present; otherwise fall back to json.meta.total
       const totalHeaderRaw = res.headers.get('x-total-count') || res.headers.get('X-Total-Count');
       const totalFromHeader = totalHeaderRaw ? parseInt(totalHeaderRaw, 10) : null;
       const totalFromMeta = (typeof json.meta?.total === 'number') ? json.meta.total : null;
       setTotal(Number.isFinite(totalFromHeader as number) ? (totalFromHeader as number) : totalFromMeta);
       setLoading(false);
     } catch (err: any) {
-      // fallback to mock data
-      setData([
-        {
-          id: 'mock-uuid-1',
-          email: 'test@example.com',
-          product_id: 12345,
-          product_title: 'The Book of Ferments',
-          created_at: new Date().toISOString(),
-        },
-        {
-          id: 'mock-uuid-2',
-          email: 'reader@example.com',
-          product_id: 98765,
-          product_title: 'Cooking in the Shadows',
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      setData([]);
       setError(err.message);
       setLoading(false);
     }
@@ -358,17 +448,14 @@ useEffect(() => {
     try {
       localStorage.setItem('collectionFilter', collectionFilter);
     } catch {
-      // ignore write errors (e.g., privacy mode)
     }
   }, [collectionFilter]);
 
-  // When switching views, always reset to page 1 to avoid empty pages
   useEffect(() => {
     setPage(1);
     clearSelection();
   }, [collectionFilter]);
 
-  // When search changes, always reset to page 1 to avoid empty pages
   useEffect(() => {
     setPage(1);
     clearSelection();
@@ -377,16 +464,14 @@ useEffect(() => {
   const onChangeLimit = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const next = parseInt(e.target.value, 10);
     setLimit(next);
-    setPage(1); // reset to first page when page size changes
+    setPage(1);
   };
 
   const onPrevPage = () => setPage(p => Math.max(1, p - 1));
   const onNextPage = () => setPage(p => p + 1);
 
-  // Range display and pagination end detection
   const startIndex = data.length > 0 ? (page - 1) * limit + 1 : 0;
   const endIndex = (page - 1) * limit + data.length;
-  // Disable Next when we know total and have reached it; otherwise fallback to length heuristic
   const isLastPage = total != null ? endIndex >= total : data.length < limit;
 
   const totalPages = total != null ? Math.ceil(total / limit) : null;
@@ -395,100 +480,19 @@ useEffect(() => {
     ? `${startIndex}–${endIndex} of ${total} entries`
     : `${startIndex}–${endIndex} entries`;
 
-  console.log("Row IDs from backend:", data.map(d => d.id));
-  console.log("Admin dashboard data:", data)
-
   const sortedData = data;
-
-
-/*
-  // Export CSV
-  const handleExportCSV = () => {
-    const headers = ["ID", "Product Title", "ISBN", "Email", "Submitted"];
-    const rows = filteredData.map((entry: InterestEntry) => [
-      entry.cr_id || "CRN/A",
-      decodeHTMLEntities(entry.product_title),
-      entry.isbn || "—",
-      entry.email,
-      new Date(entry.created_at).toLocaleString(),
-    ]);
-    const csvContent =
-      "data:text/csv;charset=utf-8," +
-      [headers, ...rows].map((e) => e.join(",")).join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "customer_requests.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // Export PDF
-  const handleExportPDF = () => {
-    const doc = new jsPDF();
-    const tableColumn = ["ID", "Product Title", "ISBN", "Email", "Submitted"];
-    const tableRows = filteredData.map((entry: InterestEntry) => [
-      entry.cr_id || "CRN/A",
-      decodeHTMLEntities(entry.product_title),
-      entry.isbn || "—",
-      entry.email,
-      new Date(entry.created_at).toLocaleString(),
-    ]);
-    doc.autoTable({
-      head: [tableColumn],
-      body: tableRows,
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [0, 128, 96] },
-    });
-    doc.save("customer_requests.pdf");
-  };
-
-  const handlePrint = () => {
-    window.print();
-  };*/
-
-  // MobileRequestCard component for mobile cards
-  const MobileRequestCard = ({ entry }: { entry: InterestEntry }) => {
-    const [expanded, setExpanded] = useState(false);
-
-    return (
-      <div className="border p-4 rounded shadow-sm bg-white dark:bg-gray-800">
-        <div className="flex justify-between items-center">
-          <div>
-            <p className="text-sm font-medium">{decodeHTMLEntities(entry.product_title)}</p>
-            <p className="text-xs text-gray-600 dark:text-gray-300">{entry.email}</p>
-          </div>
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="text-sm text-blue-600 dark:text-blue-400"
-          >
-            {expanded ? '⌃' : '⌄'}
-          </button>
-        </div>
-        {expanded && (
-          <div className="mt-3 space-y-1 text-sm text-gray-700 dark:text-gray-200">
-            {entry.cr_id && <p><strong>ID:</strong> {entry.cr_id}</p>}
-            {entry.isbn && <p><strong>ISBN:</strong> {entry.isbn}</p>}
-            <p><strong>Submitted:</strong> {new Date(entry.created_at).toLocaleDateString()}</p>
-          </div>
-        )}
-      </div>
-    );
-  };
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold mb-4">Request Service</h1>
-      {loading && <p>Loading...</p>}
+      <h1 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">Request Service</h1>
+      {loading && <p className="text-sm text-gray-500">Loading...</p>}
       {error && <p className="text-red-600 text-sm">Error: {error}</p>}
       
-      {/* Bulk actions bar */}
+      {/* Bulk actions bar - HIDDEN on Mobile */}
       <div className="flex justify-end mb-2">
         <BulkActionsBar
           selectionCount={selectedIds.size}
           onBulkStatus={(s) => {
-            // open ConfirmModal to bulk-apply status `s` to selectedIds
             if (selectedIds.size === 0) return;
             setBulkTargetStatus(s);
             setBulkConfirmOpen(true);
@@ -500,74 +504,61 @@ useEffect(() => {
         />
       </div>
 
-      {/* Flexbox container for controls */}
-      <div className="flex justify-between items-center print-hidden">
-        {/* FilterControls on the left */}
-        <FilterControls
-          selectedFilter={selectedFilter}
-          handleFilterChange={handleFilterChange}
-          selectedStatuses={selectedStatuses}
-          onStatusToggle={handleStatusToggle}
-          clearStatusFilter={clearStatusFilter}
-        />
-        <select
-          value={collectionFilter}
-          onChange={(e) => setCollectionFilter(e.target.value as 'all' | 'op' | 'notop')}
-          className="ml-3 text-sm text-left border rounded px-2 py-1 bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
-          aria-label="Filter by collection"
-          title="Filter by collection"
-        >
-          <option value="all">All</option>
-          <option value="op">Out-of-Print</option>
-          <option value="notop">Not OP</option>
-        </select>
+      {/* Main Controls Bar - STICKY ON MOBILE */}
+      {/* Added sticky, top-0, z-30, and removed opacity from background for readability */}
+      <div className="sticky top-0 z-30 flex flex-col lg:flex-row items-center gap-3 bg-gray-50 dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm print-hidden">
         
-        {/* Pagination controls */}
-        <div className="flex items-center gap-3 ml-4">
-          <label className="text-xs text-gray-700 dark:text-gray-300" htmlFor="rows-per-page">Rows:</label>
+        {/* Left: Filters */}
+        <div className="flex flex-col md:flex-row gap-3 flex-1 w-full lg:w-auto">
+          <FilterControls
+            selectedFilter={selectedFilter}
+            handleFilterChange={handleFilterChange}
+            selectedStatuses={selectedStatuses}
+            onStatusToggle={handleStatusToggle}
+            clearStatusFilter={clearStatusFilter}
+          />
+          
           <select
-            id="rows-per-page"
-            value={limit}
-            onChange={onChangeLimit}
-            className="border rounded px-2 py-1 bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
-            aria-label="Rows per page"
-            title="Rows per page"
+            value={collectionFilter}
+            onChange={(e) => setCollectionFilter(e.target.value as 'all' | 'op' | 'notop')}
+            className="border rounded px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none w-full md:w-auto min-w-[140px]"
           >
-            <option value={20}>20</option>
-            <option value={50}>50</option>
-            <option value={100}>100</option>
+            <option value="all">All Collections</option>
+            <option value="op">Out-of-Print</option>
+            <option value="notop">Active Catalog</option>
           </select>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onPrevPage}
-              disabled={page === 1}
-              className="px-2 py-1 border rounded disabled:opacity-50 bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
-            >
-              Prev
-            </button>
-            <span className="text-xs md:text-sm text-gray-700 dark:text-gray-300">{pageSummary}</span>
-            <button
-              type="button"
-              onClick={onNextPage}
-              disabled={isLastPage}
-              className="px-2 py-1 border rounded disabled:opacity-50 bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
-            >
-              Next
-            </button>
-          </div>
-          {/* Range display */}
-          <span className="text-xs md:text-sm text-gray-700 dark:text-gray-300 ml-2">
-            {rangeSummary}
-          </span>
         </div>
 
-        {/* ExportButtons on the right */}
-        <ExportButtons
-          filteredData={sortedData}
-          decodeHTMLEntities={decodeHTMLEntities}
-        />
+        {/* Right: Pagination & Exports */}
+        <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto justify-between lg:justify-end border-t lg:border-t-0 pt-3 lg:pt-0 border-gray-200 dark:border-gray-700">
+           
+           {/* Pagination */}
+           <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 whitespace-nowrap">Rows:</span>
+              <select
+                value={limit}
+                onChange={onChangeLimit}
+                className="border rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600"
+              >
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              
+              <div className="flex items-center gap-1 ml-2">
+                <button onClick={onPrevPage} disabled={page === 1} className="px-2 py-1 border rounded text-xs bg-white dark:bg-gray-800 dark:text-white disabled:opacity-50 hover:bg-gray-50">Prev</button>
+                <span className="text-xs text-gray-600 dark:text-gray-300 min-w-[3rem] text-center">{pageSummary}</span>
+                <button onClick={onNextPage} disabled={isLastPage} className="px-2 py-1 border rounded text-xs bg-white dark:bg-gray-800 dark:text-white disabled:opacity-50 hover:bg-gray-50">Next</button>
+              </div>
+           </div>
+           
+           <div className="hidden sm:block h-5 w-px bg-gray-300 dark:bg-gray-600"></div>
+           
+           {/* Export Buttons - HIDDEN on Mobile */}
+           <div className="hidden sm:block flex-shrink-0">
+             <ExportButtons filteredData={sortedData} decodeHTMLEntities={decodeHTMLEntities} />
+           </div>
+        </div>
       </div>
 
       {/* Desktop Table */}
@@ -585,40 +576,44 @@ useEffect(() => {
           selectedStatuses={selectedStatuses}
         />
       </div>
-      {/* Footer Summary (duplicates above) */}
+
+      {/* Footer Summary */}
       <div className="hidden sm:flex justify-end items-center gap-3 mt-2 print-hidden">
-        <span className="text-[0.5rem] md:text-sm text-gray-700 dark:text-gray-300">{pageSummary}</span>
-        <span className="text-[0.5rem] md:text-sm text-gray-700 dark:text-gray-300">{rangeSummary}</span>
+        <span className="text-xs text-gray-500 dark:text-gray-400">{pageSummary}</span>
+        <span className="text-xs text-gray-500 dark:text-gray-400">{rangeSummary}</span>
       </div>
-      {/* Mobile Cards */}
+
+      {/* Mobile Cards - Defined externally to prevent state loss */}
       <div className="block sm:hidden space-y-4">
         {sortedData.map((entry, index) => (
-          <MobileRequestCard key={index} entry={entry} />
+          <MobileRequestCard 
+            key={entry.id || index}
+            entry={entry} 
+            onRequestStatusChange={requestStatusChange}
+            onArchiveClick={(id) => {
+              setSelectedIds(new Set([id]));
+              setArchiveConfirmOpen(true);
+            }}
+          />
         ))}
       </div>
-      {/* Mobile footer summary */}
-      <div className="flex sm:hidden justify-between items-center mt-2 px-1 print-hidden">
-        <span className="text-[0.5rem] text-gray-700 dark:text-gray-300">{pageSummary}</span>
-        <span className="text-[0.5rem] text-gray-700 dark:text-gray-300">{rangeSummary}</span>
+
+      {/* Mobile Footer Summary */}
+      <div className="flex sm:hidden justify-between items-center mt-4 px-1 print-hidden text-xs text-gray-500">
+        <span>{pageSummary}</span>
+        <span>{rangeSummary}</span>
       </div>
-      {/* Confirm modal for status change */}
+
+      {/* Modals */}
       {pendingChange && (
         <ConfirmModal
           open={confirmOpen}
-          onCancel={() => {
-            setConfirmOpen(false);
-            setPendingChange(null);
-          }}
+          onCancel={() => { setConfirmOpen(false); setPendingChange(null); }}
           onConfirm={async () => {
             if (!pendingChange) return;
             setConfirmBusy(true);
-            try {
-              await handleStatusChange(pendingChange.id, pendingChange.newStatus);
-            } finally {
-              setConfirmBusy(false);
-              setConfirmOpen(false);
-              setPendingChange(null);
-            }
+            try { await handleStatusChange(pendingChange.id, pendingChange.newStatus); } 
+            finally { setConfirmBusy(false); setConfirmOpen(false); setPendingChange(null); }
           }}
           busy={confirmBusy}
           title="Change status?"
@@ -628,105 +623,70 @@ useEffect(() => {
           variant="primary"
         />
       )}
-      {/* Confirm modal for BULK status change */}
+
       {bulkTargetStatus && (
         <ConfirmModal
           open={bulkConfirmOpen}
-          onCancel={() => {
-            setBulkConfirmOpen(false);
-            setBulkTargetStatus(null);
-          }}
+          onCancel={() => { setBulkConfirmOpen(false); setBulkTargetStatus(null); }}
           onConfirm={async () => {
             const ids = Array.from(selectedIds);
             if (ids.length === 0 || !bulkTargetStatus) return;
             setBulkBusy(true);
             try {
-              // Capture previous statuses for a single undo action
               const prevMap: Record<string, StatusPhase> = {};
-              ids.forEach(id => {
-                const prevStatus = (data.find(d => d.id === id)?.status as StatusPhase) ?? 'New';
-                prevMap[id] = prevStatus;
-              });
-
-              await Promise.all(
-                ids.map(id => handleStatusChange(id, bulkTargetStatus, { skipUndo: true }))
-              );
-
-              showUndo(`Changed ${ids.length} ${ids.length === 1 ? 'item' : 'items'} to "${bulkTargetStatus}". Undo?`, () => {
+              ids.forEach(id => { prevMap[id] = (data.find(d => d.id === id)?.status as StatusPhase) ?? 'New'; });
+              await Promise.all(ids.map(id => handleStatusChange(id, bulkTargetStatus, { skipUndo: true })));
+              showUndo(`Changed ${ids.length} items to "${bulkTargetStatus}". Undo?`, () => {
                 Promise.all(ids.map(id => handleStatusChange(id, prevMap[id], { skipUndo: true })));
               });
-
               clearSelection();
-            } finally {
-              setBulkBusy(false);
-              setBulkConfirmOpen(false);
-              setBulkTargetStatus(null);
-            }
+            } finally { setBulkBusy(false); setBulkConfirmOpen(false); setBulkTargetStatus(null); }
           }}
           busy={bulkBusy}
-          title={`Change status for ${selectedIds.size} selected?`}
-          description={`Set status to "${bulkTargetStatus}" for ${selectedIds.size} selected ${selectedIds.size === 1 ? 'item' : 'items'}?`}
-          confirmLabel="Change"
+          title={`Update ${selectedIds.size} items?`}
+          description={`Set status to "${bulkTargetStatus}" for ${selectedIds.size} selected items?`}
+          confirmLabel="Change All"
           cancelLabel="Cancel"
           variant="primary"
         />
       )}
-      {/* Undo toast (10s) */}
-      {undoToast && (
-        <UndoToast
-          message={undoToast.message}
-          duration={10000}
-          onUndo={() => {
-            try {
-              undoToast.onUndo();
-            } finally {
-              setUndoToast(null);
-            }
-          }}
-          onClose={() => setUndoToast(null)}
-        />
-      )}
-      {/* Confirm modal for BULK archive */}
+
       <ConfirmModal
         open={archiveConfirmOpen}
         onCancel={() => setArchiveConfirmOpen(false)}
         onConfirm={async () => {
           const ids = Array.from(selectedIds);
-          if (ids.length === 0) {
-            setArchiveConfirmOpen(false);
-            return;
-          }
+          if (ids.length === 0) { setArchiveConfirmOpen(false); return; }
           setArchiveBusy(true);
           try {
             const res = await fetch(
               `${import.meta.env.VITE_API_BASE_URL}/api/archive/bulk?token=${import.meta.env.VITE_ADMIN_TOKEN}`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ids }),
-              }
+              { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) }
             );
             if (!res.ok) throw new Error('Failed to archive selected');
-            // Optimistic UI: remove archived rows from current view
             setData(prev => prev.filter(item => !ids.includes(item.id)));
             clearSelection();
-          } catch (e) {
-            console.error('Bulk archive failed', e);
-          } finally {
-            setArchiveBusy(false);
-            setArchiveConfirmOpen(false);
-          }
+          } catch (e) { console.error(e); } 
+          finally { setArchiveBusy(false); setArchiveConfirmOpen(false); }
         }}
         busy={archiveBusy}
-        title={`Archive ${selectedIds.size} selected?`}
-        description={`Move ${selectedIds.size} selected ${selectedIds.size === 1 ? 'item' : 'items'} to archive.`}
+        title={`Archive ${selectedIds.size} items?`}
+        description="These items will be moved to the archive."
         confirmLabel="Archive"
         cancelLabel="Cancel"
         variant="danger"
       />
+
+      {undoToast && (
+        <UndoToast
+          message={undoToast.message}
+          duration={10000}
+          onUndo={() => { undoToast.onUndo(); setUndoToast(null); }}
+          onClose={() => setUndoToast(null)}
+        />
+      )}
     </div>
   )
 }
-
 
 export default RequestService
