@@ -43,7 +43,6 @@ const fetchShopifyHandle = async (productId: number): Promise<string | null> => 
   }`;
 
   try {
-    console.log(`[RequestService] 🚀 Sending GraphQL for ${productId}...`);
     const res = await fetch(`${API_BASE}/api/shopify/graphql`, {
       method: "POST",
       headers: { 
@@ -59,9 +58,6 @@ const fetchShopifyHandle = async (productId: number): Promise<string | null> => 
     }
 
     const json = await res.json();
-    console.log(`[RequestService] ✅ JSON Received for ${productId}`, json);
-    
-    // Safety check for deep nesting
     const handle = json?.data?.product?.handle;
     return handle || null;
   } catch (err) {
@@ -81,6 +77,7 @@ const BulkActionsBar: React.FC<{
   onBulkArchive: () => void;
 }> = ({ selectionCount, onBulkStatus, onBulkArchive }) => {
   const disabled = selectionCount === 0;
+  // hidden sm:flex ensures this is gone on mobile
   return (
     <div className="hidden sm:flex print-hidden items-center gap-2 text-sm">
       <span className="text-xs text-gray-600 dark:text-gray-300">
@@ -142,18 +139,21 @@ const MobileRequestCard: React.FC<MobileRequestCardProps> = ({
 
     const fetchData = async () => {
       // Only fetch if expanded, no handle yet, and not already loading
+      // We check handle/isLoadingHandle from state, but DO NOT list them in dependencies
+      // to avoid self-canceling the effect when state updates.
       if (expanded && handle === null && !isLoadingHandle) {
         setIsLoadingHandle(true);
-        console.log(`[MobileCard] Starting fetch logic for ${entry.product_id}`);
+        console.log(`[MobileCard] Fetching handle for ${entry.product_id}...`);
         
         const fetchedHandle = await fetchShopifyHandle(entry.product_id);
         
-        console.log(`[MobileCard] Promise resolved. Handle: "${fetchedHandle}". Component Mounted: ${isMounted}`);
-
         if (isMounted) {
+          console.log(`[MobileCard] Success. Handle: ${fetchedHandle}`);
           // Use empty string if null to indicate "checked but failed"
           setHandle(fetchedHandle || '');
           setIsLoadingHandle(false);
+        } else {
+          console.log(`[MobileCard] Component unmounted, ignoring result.`);
         }
       }
     };
@@ -161,7 +161,8 @@ const MobileRequestCard: React.FC<MobileRequestCardProps> = ({
     fetchData();
 
     return () => { isMounted = false; };
-  }, [expanded, entry.product_id, handle, isLoadingHandle]);
+    // FIX: Removed 'handle' and 'isLoadingHandle' from dependencies
+  }, [expanded, entry.product_id]); 
 
   return (
     <div className="border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm bg-white dark:bg-gray-800 overflow-hidden">
