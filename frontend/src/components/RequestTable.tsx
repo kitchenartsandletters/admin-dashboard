@@ -90,6 +90,8 @@ const RequestTable: React.FC<RequestTableProps> = ({
   // Extended state to track the handle and its loading status
   const [selected, setSelected] = useState<(InterestEntry & { handle?: string; isLoadingHandle?: boolean }) | null>(null);
   
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
   const headerCbRef = useRef<HTMLInputElement>(null);
   const idsOnPage = useMemo(() => filteredData.map(r => r.id), [filteredData]);
   const allChecked = idsOnPage.length > 0 && idsOnPage.every(id => selectedIds.has(id));
@@ -99,28 +101,32 @@ const RequestTable: React.FC<RequestTableProps> = ({
     if (headerCbRef.current) headerCbRef.current.indeterminate = someChecked;
   }, [someChecked]);
 
+  // --- Handle Copy Logic ---
+  // Works for both Table Row and Sidebar
+  const handleCopyEmail = (id: string, email: string) => {
+    navigator.clipboard.writeText(email).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000); 
+    });
+  };
+
   // --- Effect: Fetch Handle on Selection ---
   useEffect(() => {
     let isMounted = true;
     
     const loadHandle = async () => {
-      // Only fetch if we have a selected item, it has a product_id, and we don't have a handle yet
       if (selected && selected.product_id && selected.handle === undefined) {
-        
-        // 1. Set loading state immediately
         if (isMounted) {
           setSelected(prev => prev ? { ...prev, isLoadingHandle: true } : null);
         }
 
-        // 2. Perform fetch
         const handle = await fetchShopifyHandle(selected.product_id);
         
-        // 3. Update state regardless of success/failure to clear loading flag
         if (isMounted && selected) {
           setSelected(prev => 
             prev ? { 
               ...prev, 
-              handle: handle || '', // Use empty string if null to indicate "checked but failed"
+              handle: handle || '', 
               isLoadingHandle: false 
             } : null
           );
@@ -131,7 +137,7 @@ const RequestTable: React.FC<RequestTableProps> = ({
     loadHandle();
 
     return () => { isMounted = false; };
-  }, [selected?.id]); // Re-run when the selected row changes
+  }, [selected?.id]); 
 
   const visibleRows = filteredData.filter(entry => {
     const status = (entry.status ?? "New") as StatusPhase;
@@ -195,8 +201,25 @@ const RequestTable: React.FC<RequestTableProps> = ({
                 {decodeHTMLEntities(entry.product_title)}
               </td>
 
-              <td className="hidden md:table-cell px-3 py-3 text-gray-500 dark:text-gray-400 truncate max-w-[150px]" title={entry.email}>
-                {entry.email}
+              {/* Table Row: Click-to-Copy Email */}
+              <td className="hidden md:table-cell px-3 py-3 text-gray-500 dark:text-gray-400 max-w-[150px]">
+                <div 
+                  className="group relative cursor-pointer w-full"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCopyEmail(entry.id, entry.email);
+                  }}
+                >
+                  <div className="truncate" title="Click to copy email">
+                    {entry.email}
+                  </div>
+                  
+                  {/* Tooltip */}
+                  <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block px-2 py-1 bg-gray-800 text-white text-xs rounded shadow-lg whitespace-nowrap z-50">
+                    {copiedId === entry.id ? 'Copied!' : 'Click to copy'}
+                    <span className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-800"></span>
+                  </span>
+                </div>
               </td>
 
               <td className="hidden lg:table-cell px-3 py-3 text-gray-500 dark:text-gray-400 truncate max-w-[150px]">
@@ -275,10 +298,23 @@ const RequestTable: React.FC<RequestTableProps> = ({
                   <label className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Customer</label>
                   <div className="text-sm text-gray-900 dark:text-white">{selected.customer_name?.trim() || '—'}</div>
                </div>
+               
+               {/* Sidebar Email: Click-to-Copy */}
                <div>
                   <label className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Email</label>
-                  <div className="text-sm text-gray-900 dark:text-white">{selected.email}</div>
+                  <div 
+                    className="text-sm text-gray-900 dark:text-white cursor-pointer group relative w-fit"
+                    onClick={() => handleCopyEmail(`sidebar-${selected.id}`, selected.email)}
+                  >
+                    {selected.email}
+                    {/* Sidebar Tooltip */}
+                    <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block px-2 py-1 bg-gray-800 text-white text-xs rounded shadow-lg whitespace-nowrap z-50">
+                      {copiedId === `sidebar-${selected.id}` ? 'Copied!' : 'Click to copy'}
+                      <span className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-800"></span>
+                    </span>
+                  </div>
                </div>
+
                <div>
                   <label className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Date Submitted</label>
                   <div className="text-sm text-gray-900 dark:text-white">{new Date(selected.created_at).toLocaleString()}</div>
