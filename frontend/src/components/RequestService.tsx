@@ -192,14 +192,14 @@ const MobileRequestCard: React.FC<MobileRequestCardProps> = ({
               </a>
               <button 
                 onClick={handleCopyEmail}
-                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
                 title="Copy email to clipboard"
               >
                 {copied ? (
                   <span className="text-[10px] text-green-600 font-bold">Copied</span>
                 ) : (
                   // Simple SVG Copy Icon
-                  <svg className="w-3 h-3 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-3 h-3 text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 011.414.414l2.758 2.758A1 1 0 0119.586 7H14a2 2 0 01-2-2zM12 9v1m0 4v.01" />
                     <rect x="8" y="8" width="12" height="12" rx="2" stroke="none" fill="none"/>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -604,50 +604,13 @@ useEffect(() => {
     ? `${startIndex}–${endIndex} of ${total} entries`
     : `${startIndex}–${endIndex} entries`;
 
-  // === UPDATED: Client-Side filtering for Search + Status ===
-  const sortedData = data.filter((entry, idx) => {
-    // 1. Filter by Status (Client-side mirror of checkbox state)
+  // === UPDATED: Client-Side filtering restricted to STATUS only ===
+  // Since the API handles the search string matching (including ISBNs/IDs),
+  // we remove the client-side text filtering to prevent hiding valid results.
+  const sortedData = data.filter((entry) => {
+    // Only check Status (to ensure checkboxes are respected instantly)
     const effectiveStatus = (entry.status as StatusPhase) || 'New';
-    if (!selectedStatuses.includes(effectiveStatus)) return false;
-
-    // 2. Filter by Search (Client-side text match)
-    if (!selectedFilter) return true;
-    
-    const lowerFilter = selectedFilter.toLowerCase();
-    const cleanFilter = lowerFilter.replace(/-/g, ''); // For loose ISBN/ID match
-
-    // -- Calculate matches individually --
-    const matchTitle = entry.product_title && entry.product_title.toLowerCase().includes(lowerFilter);
-    const matchEmail = entry.email && entry.email.toLowerCase().includes(lowerFilter);
-    const matchName = entry.customer_name && entry.customer_name.toLowerCase().includes(lowerFilter);
-    const matchInternalId = entry.id && entry.id.toLowerCase().includes(lowerFilter);
-    
-    // CR ID: Safe string conversion
-    const rawCrId = entry.cr_id ? String(entry.cr_id) : '';
-    const matchCrId = rawCrId.toLowerCase().includes(lowerFilter);
-
-    // ISBN: Safe string conversion + dash removal
-    const rawIsbn = entry.isbn ? String(entry.isbn) : '';
-    const cleanIsbn = rawIsbn.toLowerCase().replace(/-/g, '');
-    const matchIsbn = cleanIsbn.includes(cleanFilter);
-
-    // -- Final Boolean Decision --
-    const isSearchMatch = !!(matchTitle || matchEmail || matchName || matchInternalId || matchCrId || matchIsbn);
-
-    // -- Debug Log (Only first 5 or if looking for numbers) --
-    if (idx < 5 || /[\d-]/.test(lowerFilter)) {
-        console.log(`[Filter Debug] Row ${idx}`, {
-            id: entry.id,
-            cr_id: rawCrId,
-            isbn: rawIsbn,
-            filter: lowerFilter,
-            matches: { title: matchTitle, email: matchEmail, cr: matchCrId, isbn: matchIsbn },
-            FINAL_DECISION: isSearchMatch
-        });
-    }
-
-    // -- Return the EXACT same variable --
-    return isSearchMatch;
+    return selectedStatuses.includes(effectiveStatus);
   });
 
   return (
