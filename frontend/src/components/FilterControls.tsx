@@ -54,7 +54,7 @@ const FilterControls: React.FC<FilterControlsProps> = ({
     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full">
       <input
         type="text"
-        placeholder="Filter by title, email or ID..."
+        placeholder="Filter by title, email, name or ID..."
         value={selectedFilter}
         onChange={handleFilterChange}
         className="px-3 py-2 border rounded text-sm bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none flex-1"
