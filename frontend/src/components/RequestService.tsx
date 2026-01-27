@@ -139,8 +139,6 @@ const MobileRequestCard: React.FC<MobileRequestCardProps> = ({
 
     const fetchData = async () => {
       // Only fetch if expanded, no handle yet, and not already loading
-      // We check handle/isLoadingHandle from state, but DO NOT list them in dependencies
-      // to avoid self-canceling the effect when state updates.
       if (expanded && handle === null && !isLoadingHandle) {
         setIsLoadingHandle(true);
         console.log(`[MobileCard] Fetching handle for ${entry.product_id}...`);
@@ -149,7 +147,6 @@ const MobileRequestCard: React.FC<MobileRequestCardProps> = ({
         
         if (isMounted) {
           console.log(`[MobileCard] Success. Handle: ${fetchedHandle}`);
-          // Use empty string if null to indicate "checked but failed"
           setHandle(fetchedHandle || '');
           setIsLoadingHandle(false);
         } else {
@@ -161,7 +158,6 @@ const MobileRequestCard: React.FC<MobileRequestCardProps> = ({
     fetchData();
 
     return () => { isMounted = false; };
-    // FIX: Removed 'handle' and 'isLoadingHandle' from dependencies
   }, [expanded, entry.product_id]); 
 
   return (
@@ -347,7 +343,7 @@ const RequestService = () => {
   };
 
   const selectAllStatusFilter = () => {
-    setSelectedStatuses(ALL_STATUSES); // Fills array with all options (Checks all)
+    setSelectedStatuses(ALL_STATUSES); 
     setPage(1);
   };
   
@@ -573,7 +569,14 @@ useEffect(() => {
     ? `${startIndex}–${endIndex} of ${total} entries`
     : `${startIndex}–${endIndex} entries`;
 
-  const sortedData = data;
+  // === FIX IS HERE ===
+  // We apply the status filter client-side to ensure Mobile cards match the DeskTop logic
+  // and handle cases where the API might return data but the user has unchecked the box.
+  const sortedData = data.filter(entry => {
+    // If we have an entry with missing status, treat it as 'New' (matches card badge logic)
+    const effectiveStatus = (entry.status as StatusPhase) || 'New';
+    return selectedStatuses.includes(effectiveStatus);
+  });
 
   return (
     <div className="space-y-4">
