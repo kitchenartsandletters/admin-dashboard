@@ -132,13 +132,13 @@ const MobileRequestCard: React.FC<MobileRequestCardProps> = ({
   const [expanded, setExpanded] = useState(false);
   const [handle, setHandle] = useState<string | null>(null);
   const [isLoadingHandle, setIsLoadingHandle] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Fetch handle only when expanded to save bandwidth
   useEffect(() => {
     let isMounted = true;
 
     const fetchData = async () => {
-      // Only fetch if expanded, no handle yet, and not already loading
       if (expanded && handle === null && !isLoadingHandle) {
         setIsLoadingHandle(true);
         console.log(`[MobileCard] Fetching handle for ${entry.product_id}...`);
@@ -160,6 +160,18 @@ const MobileRequestCard: React.FC<MobileRequestCardProps> = ({
     return () => { isMounted = false; };
   }, [expanded, entry.product_id]); 
 
+  // --- Email Helpers ---
+  const subject = `Regarding: ${decodeHTMLEntities(entry.product_title)}`;
+  const body = `Hi ${entry.customer_name || 'there'},\n\nWe have an update regarding your request for ${decodeHTMLEntities(entry.product_title)}.\n\n`;
+  const mailtoLink = `mailto:${entry.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+  const handleCopyEmail = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(entry.email);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div className="border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm bg-white dark:bg-gray-800 overflow-hidden">
       {/* Card Header (Always Visible) */}
@@ -169,9 +181,32 @@ const MobileRequestCard: React.FC<MobileRequestCardProps> = ({
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white line-clamp-2 leading-tight">
               {decodeHTMLEntities(entry.product_title)}
             </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">
-              {entry.email}
-            </p>
+            
+            {/* UPDATED: Email Action Row */}
+            <div className="flex items-center gap-2 mt-1" onClick={e => e.stopPropagation()}>
+              <a 
+                href={mailtoLink}
+                className="text-xs text-blue-600 dark:text-blue-400 underline truncate hover:text-blue-800 dark:hover:text-blue-300"
+              >
+                {entry.email}
+              </a>
+              <button 
+                onClick={handleCopyEmail}
+                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                title="Copy email to clipboard"
+              >
+                {copied ? (
+                  <span className="text-[10px] text-green-600 font-bold">Copied</span>
+                ) : (
+                  // Simple SVG Copy Icon
+                  <svg className="w-3 h-3 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 011.414.414l2.758 2.758A1 1 0 0119.586 7H14a2 2 0 01-2-2zM12 9v1m0 4v.01" />
+                    <rect x="8" y="8" width="12" height="12" rx="2" stroke="none" fill="none"/>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
           
           {/* Status Badge */}
@@ -569,13 +604,28 @@ useEffect(() => {
     ? `${startIndex}–${endIndex} of ${total} entries`
     : `${startIndex}–${endIndex} entries`;
 
-  // === FIX IS HERE ===
-  // We apply the status filter client-side to ensure Mobile cards match the DeskTop logic
-  // and handle cases where the API might return data but the user has unchecked the box.
+  // === UPDATED: Client-Side filtering for Search + Status ===
   const sortedData = data.filter(entry => {
-    // If we have an entry with missing status, treat it as 'New' (matches card badge logic)
+    // 1. Filter by Status (Client-side mirror of checkbox state)
     const effectiveStatus = (entry.status as StatusPhase) || 'New';
-    return selectedStatuses.includes(effectiveStatus);
+    if (!selectedStatuses.includes(effectiveStatus)) return false;
+
+    // 2. Filter by Search (Client-side text match)
+    // This supplements the API search. If the API returns data but "misses" an ID match
+    // (or if we want instant feedback on the visible page), this ensures we check all fields.
+    if (!selectedFilter) return true;
+    
+    const lowerFilter = selectedFilter.toLowerCase();
+    
+    // Check all relevant fields for the search string
+    return (
+      (entry.product_title && entry.product_title.toLowerCase().includes(lowerFilter)) ||
+      (entry.email && entry.email.toLowerCase().includes(lowerFilter)) ||
+      (entry.customer_name && entry.customer_name.toLowerCase().includes(lowerFilter)) ||
+      (entry.id && entry.id.toLowerCase().includes(lowerFilter)) || // Internal ID
+      (entry.cr_id && String(entry.cr_id).toLowerCase().includes(lowerFilter)) || // Custom Request ID (Number or String)
+      (entry.isbn && String(entry.isbn).includes(lowerFilter)) // ISBN
+    );
   });
 
   return (
