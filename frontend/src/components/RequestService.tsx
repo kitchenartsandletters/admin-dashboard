@@ -602,26 +602,40 @@ useEffect(() => {
     ? `${startIndex}–${endIndex} of ${total} entries`
     : `${startIndex}–${endIndex} entries`;
 
-  // === UPDATED: Client-Side filtering for Search + Status ===
-  const sortedData = data.filter(entry => {
-    // 1. Filter by Status (Client-side mirror of checkbox state)
+  // === UPDATED: Client-Side filtering with DEBUGGING ===
+  const sortedData = data.filter((entry, idx) => {
+    // 1. Filter by Status
     const effectiveStatus = (entry.status as StatusPhase) || 'New';
     if (!selectedStatuses.includes(effectiveStatus)) return false;
 
-    // 2. Filter by Search (Client-side text match)
+    // 2. Filter by Search
     if (!selectedFilter) return true;
     
     const lowerFilter = selectedFilter.toLowerCase();
     
-    // Check all relevant fields for the search string
-    // Added explicit checks for cr_id, id, and isbn
+    // --- DEBUG LOGGING ---
+    // Only log first 5 rows to prevent spam, or if query looks like an ID
+    if (idx < 5 || /[\d-]/.test(lowerFilter)) {
+        const idMatch = entry.id && entry.id.toLowerCase().includes(lowerFilter);
+        const crIdMatch = entry.cr_id && String(entry.cr_id).toLowerCase().includes(lowerFilter);
+        const isbnMatch = entry.isbn && String(entry.isbn).toLowerCase().replace(/-/g, '').includes(lowerFilter.replace(/-/g, ''));
+        
+        console.log(`[Search Debug] Row ${idx}`, {
+            query: lowerFilter,
+            row_id: entry.id,
+            row_cr_id: entry.cr_id, // check if this is null/undefined
+            row_isbn: entry.isbn,
+            MATCHES: { id: !!idMatch, cr_id: !!crIdMatch, isbn: !!isbnMatch }
+        });
+    }
+
     return (
       (entry.product_title && entry.product_title.toLowerCase().includes(lowerFilter)) ||
       (entry.email && entry.email.toLowerCase().includes(lowerFilter)) ||
       (entry.customer_name && entry.customer_name.toLowerCase().includes(lowerFilter)) ||
       (entry.id && entry.id.toLowerCase().includes(lowerFilter)) || // Internal ID
-      (entry.cr_id && String(entry.cr_id).toLowerCase().includes(lowerFilter)) || // Custom Request ID (Safely stringified)
-      // ISBN: Remove dashes for flexible search (e.g. "978-1" finds "9781")
+      (entry.cr_id && String(entry.cr_id).toLowerCase().includes(lowerFilter)) || // Custom Request ID
+      // ISBN: Remove dashes for flexible search
       (entry.isbn && String(entry.isbn).toLowerCase().replace(/-/g, '').includes(lowerFilter.replace(/-/g, ''))) 
     );
   });
