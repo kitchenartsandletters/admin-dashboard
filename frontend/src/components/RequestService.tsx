@@ -342,7 +342,12 @@ const RequestService = () => {
   };
 
   const clearStatusFilter = () => {
-    setSelectedStatuses(ALL_STATUSES);
+    setSelectedStatuses([]);
+    setPage(1);
+  };
+
+  const selectAllStatusFilter = () => {
+    setSelectedStatuses(ALL_STATUSES); // Fills array with all options (Checks all)
     setPage(1);
   };
   
@@ -603,6 +608,7 @@ useEffect(() => {
             selectedStatuses={selectedStatuses}
             onStatusToggle={handleStatusToggle}
             clearStatusFilter={clearStatusFilter}
+            selectAllStatusFilter={selectAllStatusFilter}
           />
           
           <select

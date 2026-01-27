@@ -20,7 +20,6 @@ type InventorySeed = {
 
 /**
  * Preview shape — mirrors bulk-create-wizard.md
- * Keep this aligned with DBS response
  */
 type PreviewItem = {
   canonical_product_id: string;
@@ -72,12 +71,9 @@ export default function DamagedBooksWizard() {
       .map(v => v.trim())
       .filter(Boolean)
       .map(value => {
-        // ISBNs are typically 10 or 13 digits
         if (/^\d{10}(\d{3})?$/.test(value)) {
           return { type: 'isbn', value };
         }
-
-        // Everything else is treated as an explicit product_id
         return { type: 'product_id', value };
       });
   }
@@ -150,13 +146,9 @@ export default function DamagedBooksWizard() {
 
     try {
       const payload = deriveConfirmPayload(preview);
-
       console.log('[CONFIRM PAYLOAD]', JSON.stringify(payload, null, 2));
 
       const response = await DamagedBooksService.confirmBulkCreate(payload);
-
-      console.log('[CONFIRM] raw response →', response);
-      console.log('[CONFIRM] response.ok →', response?.ok);
 
       if (!response.ok) {
         setError(response.error || 'Creation failed.');
@@ -164,16 +156,12 @@ export default function DamagedBooksWizard() {
         return;
       }
 
-      console.log('[CONFIRM] success — setting result + phase=result');
       setResult(response);
       setPhase('result');
+      
+      // Zero out inventory only on success
+      setInventory({ light: 0, moderate: 0, heavy: 0 });
 
-      // zero-out inventory inputs after success
-      setInventory({
-        light: 0,
-        moderate: 0,
-        heavy: 0,
-      });
     } catch (err) {
       console.error('[CONFIRM] exception thrown', err);
       setError('Creation failed.');
@@ -190,66 +178,71 @@ export default function DamagedBooksWizard() {
   const confirmItemsCount = preview ? deriveConfirmPayload(preview).items.length : 0;
   const confirmDisabled = busy || confirmItemsCount === 0;
 
-  // Group preview items by canonical_handle for presentational grouping
-  const groupedPreview = preview
-    ? preview.reduce<Record<string, PreviewItem[]>>((acc, item) => {
-        if (!acc[item.canonical_handle]) {
-          acc[item.canonical_handle] = [];
-        }
-        acc[item.canonical_handle].push(item);
-        return acc;
-      }, {})
-    : {};
-
   return (
-    <div className="p-6 space-y-4 text-gray-900 dark:text-gray-100">
-      <h2 className="text-xl font-semibold">Bulk Create Damaged Books</h2>
-
-      <textarea
-        value={rawInput}
-        onChange={e => setRawInput(e.target.value)}
-        placeholder="Enter ISBNs or Product IDs (space or comma separated)"
-        className="w-full min-h-[80px] border rounded p-2 text-sm
-          bg-white border-gray-300 placeholder-gray-400
-          dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:placeholder-gray-500"
-        disabled={phase !== 'idle'}
-      />
-
-      <div className="grid grid-cols-3 gap-3">
-        {(['light', 'moderate', 'heavy'] as const).map(level => (
-          <div key={level}>
-            <label className="block text-xs uppercase mb-1 opacity-80">
-              {level} inventory
-            </label>
-            <input
-              type="number"
-              min={0}
-              value={inventory[level]}
-              onChange={e =>
-                setInventory({
-                  ...inventory,
-                  [level]: Number(e.target.value),
-                })
-              }
-              className="w-full border rounded px-2 py-1
-                bg-white border-gray-300
-                dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-              disabled={phase !== 'idle'}
-            />
-          </div>
-        ))}
+    <div className="space-y-4 w-full text-gray-900 dark:text-gray-100">
+      {/* Header */}
+      <div>
+        <h2 className="text-xl font-semibold dark:text-white">Bulk Create Damaged Books</h2>
+        <span className="text-sm opacity-70 dark:text-gray-400">Step 1: Enter details</span>
       </div>
 
-      {error && <div className="text-red-600 dark:text-red-400 text-sm">{error}</div>}
+      {/* Input Area */}
+      <div className="bg-white dark:bg-gray-900 p-4 border rounded-md dark:border-gray-700 shadow-sm space-y-4">
+        <div>
+          <label className="block text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">
+            Source Products
+          </label>
+          <textarea
+            value={rawInput}
+            onChange={e => setRawInput(e.target.value)}
+            placeholder="Enter ISBNs or Product IDs (space or comma separated)"
+            className="w-full min-h-[100px] px-3 py-2 border rounded text-sm 
+              dark:bg-gray-800 dark:text-white dark:border-gray-700 
+              focus:ring-2 focus:ring-blue-500 outline-none shadow-sm placeholder-gray-400"
+            disabled={phase !== 'idle'}
+          />
+        </div>
 
-      <div className="flex justify-end gap-2">
-        <button
-          onClick={handlePreview}
-          disabled={busy || phase !== 'idle'}
-          className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50 hover:bg-blue-700 transition-colors"
-        >
-          {busy && phase === 'idle' ? 'Working…' : 'Preview'}
-        </button>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {(['light', 'moderate', 'heavy'] as const).map(level => (
+            <div key={level}>
+              <label className="block text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">
+                {level} Quantity
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={inventory[level]}
+                onChange={e =>
+                  setInventory({
+                    ...inventory,
+                    [level]: Number(e.target.value),
+                  })
+                }
+                className="w-full px-3 py-2 border rounded text-sm 
+                  dark:bg-gray-800 dark:text-white dark:border-gray-700 
+                  focus:ring-2 focus:ring-blue-500 outline-none shadow-sm"
+                disabled={phase !== 'idle'}
+              />
+            </div>
+          ))}
+        </div>
+
+        {error && (
+          <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-red-700 dark:text-red-400 text-sm">
+            {error}
+          </div>
+        )}
+
+        <div className="flex justify-end pt-2">
+          <button
+            onClick={handlePreview}
+            disabled={busy || phase !== 'idle'}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-sm"
+          >
+            {busy && phase === 'idle' ? 'Generating Preview…' : 'Generate Preview'}
+          </button>
+        </div>
       </div>
 
       {/* -----------------------------
@@ -258,7 +251,7 @@ export default function DamagedBooksWizard() {
       {phase === 'preview' && preview && (
         <ConfirmModal
           open={true}
-          title={`Preview ${preview.length} Damaged Product${preview.length !== 1 ? 's' : ''}`}
+          title={`Confirm Creation (${preview.length} items)`}
           confirmLabel="Create Products"
           cancelLabel="Cancel"
           busy={busy}
@@ -271,38 +264,47 @@ export default function DamagedBooksWizard() {
           }}
           confirmDisabled={confirmDisabled}
         >
-          <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-            {Object.entries(groupedPreview).map(([canonical_handle, items]) => (
-              <div key={canonical_handle} className="mb-4">
-                <h3 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">
-                  {canonical_handle}
-                </h3>
-                {items.map(item => (
-                  <div
-                    key={item.condition}
-                    className="border rounded p-2 bg-gray-50 border-gray-200 
-                      dark:bg-gray-800 dark:border-gray-700 mb-2"
+          {/* Table Container matching DamagedBooksTable style */}
+          <div className="overflow-x-auto border rounded-md dark:border-gray-700 max-h-[60vh]">
+            <table className="min-w-full border-collapse text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider sticky top-0 z-10">
+                <tr>
+                  <th className="px-3 py-3 text-left font-medium border-b dark:border-gray-700">Title</th>
+                  <th className="px-3 py-3 text-left font-medium border-b dark:border-gray-700">Condition</th>
+                  <th className="px-3 py-3 text-center font-medium border-b dark:border-gray-700">Qty</th>
+                  <th className="px-3 py-3 text-right font-medium border-b dark:border-gray-700">Discount</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
+                {preview.map((item, idx) => (
+                  <tr 
+                    key={`${item.canonical_handle}-${item.condition}-${idx}`} 
+                    className="even:bg-gray-50 dark:even:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                   >
-                    <p className="text-gray-900 dark:text-gray-100">
-                      <strong>{item.title}</strong>
-                    </p>
-                    <p className="text-xs text-gray-600 dark:text-gray-400">
-                      Condition: {item.condition}
-                    </p>
-                    <p className="text-xs text-gray-600 dark:text-gray-400">
-                      Inventory Seed: {item.inventory_seed}
-                    </p>
-                    <p className="text-xs text-gray-600 dark:text-gray-400">
-                      Discount: {item.discount_pct}%
-                    </p>
-                  </div>
+                    <td className="px-3 py-3 font-medium text-gray-900 dark:text-white">
+                      {item.title}
+                      <div className="text-xs text-gray-500 font-normal mt-0.5">{item.canonical_handle}</div>
+                    </td>
+                    <td className="px-3 py-3 capitalize text-gray-600 dark:text-gray-300">
+                      {item.condition}
+                    </td>
+                    <td className="px-3 py-3 text-center text-gray-900 dark:text-white">
+                      {item.inventory_seed}
+                    </td>
+                    <td className="px-3 py-3 text-right text-gray-600 dark:text-gray-300">
+                      -{item.discount_pct}%
+                    </td>
+                  </tr>
                 ))}
-              </div>
-            ))}
+              </tbody>
+            </table>
           </div>
         </ConfirmModal>
       )}
 
+      {/* -----------------------------
+          Success Modal
+         ----------------------------- */}
       {phase === 'result' && result && (
         <ConfirmModal
           open={true}
@@ -328,10 +330,20 @@ export default function DamagedBooksWizard() {
             setError(null);
           }}
         >
-          <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-            <p className="text-green-600 dark:text-green-400 text-sm">
-              {result.message || 'Damaged books have been successfully created.'}
-            </p>
+          <div className="text-center py-6">
+            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 dark:bg-green-900 mb-4">
+              <svg className="h-6 w-6 text-green-600 dark:text-green-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+              Processing Complete
+            </h3>
+            <div className="mt-2 px-7 py-3">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {result.message || 'Damaged books have been successfully queued for creation.'}
+              </p>
+            </div>
           </div>
         </ConfirmModal>
       )}
