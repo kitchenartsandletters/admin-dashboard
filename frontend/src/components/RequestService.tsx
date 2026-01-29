@@ -585,7 +585,7 @@ useEffect(() => {
   };
 
   fetchData();
-}, [collectionFilter, page, limit, selectedFilter, sortConfig]); // <--- MISSING selectedStatuses!
+}, [collectionFilter, page, limit, selectedFilter, sortConfig, selectedStatuses]);
 
   useEffect(() => {
     try {

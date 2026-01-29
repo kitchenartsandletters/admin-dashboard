@@ -172,7 +172,7 @@ async def get_interest_entries(
         if search:
             pattern = f"%{search}%"
             q = q.or_(
-                f"product_title.ilike.{pattern},email.ilike.{pattern},customer_name.ilike.{pattern}"
+                f"product_title.ilike.{pattern},email.ilike.{pattern},customer_name.ilike.{pattern},cr_id.ilike.{pattern},isbn.ilike.{pattern}"
             )
 
         # Apply status filtering
