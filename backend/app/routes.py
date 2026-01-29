@@ -90,6 +90,21 @@ async def get_interest_entries(
     sort_field: str | None = None,
     sort_order: str | None = None,
 ):
+    # --- DEBUG LOGGING START ---
+    print(
+        "[INTEREST DEBUG]",
+        {
+            "page": page,
+            "limit": limit,
+            "search": search,
+            "statuses": statuses,
+            "collection_filter": collection_filter,
+            "sort_field": sort_field,
+            "sort_order": sort_order,
+        }
+    )
+    # --- DEBUG LOGGING END ---
+
     if token != os.getenv("VITE_ADMIN_TOKEN"):
         raise HTTPException(status_code=403, detail="Invalid token")
 
