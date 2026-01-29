@@ -1,4 +1,4 @@
-import React, { ChangeEvent } from 'react';
+import React, { ChangeEvent, useEffect, useRef } from 'react';
 import { useState } from 'react';
 import { StatusPhase } from '../types';
 
@@ -16,6 +16,7 @@ export interface FilterControlsProps {
   selectedStatuses: StatusPhase[];
   onStatusToggle: (status: StatusPhase) => void;
   clearStatusFilter: () => void;
+  selectAllStatusFilter: () => void;
 }
 
 const FilterControls: React.FC<FilterControlsProps> = ({
@@ -24,20 +25,41 @@ const FilterControls: React.FC<FilterControlsProps> = ({
   selectedStatuses,
   onStatusToggle,
   clearStatusFilter,
+  selectAllStatusFilter,
 }) => {
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
-  
+
+  // 1. Create a ref for the dropdown container
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // 2. Add Event Listener to detect outside clicks
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowStatusDropdown(false);
+      }
+    }
+
+    // Bind the event listener
+    document.addEventListener("mousedown", handleClickOutside);
+    
+    // Unbind the listener on cleanup (component unmount)
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
   return (
     // Changed to flex-col for mobile, flex-row for desktop
     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full">
       <input
         type="text"
-        placeholder="Filter by title, email or ID..."
+        placeholder="Filter by title, email, name or ID..."
         value={selectedFilter}
         onChange={handleFilterChange}
         className="px-3 py-2 border rounded text-sm bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none flex-1"
       />
-      <div className="relative">
+      <div className="relative" ref={dropdownRef}>
         <button
           type="button"
           onClick={() => setShowStatusDropdown(!showStatusDropdown)}
@@ -48,7 +70,7 @@ const FilterControls: React.FC<FilterControlsProps> = ({
               : 'bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600'}
           `}
         >
-          <span>{selectedStatuses.length < 4 ? `${selectedStatuses.length} Statuses` : 'Status'}</span>
+          <span>{selectedStatuses.length < 4 ? `${selectedStatuses.length} Statuses` : `${selectedStatuses.length} Statuses`}</span>
           <span className="text-xs">▾</span>
         </button>
 
@@ -67,16 +89,21 @@ const FilterControls: React.FC<FilterControlsProps> = ({
                 </label>
               ))}
             </div>
-            <div className="border-t dark:border-gray-700 mt-2 pt-2">
+            {/* 3. Updated Footer with Two Buttons */}
+            <div className="border-t dark:border-gray-700 mt-2 pt-2 flex gap-2">
+               <button
+                type="button"
+                onClick={selectAllStatusFilter} // No close logic here
+                className="flex-1 text-xs text-center text-blue-600 dark:text-blue-400 hover:underline py-1 border-r border-gray-200 dark:border-gray-700"
+              >
+                Select All
+              </button>
               <button
                 type="button"
-                onClick={() => {
-                  clearStatusFilter();
-                  setShowStatusDropdown(false);
-                }}
-                className="w-full text-xs text-center text-blue-600 dark:text-blue-400 hover:underline py-1"
+                onClick={clearStatusFilter} // No close logic here
+                className="flex-1 text-xs text-center text-red-500 hover:text-red-700 hover:underline py-1"
               >
-                Clear Filters
+                Clear
               </button>
             </div>
           </div>
