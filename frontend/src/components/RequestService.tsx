@@ -43,6 +43,7 @@ const fetchShopifyHandle = async (productId: number): Promise<string | null> => 
   }`;
 
   try {
+    console.log(`[RequestService] 🚀 Sending GraphQL for ${productId}...`);
     const res = await fetch(`${API_BASE}/api/shopify/graphql`, {
       method: "POST",
       headers: { 
@@ -58,6 +59,9 @@ const fetchShopifyHandle = async (productId: number): Promise<string | null> => 
     }
 
     const json = await res.json();
+    console.log(`[RequestService] ✅ JSON Received for ${productId}`, json);
+    
+    // Safety check for deep nesting
     const handle = json?.data?.product?.handle;
     return handle || null;
   } catch (err) {
@@ -77,7 +81,6 @@ const BulkActionsBar: React.FC<{
   onBulkArchive: () => void;
 }> = ({ selectionCount, onBulkStatus, onBulkArchive }) => {
   const disabled = selectionCount === 0;
-  // hidden sm:flex ensures this is gone on mobile
   return (
     <div className="hidden sm:flex print-hidden items-center gap-2 text-sm">
       <span className="text-xs text-gray-600 dark:text-gray-300">
@@ -139,6 +142,7 @@ const MobileRequestCard: React.FC<MobileRequestCardProps> = ({
     let isMounted = true;
 
     const fetchData = async () => {
+      // Only fetch if expanded, no handle yet, and not already loading
       if (expanded && handle === null && !isLoadingHandle) {
         setIsLoadingHandle(true);
         console.log(`[MobileCard] Fetching handle for ${entry.product_id}...`);
@@ -537,6 +541,21 @@ const RequestService = () => {
   
 useEffect(() => {
   const fetchData = async () => {
+    // -----------------------------------------------------------
+    // DEBUG LOGGING START
+    // -----------------------------------------------------------
+    console.log("[REQUEST DEBUG]", {
+      page,
+      limit,
+      search: selectedFilter,
+      statuses: selectedStatuses,
+      sortConfig,
+      collectionFilter,
+    });
+    // -----------------------------------------------------------
+    // DEBUG LOGGING END
+    // -----------------------------------------------------------
+
     try {
       const res = await fetch(
         `${import.meta.env.VITE_API_BASE_URL}/api/interest?token=${import.meta.env.VITE_ADMIN_TOKEN}&collection_filter=${collectionFilter}&page=${page}&limit=${limit}&search=${encodeURIComponent(selectedFilter)}&statuses=${encodeURIComponent(selectedStatuses.join(","))}&sort_field=${sortConfig?.key || ''}&sort_order=${sortConfig?.direction || ''}&_ts=${Date.now()}`
@@ -566,7 +585,7 @@ useEffect(() => {
   };
 
   fetchData();
-}, [collectionFilter, page, limit, selectedFilter, sortConfig]);
+}, [collectionFilter, page, limit, selectedFilter, sortConfig, selectedStatuses]);
 
   useEffect(() => {
     try {
