@@ -5,6 +5,7 @@
 # ============================================================
 
 from datetime import datetime, timezone
+from backend.app.supabase_client import supabase
 
 def enqueue_report_job(report_id: str, requested_by: str | None = None, parameters: dict | None = None):
     """
