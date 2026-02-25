@@ -14,7 +14,13 @@ export default function ReportsPage() {
       throw new Error('Missing VITE_ADMIN_TOKEN');
     }
 
-    const response = await fetch('/reports/run', {
+    const apiBase = import.meta.env.VITE_API_BASE_URL;
+
+    if (!apiBase) {
+      throw new Error('Missing VITE_API_BASE_URL');
+    }
+
+    const response = await fetch(`${apiBase}/reports/run`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
