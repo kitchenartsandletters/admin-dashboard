@@ -65,3 +65,20 @@ def get_job(job_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Job not found")
 
     return resp.data
+
+@router.get("/jobs")
+def list_jobs(report_id: str, request: Request):
+    validate_admin_token(request)
+
+    resp = (
+        supabase
+        .schema("reports")
+        .table("report_jobs")
+        .select("*")
+        .eq("report_id", report_id)
+        .order("created_at", desc=True)
+        .limit(5)
+        .execute()
+    )
+
+    return resp.data or []

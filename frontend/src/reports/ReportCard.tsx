@@ -1,5 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ReportDefinition } from './registry';
+
+interface Job {
+  id: string;
+  status: string;
+  created_at: string;
+  completed_at?: string;
+}
 
 interface Props {
   report: ReportDefinition;
@@ -9,6 +16,32 @@ interface Props {
 export default function ReportCard({ report, onRun }: Props) {
   const [isRunning, setIsRunning] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [jobs, setJobs] = useState<Job[]>([]);
+
+  const apiBase = import.meta.env.VITE_API_BASE_URL;
+  const token = import.meta.env.VITE_ADMIN_TOKEN;
+
+  const fetchJobs = async () => {
+    if (!apiBase || !token) return;
+
+    const res = await fetch(
+      `${apiBase}/reports/jobs?report_id=${report.id}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (res.ok) {
+      const data = await res.json();
+      setJobs(data);
+    }
+  };
+
+  useEffect(() => {
+    fetchJobs();
+  }, []);
 
   const handleRun = async () => {
     try {
@@ -18,10 +51,24 @@ export default function ReportCard({ report, onRun }: Props) {
       await onRun(report.id);
 
       setMessage('Queued successfully.');
+      await fetchJobs();
     } catch (err: any) {
       setMessage(err?.message || 'Failed to queue report.');
     } finally {
       setIsRunning(false);
+    }
+  };
+
+  const statusColor = (status: string) => {
+    switch (status) {
+      case 'success':
+        return 'text-green-600';
+      case 'failed':
+        return 'text-red-600';
+      case 'running':
+        return 'text-yellow-600';
+      default:
+        return 'text-gray-500';
     }
   };
 
@@ -49,6 +96,22 @@ export default function ReportCard({ report, onRun }: Props) {
       {message && (
         <div className="text-xs text-gray-500">
           {message}
+        </div>
+      )}
+
+      {jobs.length > 0 && (
+        <div className="pt-2 border-t text-xs space-y-1">
+          <div className="text-gray-400">Recent Runs</div>
+          {jobs.map(job => (
+            <div key={job.id} className="flex justify-between">
+              <span className={statusColor(job.status)}>
+                {job.status}
+              </span>
+              <span className="text-gray-400">
+                {new Date(job.created_at).toLocaleTimeString()}
+              </span>
+            </div>
+          ))}
         </div>
       )}
     </div>
