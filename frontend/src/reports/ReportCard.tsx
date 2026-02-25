@@ -40,8 +40,14 @@ export default function ReportCard({ report, onRun }: Props) {
   };
 
   useEffect(() => {
-    fetchJobs();
-  }, []);
+    console.log("ReportCard mounted:", report.id);
+    console.log("apiBase:", apiBase);
+    console.log("token:", token);
+
+    if (report?.id) {
+      fetchJobs();
+    }
+  }, [report.id]);
 
   const handleRun = async () => {
     try {
