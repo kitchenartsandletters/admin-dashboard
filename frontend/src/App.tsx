@@ -11,6 +11,7 @@ import LoginPage from './pages/LoginPage';
 import WelcomePage from './pages/WelcomePage';
 import AccountPage from './pages/AccountPage';
 import ReportsPage from './reports/ReportsPage';
+import PreorderService from './services/preorder/PreorderService';
 import { supabase } from './lib/supabase';
 import DefaultRedirect from './auth/DefaultRedirect';
 import { useState, useEffect } from 'react';
@@ -133,6 +134,14 @@ const App = () => {
                         element={
                           <ProtectedRoute requiredRoles={['admin']}>
                             <ReportsPage />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/preorders"
+                        element={
+                          <ProtectedRoute requiredRoles={['admin']}>
+                            <PreorderService />
                           </ProtectedRoute>
                         }
                       />

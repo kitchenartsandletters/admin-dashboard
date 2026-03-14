@@ -1,0 +1,58 @@
+[
+  {
+    "product_id": 812345123,
+    "title": "The Noma Guide to Building Flavour",
+    "isbn": "9781579657192",
+    "classification_status": "active_preorder",
+    "anomaly_type": null,
+    "effective_pub_date": "2026-04-07",
+    "arrival_timing": "early_arrival",
+    "first_positive_inventory_at": "2026-02-12T14:10:00Z",
+    "lifecycle_state": "presale_open",
+    "presale_commitment_total": 73,
+    "released_to_reporting": false,
+    "release_report_week_start": null
+  },
+  {
+    "product_id": 812345124,
+    "title": "The Nordic Baker",
+    "isbn": "9781787139992",
+    "classification_status": "historical_preorder",
+    "anomaly_type": null,
+    "effective_pub_date": "2024-09-10",
+    "arrival_timing": "on_time_arrival",
+    "first_positive_inventory_at": "2024-09-02T09:22:00Z",
+    "lifecycle_state": "released",
+    "presale_commitment_total": 18,
+    "released_to_reporting": true,
+    "release_report_week_start": "2024-09-08"
+  },
+  {
+    "product_id": 812345125,
+    "title": "Fermentation Lab",
+    "isbn": "9781911127994",
+    "classification_status": "early_stock_arrival",
+    "anomaly_type": null,
+    "effective_pub_date": "2026-05-14",
+    "arrival_timing": "early_arrival",
+    "first_positive_inventory_at": "2026-03-01T11:05:00Z",
+    "lifecycle_state": "presale_open",
+    "presale_commitment_total": 31,
+    "released_to_reporting": false,
+    "release_report_week_start": null
+  },
+  {
+    "product_id": 812345126,
+    "title": "Wild Greens of Italy",
+    "isbn": "9781922754003",
+    "classification_status": "anomaly_pubdate_conflict",
+    "anomaly_type": "pubdate_conflict",
+    "effective_pub_date": "2026-06-02",
+    "arrival_timing": "no_arrival",
+    "first_positive_inventory_at": null,
+    "lifecycle_state": "unknown",
+    "presale_commitment_total": 0,
+    "released_to_reporting": false,
+    "release_report_week_start": null
+  }
+]

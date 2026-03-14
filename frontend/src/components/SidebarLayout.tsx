@@ -20,6 +20,7 @@ const navItems = [
         { label: 'Bulk Create', path: '/damaged/bulk-create', roles: ['admin'] },
     ]
   },
+  { label: 'Preorders', path: '/preorders', roles: ['admin'] },
   { label: 'System Status', path: '/status', roles: ['admin'] },
   { label: 'Reports', path: '/reports', roles: ['admin'] },
   { label: 'Account', path: '/account', roles: ['admin', 'editor', 'user'] },

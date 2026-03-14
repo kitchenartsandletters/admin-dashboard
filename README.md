@@ -11,6 +11,210 @@ The Admin Dashboard is designed to support modular services. Each service is ren
 
 ---
 
+## 📦 Preorder Service (Upcoming Module — MVP Integration Phase)
+
+The **Preorder Service** will extend the Admin Dashboard with operational visibility into the bookstore's preorder system. This module will surface classification state, inventory arrival timing, lifecycle status, and reporting readiness for preorder titles.
+
+The Admin Dashboard **does not perform preorder classification or logic itself**. All authoritative values originate from the `preorder-service` backend and are surfaced here purely for inspection, review, and administrative actions.
+
+### 🎯 Goals of the MVP Integration
+
+The first phase focuses on a **local, UI‑first MVP** that allows the module to be developed and validated without requiring immediate backend wiring.
+
+The MVP will allow administrators to:
+
+- View preorder products in an operational table
+- Filter and search preorder titles
+- Inspect detailed preorder state in a sidebar
+- Review weekly reporting candidates
+- Open Shopify Admin product pages
+- Export CSV snapshots
+
+Backend API integration will occur only after the UI architecture is stable.
+
+---
+
+## 🧱 Preorder Module Architecture
+
+The preorder module follows the same architectural pattern as existing dashboard services (such as Request Service and Damaged Books Service).
+
+Service modules are composed of two primary layers:
+
+**Service Layer**
+- Page orchestration
+- Data fetching
+- Filters
+- Search
+- Pagination
+- Export hooks
+- Detail sidebar state
+
+**Table Layer**
+- Row rendering
+- Sorting
+- Row actions
+- Opening detail views
+
+This keeps module architecture consistent across the Admin Dashboard.
+
+---
+
+## 📂 Planned Module File Structure
+
+```
+src/services/preorder/
+
+PreorderService.tsx        (service layer page)
+PreorderTable.tsx          (main table)
+PreorderDetailSidebar.tsx  (product detail inspector)
+
+components/
+  PreorderSummaryCards.tsx
+  ReleaseReviewTable.tsx
+
+api/
+  preorderApi.ts
+
+types/
+  preorderTypes.ts
+```
+
+This mirrors the structure used by `RequestService` and other modules.
+
+---
+
+## 🧪 MVP Development Sequence
+
+The preorder module will be built in the following order to ensure clean scaffolding and local testability.
+
+1. **Create module directory**
+
+```
+src/services/preorder/
+```
+
+2. **Define TypeScript types**
+
+```
+src/types/preorderTypes.ts
+```
+
+3. **Create mock dataset for local testing**
+
+```
+src/data/mockPreorders.json
+```
+
+4. **Build service layer**
+
+```
+PreorderService.tsx
+```
+
+Responsibilities:
+
+- summary metrics
+- filter state
+- search
+- pagination
+- export hooks
+- selected row state
+- view switching (overview vs release review)
+
+5. **Build table layer**
+
+```
+PreorderTable.tsx
+```
+
+6. **Build detail sidebar**
+
+```
+PreorderDetailSidebar.tsx
+```
+
+7. **Build release review surface**
+
+```
+ReleaseReviewTable.tsx
+```
+
+8. **Add routing integration**
+
+```
+<Route path="/preorders" element={<PreorderService />} />
+```
+
+9. **Local UI testing**
+
+```
+npm run dev
+```
+
+---
+
+## ✅ MVP Success Criteria
+
+The MVP integration is considered successful when the following behaviors are working locally:
+
+- Navigate to `/preorders`
+- View preorder table
+- Search titles
+- Filter by classification and arrival timing
+- Open detail sidebar
+- View release review queue
+- Open Shopify Admin links
+- Export CSV snapshots
+
+No backend integration is required for this stage.
+
+---
+
+## ⚠️ Critical Design Principle
+
+The Admin Dashboard **must never reinterpret preorder logic**.
+
+All authoritative fields must originate from backend persistence, including:
+
+- `classification_status`
+- `arrival_timing`
+- `effective_pub_date`
+- `lifecycle_state`
+
+The dashboard is strictly a **window into preorder-service state**, not a secondary classification engine.
+
+---
+
+## 🔗 Future Backend Integration (Phase 2)
+
+Once the UI architecture is validated, the dashboard will integrate with the preorder-service API.
+
+Planned endpoints:
+
+```
+GET /preorder/products
+```
+
+Returns preorder overview rows.
+
+```
+GET /preorder/release-candidates?week_start=YYYY-MM-DD
+```
+
+Returns weekly reporting candidates.
+
+```
+POST /preorder/reclassify/{product_id}
+```
+
+Allows administrators to trigger a backend reclassification.
+
+These endpoints will be implemented within the `preorder-service` repository and consumed by the Admin Dashboard module.
+
+---
+
+---
+
 **Stack**
 
 * **Frontend:** Vite + React + TypeScript
