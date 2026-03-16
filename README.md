@@ -11,207 +11,221 @@ The Admin Dashboard is designed to support modular services. Each service is ren
 
 ---
 
-## 📦 Preorder Service (Upcoming Module — MVP Integration Phase)
+## 📦 Preorder Service
 
-The **Preorder Service** will extend the Admin Dashboard with operational visibility into the bookstore's preorder system. This module will surface classification state, inventory arrival timing, lifecycle status, and reporting readiness for preorder titles.
+The **Preorder Service** extends the Admin Dashboard with operational visibility into the bookstore’s preorder pipeline.
 
-The Admin Dashboard **does not perform preorder classification or logic itself**. All authoritative values originate from the `preorder-service` backend and are surfaced here purely for inspection, review, and administrative actions.
+Unlike the Request Service or Damaged Books Service, the Admin Dashboard **does not compute preorder logic**.  
+All classification, lifecycle state, and reporting eligibility are produced by the external `preorder-service` backend and surfaced here through **read-model database views**.
 
-### 🎯 Goals of the MVP Integration
 
-The first phase focuses on a **local, UI‑first MVP** that allows the module to be developed and validated without requiring immediate backend wiring.
-
-The MVP will allow administrators to:
-
-- View preorder products in an operational table
-- Filter and search preorder titles
-- Inspect detailed preorder state in a sidebar
-- Review weekly reporting candidates
-- Open Shopify Admin product pages
-- Export CSV snapshots
-
-Backend API integration will occur only after the UI architecture is stable.
+The dashboard acts strictly as an **inspection and operations surface**.
 
 ---
 
-## 🧱 Preorder Module Architecture
+## 🧪 Integration Milestone — Preorder Service Connectivity (Development)
 
-The preorder module follows the same architectural pattern as existing dashboard services (such as Request Service and Damaged Books Service).
+**Status:** Dashboard ↔ preorder-service connectivity established.
 
-Service modules are composed of two primary layers:
+The Admin Dashboard is now successfully connected to the external `preorder-service` backend. The following integration milestones have been verified locally:
 
-**Service Layer**
-- Page orchestration
-- Data fetching
-- Filters
-- Search
-- Pagination
-- Export hooks
-- Detail sidebar state
+- FastAPI service reachable from the Admin Dashboard
+- Authenticated requests using `x-admin-token`
+- CORS configured correctly for local development
+- Supabase read-model views accessible via backend routes
+- Admin Dashboard successfully fetching data from:
+  - `/admin/preorders/products`
+  - `/admin/preorders/release-queue`
+  - `/admin/preorders/metrics`
 
-**Table Layer**
-- Row rendering
-- Sorting
-- Row actions
-- Opening detail views
+The UI is now **loading rows and summary metrics from the preorder read models**, confirming that the end‑to‑end pipeline is functioning:
 
-This keeps module architecture consistent across the Admin Dashboard.
+Admin Dashboard → preorder-service → Supabase read-model views
 
----
+### Current Limitation
 
-## 📂 Planned Module File Structure
+Although connectivity is confirmed, the **data mapping between the read-model views and the Admin Dashboard UI is not yet finalized**.
 
-```
-src/services/preorder/
+Observed issues include:
 
-PreorderService.tsx        (service layer page)
-PreorderTable.tsx          (main table)
-PreorderDetailSidebar.tsx  (product detail inspector)
+- Table rendering placeholder values (e.g., `not_a_product`, `not_a_preorder_product`)
+- Product titles resolving to product IDs instead of titles
+- Sidebar fields not aligning with read-model data
+- Lifecycle state fields not yet mapped correctly
 
-components/
-  PreorderSummaryCards.tsx
-  ReleaseReviewTable.tsx
+These issues indicate that the **Admin Dashboard UI contract does not yet fully match the schema returned by the preorder-service views**.
 
-api/
-  preorderApi.ts
+### Next Integration Step
 
-types/
-  preorderTypes.ts
-```
+Further work will require coordination with the `preorder-service` repository to ensure that:
 
-This mirrors the structure used by `RequestService` and other modules.
+- view schemas match the UI contract
+- field names are mapped correctly
+- classification values align with dashboard expectations
+- the detail sidebar receives the correct product identity fields
+
+Until that alignment work is complete, the module should be considered **connected but not yet functionally complete**.
 
 ---
 
-## 🧪 MVP Development Sequence
+---
 
-The preorder module will be built in the following order to ensure clean scaffolding and local testability.
+# 🧱 Preorder Module Architecture
 
-1. **Create module directory**
+The module follows the same architecture pattern as other Admin Dashboard services.
 
-```
-src/services/preorder/
-```
+### Service Layer
+Responsible for:
 
-2. **Define TypeScript types**
-
-```
-src/types/preorderTypes.ts
-```
-
-3. **Create mock dataset for local testing**
-
-```
-src/data/mockPreorders.json
-```
-
-4. **Build service layer**
-
-```
-PreorderService.tsx
-```
-
-Responsibilities:
-
-- summary metrics
-- filter state
+- page orchestration
+- data fetching
+- filters
 - search
 - pagination
-- export hooks
-- selected row state
-- view switching (overview vs release review)
+- sidebar state
 
-5. **Build table layer**
+### Table Layer
+Responsible for:
 
-```
+- row rendering
+- sorting
+- row actions
+- opening detail sidebars
+
+Supporting UI surfaces:
+
+- summary metric cards
+- release review queue
+
+---
+
+# 📂 Module File Structure
+
+src/services/preorder/
+PreorderService.tsx
 PreorderTable.tsx
-```
-
-6. **Build detail sidebar**
-
-```
 PreorderDetailSidebar.tsx
-```
 
-7. **Build release review surface**
-
-```
+src/components/preorder/
+PreorderSummaryCards.tsx
 ReleaseReviewTable.tsx
-```
 
-8. **Add routing integration**
+src/api/
+preorderApi.ts
 
-```
-<Route path="/preorders" element={<PreorderService />} />
-```
+src/types/
+preorderTypes.ts
 
-9. **Local UI testing**
-
-```
-npm run dev
-```
+This mirrors the architectural pattern used by other Admin Dashboard modules.
 
 ---
 
-## ✅ MVP Success Criteria
+# 🗄️ Data Contract (Supabase Read Models)
 
-The MVP integration is considered successful when the following behaviors are working locally:
+The Admin Dashboard **only reads from Supabase views exposed by the preorder-service**.
 
-- Navigate to `/preorders`
-- View preorder table
-- Search titles
-- Filter by classification and arrival timing
-- Open detail sidebar
-- View release review queue
-- Open Shopify Admin links
-- Export CSV snapshots
+Schema:
 
-No backend integration is required for this stage.
+preorder
+
+Views:
+
+vw_preorder_products
+vw_preorder_release_queue
+vw_preorder_metrics
+---
+
+## vw_preorder_products
+
+Primary catalog view.
+
+Columns:
+
+product_id
+title
+isbn
+inventory
+presold_qty
+pub_date
+classification
+preorder_tag_present
+preorder_collection_present
+override_status
+anomaly_type
+last_updated
+
+Used by:
+
+- `PreorderTable`
+- `PreorderDetailSidebar`
 
 ---
 
-## ⚠️ Critical Design Principle
+## vw_preorder_release_queue
 
-The Admin Dashboard **must never reinterpret preorder logic**.
+Operational release review queue.
 
-All authoritative fields must originate from backend persistence, including:
+Additional fields:
+due_for_release_review
+early_stock_arrival
 
-- `classification_status`
-- `arrival_timing`
-- `effective_pub_date`
-- `lifecycle_state`
+Used by:
+
+- `ReleaseReviewTable`
+
+---
+
+## vw_preorder_metrics
+
+Single-row summary dashboard view.
+
+Columns:
+
+active_preorders
+early_arrivals
+releases_due_for_review
+total_presold_units
+releases_this_week
+
+Used by:
+
+- `PreorderSummaryCards`
+
+---
+
+# 🌐 Backend API Layer
+
+The Admin Dashboard backend exposes lightweight routes that simply query the Supabase read-model views.
+
+Routes:
+
+GET /api/preorders/products
+GET /api/preorders/release-queue
+GET /api/preorders/metrics
+
+Each endpoint performs a single query against the view.
+
+Example:
+
+select * from preorder.vw_preorder_products;
+
+The Admin Dashboard **must not query underlying preorder tables**, including:
+
+product_status
+commitment_ledger
+product_overrides
+
+Those remain internal to `preorder-service`.
+
+---
+
+# ⚠️ Critical Design Principle
+
+The Admin Dashboard **must never reinterpret preorder classification logic**.
+
+All authoritative values originate from the `preorder-service` backend.
 
 The dashboard is strictly a **window into preorder-service state**, not a secondary classification engine.
-
----
-
-## 🔗 Future Backend Integration (Phase 2)
-
-Once the UI architecture is validated, the dashboard will integrate with the preorder-service API.
-
-Planned endpoints:
-
-```
-GET /preorder/products
-```
-
-Returns preorder overview rows.
-
-```
-GET /preorder/release-candidates?week_start=YYYY-MM-DD
-```
-
-Returns weekly reporting candidates.
-
-```
-POST /preorder/reclassify/{product_id}
-```
-
-Allows administrators to trigger a backend reclassification.
-
-These endpoints will be implemented within the `preorder-service` repository and consumed by the Admin Dashboard module.
-
----
 
 ---
 

@@ -4,49 +4,44 @@ import PreorderDetailSidebar from "./PreorderDetailSidebar"
 import PreorderSummaryCards from "../../components/preorder/PreorderSummaryCards"
 import ReleaseReviewTable from "../../components/preorder/ReleaseReviewTable"
 import { PreorderRow, ReleaseReviewRow, PreorderSummaryMetrics } from "../../types/preorderTypes"
-import mockData from "../../data/mockPreorders.json"
+import { fetchPreorderProducts, fetchPreorderReleaseQueue, fetchPreorderMetrics } from "../../../api/preorderApi"
 
 function PreorderService() {
-  const [preorders, setPreorders] = useState<PreorderRow[]>([])
+  const [products, setProducts] = useState<PreorderRow[]>([])
+  const [releaseQueue, setReleaseQueue] = useState<ReleaseReviewRow[]>([])
+  const [metrics, setMetrics] = useState<PreorderSummaryMetrics | null>(null)
   const [searchFilter, setSearchFilter] = useState("")
   const [selectedRow, setSelectedRow] = useState<PreorderRow | null>(null)
   const [viewMode, setViewMode] = useState<"overview" | "release-review">("overview")
 
   useEffect(() => {
-    setPreorders(mockData as PreorderRow[])
+    const loadData = async () => {
+      try {
+        const [productsData, queueData, metricsData] = await Promise.all([
+          fetchPreorderProducts(),
+          fetchPreorderReleaseQueue(),
+          fetchPreorderMetrics()
+        ])
+
+        setProducts(productsData)
+        setReleaseQueue(queueData)
+        setMetrics(metricsData)
+      } catch (err) {
+        console.error("Failed to load preorder data", err)
+      }
+    }
+
+    loadData()
   }, [])
 
   const filteredData = useMemo(() => {
     const val = searchFilter.toLowerCase()
-    return preorders.filter((row) => 
+    return products.filter((row) => 
       (row.title?.toLowerCase() || "").includes(val) ||
       (row.isbn?.toLowerCase() || "").includes(val) ||
       String(row.product_id).includes(val)
     )
-  }, [searchFilter, preorders])
-
-  const releaseReviewData: ReleaseReviewRow[] = useMemo(() => {
-    return preorders
-      .filter(p => p.classification_status === 'active_preorder' || p.released_to_reporting)
-      .map(p => ({
-        product_id: p.product_id,
-        title: p.title,
-        isbn: p.isbn,
-        target_report_week_start: p.release_report_week_start || "TBD",
-        presales_banked: p.presale_commitment_total || 0,
-        weekly_sales: 0, 
-        reporting_quantity: p.presale_commitment_total || 0,
-        already_reported: p.released_to_reporting,
-      }))
-  }, [preorders])
-
-  const metrics: PreorderSummaryMetrics = {
-    active_preorders: preorders.filter(p => p.classification_status === "active_preorder").length,
-    early_stock_arrivals: preorders.filter(p => p.arrival_timing === "early_arrival").length,
-    anomalies: preorders.filter(p => p.anomaly_type !== null).length,
-    eligible_for_reporting_this_week: preorders.filter(p => !p.released_to_reporting).length,
-    already_reported_this_week: preorders.filter(p => p.released_to_reporting).length
-  }
+  }, [searchFilter, products])
 
   return (
     <div className="p-4 sm:p-6 space-y-6 bg-white dark:bg-gray-950 min-h-screen">
@@ -77,7 +72,7 @@ function PreorderService() {
           </div>
         </div>
 
-        <PreorderSummaryCards metrics={metrics} />
+        <PreorderSummaryCards metrics={metrics ?? { active_preorders: 0, early_stock_arrivals: 0, anomalies: 0, eligible_for_reporting_this_week: 0, already_reported_this_week: 0 }} />
 
         {viewMode === "overview" && (
           <input
@@ -94,7 +89,7 @@ function PreorderService() {
         {viewMode === "overview" ? (
           <PreorderTable data={filteredData} onRowClick={setSelectedRow} />
         ) : (
-          <ReleaseReviewTable data={releaseReviewData} />
+          <ReleaseReviewTable data={releaseQueue} />
         )}
       </div>
 
