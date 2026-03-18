@@ -1,6 +1,5 @@
-from fastapi import APIRouter, Depends, Request, HTTPException
-from supabase import Client
-from dependencies import get_supabase_client
+from fastapi import APIRouter, Request, HTTPException
+from app.supabase_client import supabase
 from typing import Dict, Any
 import time
 import os
@@ -18,8 +17,7 @@ router = APIRouter()
 @router.get("/campaign-stats")
 async def get_campaign_stats(
     request: Request,
-    campaign: str = "ngtbf",
-    supabase: Client = Depends(get_supabase_client)
+    campaign: str = "ngtbf"
 ) -> Dict[str, Any]:
 
     validate_admin_token(request)
