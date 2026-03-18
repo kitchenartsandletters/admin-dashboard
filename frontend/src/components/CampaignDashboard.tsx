@@ -34,7 +34,7 @@ export default function CampaignDashboard() {
   const [data, setData] = useState<CampaignStats | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const apiBase = import.meta.env.VITE_REQ_PUBLIC;
+  const apiBase = import.meta.env.VITE_REQUEST_URL;
   const token = import.meta.env.VITE_ADMIN_TOKEN;
 
   const fetchStats = async () => {
