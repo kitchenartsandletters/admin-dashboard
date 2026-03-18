@@ -69,17 +69,17 @@ async def get_campaign_stats(
 
     # --- 4. BREAKDOWN ---
     breakdown_map = {
-        "yes": 0,
-        "no": 0,
-        "maybe": 0,
+        "confirm_order": 0,
+        "cancel_order": 0,
+        "undecided": 0,
         "no_response": 0
     }
 
     try:
-        resp_rows = supabase.table("signed_copy_responses").select("response_type").execute()
+        resp_rows = supabase.table("signed_copy_responses").select("response").execute()
         if resp_rows.data:
             for row in resp_rows.data:
-                r_type = row.get("response_type") or ""
+                r_type = row.get("response") or ""
                 if r_type in breakdown_map:
                     breakdown_map[r_type] += 1
     except Exception as e:
@@ -87,13 +87,10 @@ async def get_campaign_stats(
 
     # --- 5. NO RESPONSE ---
     try:
-        recipients = supabase.table("signed_copy_campaign_recipients").select("id").execute()
-        responses = supabase.table("signed_copy_responses").select("request_id").execute()
-
-        response_ids = set(r["request_id"] for r in responses.data or [])
-        no_response_count = sum(1 for r in (recipients.data or []) if r["id"] not in response_ids)
+        # fallback: no_response = sent - responses
+        no_response_count = max(total_sent - total_responses, 0)
     except Exception as e:
-        logger.error(f"no response query failed: {e}")
+        logger.error(f"no response calc failed: {e}")
         no_response_count = 0
 
     breakdown_map["no_response"] = no_response_count
