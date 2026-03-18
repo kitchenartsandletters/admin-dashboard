@@ -19,9 +19,9 @@ interface CampaignStats {
     rate: number;
   };
   breakdown: {
-    yes: number;
-    no: number;
-    maybe: number;
+    confirm_order: number;
+    cancel_order: number;
+    undecided: number;
     no_response: number;
   };
   meta?: {
@@ -85,7 +85,7 @@ export default function CampaignDashboard() {
           NGTBF Email Campaign Metrics
         </h1>
         <p className="text-sm text-gray-500">
-          Real-time overview of signed copy campaign performance
+          Real-time overview of campaign performance
         </p>
       </header>
 
@@ -102,9 +102,9 @@ export default function CampaignDashboard() {
         <h2 className="font-medium mb-4">Response Breakdown</h2>
 
         <div className="space-y-3 text-sm">
-          <BreakdownRow label="Yes" value={breakdown.yes} />
-          <BreakdownRow label="No" value={breakdown.no} />
-          <BreakdownRow label="Maybe" value={breakdown.maybe} />
+          <BreakdownRow label="Confirm Order" value={breakdown.confirm_order} />
+          <BreakdownRow label="Cancel Order" value={breakdown.cancel_order} />
+          <BreakdownRow label="Undecided" value={breakdown.undecided} />
           <BreakdownRow
             label="No Response"
             value={breakdown.no_response}
