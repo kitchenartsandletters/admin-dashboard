@@ -42,12 +42,7 @@ export default function CampaignDashboard() {
 
     try {
       const res = await fetch(
-        `${apiBase}/campaign-stats?campaign=ngtbf`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+        `${apiBase}/api/campaign-stats?campaign=ngtbf&token=${token}&_ts=${Date.now()}`
       );
 
       if (!res.ok) throw new Error('Failed to fetch campaign stats');
