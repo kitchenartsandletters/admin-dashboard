@@ -3,6 +3,8 @@ from app.supabase_client import supabase
 from typing import Dict, Any
 import time
 import os
+import logging
+logger = logging.getLogger("uvicorn.error")
 
 def validate_admin_token(request: Request, token: str = ""):
     """Accept token via query param OR Authorization header"""
@@ -28,41 +30,44 @@ async def get_campaign_stats(
     validate_admin_token(request, token)
 
     # --- 1. TOTALS (recipients) ---
-    totals_query = supabase.rpc("campaign_totals").execute()
+    try:
+        total_q = supabase.table("signed_copy_campaign_recipients").select("id", count="exact").execute()
+        sent_q = supabase.table("signed_copy_campaign_recipients").select("id", count="exact").eq("email_sent", True).execute()
 
-    totals_data = totals_query.data[0] if totals_query.data else {
-        "total": 0,
-        "sent": 0,
-        "remaining": 0
-    }
-
-    total_recipients = totals_data["total"]
-    total_sent = totals_data["sent"]
-    total_remaining = totals_data["remaining"]
+        total_recipients = total_q.count or 0
+        total_sent = sent_q.count or 0
+        total_remaining = total_recipients - total_sent
+    except Exception as e:
+        logger.error(f"totals query failed: {e}")
+        total_recipients = 0
+        total_sent = 0
+        total_remaining = 0
 
     # --- 2. DELIVERY ---
-    delivery_query = supabase.rpc("campaign_delivery_stats").execute()
+    try:
+        sent_q = supabase.table("email_log").select("id", count="exact").eq("status", "sent").execute()
+        failed_q = supabase.table("email_log").select("id", count="exact").eq("status", "failed").execute()
 
-    delivery_data = delivery_query.data[0] if delivery_query.data else {
-        "sent": 0,
-        "failed": 0
-    }
-
-    sent_count = delivery_data["sent"]
-    failed_count = delivery_data["failed"]
+        sent_count = sent_q.count or 0
+        failed_count = failed_q.count or 0
+    except Exception as e:
+        logger.error(f"delivery query failed: {e}")
+        sent_count = 0
+        failed_count = 0
 
     # --- 3. RESPONSES ---
-    responses_query = supabase.rpc("campaign_response_totals").execute()
-
-    total_responses = responses_query.data[0]["total"] if responses_query.data else 0
+    try:
+        responses_q = supabase.table("signed_copy_responses").select("id", count="exact").execute()
+        total_responses = responses_q.count or 0
+    except Exception as e:
+        logger.error(f"responses query failed: {e}")
+        total_responses = 0
 
     response_rate = (
         total_responses / total_sent if total_sent > 0 else 0
     )
 
     # --- 4. BREAKDOWN ---
-    breakdown_query = supabase.rpc("campaign_response_breakdown").execute()
-
     breakdown_map = {
         "yes": 0,
         "no": 0,
@@ -70,18 +75,26 @@ async def get_campaign_stats(
         "no_response": 0
     }
 
-    if breakdown_query.data:
-        for row in breakdown_query.data:
-            r_type = row["response_type"]
-            breakdown_map[r_type] = row["count"]
+    try:
+        resp_rows = supabase.table("signed_copy_responses").select("response_type").execute()
+        if resp_rows.data:
+            for row in resp_rows.data:
+                r_type = row.get("response_type") or ""
+                if r_type in breakdown_map:
+                    breakdown_map[r_type] += 1
+    except Exception as e:
+        logger.error(f"breakdown query failed: {e}")
 
     # --- 5. NO RESPONSE ---
-    no_response_query = supabase.rpc("campaign_no_response_count").execute()
+    try:
+        recipients = supabase.table("signed_copy_campaign_recipients").select("id").execute()
+        responses = supabase.table("signed_copy_responses").select("request_id").execute()
 
-    no_response_count = (
-        no_response_query.data[0]["count"]
-        if no_response_query.data else 0
-    )
+        response_ids = set(r["request_id"] for r in responses.data or [])
+        no_response_count = sum(1 for r in (recipients.data or []) if r["id"] not in response_ids)
+    except Exception as e:
+        logger.error(f"no response query failed: {e}")
+        no_response_count = 0
 
     breakdown_map["no_response"] = no_response_count
 
