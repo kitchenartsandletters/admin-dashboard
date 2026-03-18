@@ -69,9 +69,9 @@ async def get_campaign_stats(
 
     # --- 4. BREAKDOWN ---
     breakdown_map = {
-        "confirm_order": 0,
+        "keep_order": 0,
+        "unsigned_copy": 0,
         "cancel_order": 0,
-        "undecided": 0,
         "no_response": 0
     }
 

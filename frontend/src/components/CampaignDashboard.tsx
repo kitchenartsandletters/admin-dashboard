@@ -19,9 +19,9 @@ interface CampaignStats {
     rate: number;
   };
   breakdown: {
-    confirm_order: number;
+    keep_order: number;
+    unsigned_copy: number;
     cancel_order: number;
-    undecided: number;
     no_response: number;
   };
   meta?: {
@@ -102,9 +102,9 @@ export default function CampaignDashboard() {
         <h2 className="font-medium mb-4">Response Breakdown</h2>
 
         <div className="space-y-3 text-sm">
-          <BreakdownRow label="Confirm Order" value={breakdown.confirm_order} />
+          <BreakdownRow label="Confirm Order" value={breakdown.keep_order} />
+          <BreakdownRow label="Send Unsigned" value={breakdown.unsigned_copy} />
           <BreakdownRow label="Cancel Order" value={breakdown.cancel_order} />
-          <BreakdownRow label="Undecided" value={breakdown.undecided} />
           <BreakdownRow
             label="No Response"
             value={breakdown.no_response}
