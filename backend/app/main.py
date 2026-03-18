@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.interest import router as interest_router
 from app.routes.reports import router as reports_router
+from app.routes.campaign_stats import router as campaign_stats_router
 
 app = FastAPI()
 
@@ -18,4 +19,5 @@ app.add_middleware(
 
 # Mount the interest route
 app.include_router(interest_router, prefix="/api")
-app.include_router(reports_router)
+app.include_router(reports_router, prefix="/api")
+app.include_router(campaign_stats_router, prefix="/api")

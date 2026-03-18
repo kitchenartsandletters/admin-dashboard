@@ -21,6 +21,7 @@ const navItems = [
     ]
   },
   { label: 'Preorders', path: '/preorders', roles: ['admin'] },
+  { label: 'Campaigns', path: '/campaigns', roles: ['admin', 'editor'] },
   { label: 'System Status', path: '/status', roles: ['admin'] },
   { label: 'Reports', path: '/reports', roles: ['admin'] },
   { label: 'Account', path: '/account', roles: ['admin', 'editor', 'user'] },
