@@ -44,7 +44,48 @@ export default function CampaignService() {
         ]);
 
         setRows(responsesRes.rows);
-        setStats(statsRes);
+        const normalizedStats = {
+          totals: {
+            recipients: statsRes.total,
+            sent: statsRes.total,
+            remaining: 0,
+          },
+          delivery: {
+            sent: statsRes.total,
+            failed: 0,
+          },
+          responses: {
+            total:
+              statsRes.keep_order +
+              statsRes.cancel_order +
+              statsRes.unsigned_copy,
+            rate:
+              statsRes.total > 0
+                ? (
+                    (statsRes.keep_order +
+                      statsRes.cancel_order +
+                      statsRes.unsigned_copy) /
+                    statsRes.total
+                  )
+                : 0,
+          },
+          breakdown: {
+            yes: statsRes.keep_order,
+            no: statsRes.cancel_order,
+            maybe: statsRes.unsigned_copy,
+            no_response:
+              statsRes.total -
+              (statsRes.keep_order +
+                statsRes.cancel_order +
+                statsRes.unsigned_copy),
+          },
+          meta: {
+            generated_at: Math.floor(Date.now() / 1000),
+            campaign: "ngtbf",
+          },
+        };
+
+        setStats(normalizedStats);
       } catch (err) {
         console.error("Campaign load failed:", err);
       } finally {
@@ -72,6 +113,10 @@ export default function CampaignService() {
       return matchesSearch && matchesResponse;
     });
   }, [rows, searchFilter, responseFilter]);
+
+  if (loading && viewMode === "dashboard") {
+    return <div className="p-6">Loading campaign metrics...</div>;
+  }
 
   return (
     <div className="p-4 sm:p-6 space-y-6 bg-white min-h-screen">

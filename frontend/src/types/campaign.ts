@@ -8,8 +8,27 @@ export type CampaignResponseRow = {
 };
 
 export type CampaignStats = {
-  total: number;
-  keep_order: number;
-  cancel_order: number;
-  unsigned_copy: number;
+  totals: {
+    recipients: number;
+    sent: number;
+    remaining: number;
+  };
+  delivery: {
+    sent: number;
+    failed: number;
+  };
+  responses: {
+    total: number;
+    rate: number;
+  };
+  breakdown: {
+    yes: number;
+    no: number;
+    maybe: number;
+    no_response: number;
+  };
+  meta?: {
+    generated_at?: number;
+    campaign?: string;
+  };
 };
