@@ -103,7 +103,7 @@ export default function CampaignTable({
               </td>
 
               <td className="px-3 py-2">
-                {row.order_id ? (
+                {row.order_name ? (
                   <a
                     href={`https://admin.shopify.com/store/castironbooks/orders/${row.order_id}`}
                     target="_blank"
