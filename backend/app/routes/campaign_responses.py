@@ -33,7 +33,7 @@ def validate_admin_token(request: Request, token: str = ""):
 @router.get("/campaign-responses")
 async def get_campaign_responses(
     request: Request,
-    campaign: str = "ngtbf",
+    campaign: str = "noma-signed-copy-decision",
     token: str = "",
     limit: int = 200,
     offset: int = 0,
