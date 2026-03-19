@@ -64,10 +64,15 @@ export default function CampaignService() {
     const val = searchFilter.toLowerCase();
 
     return rows.filter((row) => {
+      const normalize = (str: string) =>
+        str.toLowerCase().replace(/^#/, "");
+
+      const searchVal = val.replace(/^#/, "");
+
       const matchesSearch =
-        (row.email?.toLowerCase() || "").includes(val) ||
-        (row.product_title?.toLowerCase() || "").includes(val) ||
-        (row.order_id?.toLowerCase() || "").includes(val);
+        normalize(row.email || "").includes(searchVal) ||
+        normalize(row.product_title || "").includes(searchVal) ||
+        normalize(row.order_name || "").includes(searchVal);
 
       const matchesResponse =
         responseFilter === "all" ||
@@ -132,7 +137,7 @@ export default function CampaignService() {
               className="px-3 py-2 border rounded-md text-sm"
             >
               <option value="all">All</option>
-              <option value="keep_order">Confirm</option>
+              <option value="keep_order">Keep</option>
               <option value="unsigned_copy">Unsigned</option>
               <option value="cancel_order">Cancel</option>
             </select>

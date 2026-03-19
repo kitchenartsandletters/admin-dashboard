@@ -31,9 +31,9 @@ export default function CampaignDashboard({
         <h2 className="font-medium mb-4">Response Breakdown</h2>
 
         <div className="space-y-3 text-sm">
-          <BreakdownRow label="Yes" value={breakdown.yes} />
-          <BreakdownRow label="No" value={breakdown.no} />
-          <BreakdownRow label="Maybe" value={breakdown.maybe} />
+          <BreakdownRow label="Yes" value={breakdown.keep_order} />
+          <BreakdownRow label="No" value={breakdown.unsigned_copy} />
+          <BreakdownRow label="Maybe" value={breakdown.cancel_order} />
           <BreakdownRow
             label="No Response"
             value={breakdown.no_response}

@@ -2,8 +2,10 @@ export type CampaignResponseRow = {
   id: number;
   email: string;
   product_title: string;
-  order_id: string | null;
+  order_id: string;
+  order_name: string | null;
   response: "keep_order" | "cancel_order" | "unsigned_copy" | null;
+  recorded_at: string;
   created_at: string;
 };
 
@@ -22,9 +24,9 @@ export type CampaignStats = {
     rate: number;
   };
   breakdown: {
-    yes: number;
-    no: number;
-    maybe: number;
+    keep_order: number;
+    unsigned_copy: number;
+    cancel_order: number;
     no_response: number;
   };
   meta?: {

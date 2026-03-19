@@ -3,9 +3,11 @@ import { CampaignResponseRow } from "../../types/campaign";
 
 type SortKey =
   | "created_at"
+  | "recorded_at"
   | "email"
   | "response"
   | "order_id"
+  | "order_name"
   | "product_title";
 
 type SortDirection = "asc" | "desc";
@@ -81,7 +83,7 @@ export default function CampaignTable({
             <SortHeader label="Email" field="email" />
             <SortHeader label="Response" field="response" />
             <SortHeader label="Product" field="product_title" />
-            <SortHeader label="Order" field="order_id" />
+            <SortHeader label="Order" field="order_name" />
             <SortHeader label="Timestamp" field="created_at" />
           </tr>
         </thead>
@@ -110,7 +112,7 @@ export default function CampaignTable({
               </td>
 
               <td className="px-3 py-2 text-gray-500">
-                {new Date(row.created_at).toLocaleString()}
+                {new Date(row.recorded_at).toLocaleString()}
               </td>
             </tr>
           ))}
