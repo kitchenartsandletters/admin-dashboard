@@ -76,7 +76,7 @@ export default function CampaignTable({ rows }: { rows: CampaignResponseRow[] })
                 ) : "—"}
               </td>
               <td className="hidden md:table-cell px-4 py-3 text-gray-500 text-xs">
-                {new Date(row.recorded_at).toLocaleString()}
+                String(row.recorded_at)
               </td>
             </tr>
           ))}
