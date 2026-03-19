@@ -17,13 +17,7 @@ export default function CampaignTable({ rows }: { rows: CampaignResponseRow[] })
     }
   }
 
-  const sorted = [...rows].sort((a, b) => {
-    const aVal = (a as any)[sortKey] ?? "";
-    const bVal = (b as any)[sortKey] ?? "";
-    if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
-    if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
-    return 0;
-  });
+  const sorted = rows;
 
   const getResponseStyle = (resp: string | null) => {
     const base = "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-tighter";
@@ -53,7 +47,10 @@ export default function CampaignTable({ rows }: { rows: CampaignResponseRow[] })
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-          {sorted.map((row) => (
+          {sorted.map((row) => {
+            console.log("ROW:", row);
+            if (!row) return null;
+            return (
             <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
               <td className="px-4 py-3 font-medium text-gray-900 dark:text-white max-w-[140px] sm:max-w-xs truncate">
                 {row.email}
@@ -76,10 +73,11 @@ export default function CampaignTable({ rows }: { rows: CampaignResponseRow[] })
                 ) : "—"}
               </td>
               <td className="hidden md:table-cell px-4 py-3 text-gray-500 text-xs">
-                String(row.recorded_at)
+                {String(row.recorded_at)}
               </td>
             </tr>
-          ))}
+          );
+          })}
         </tbody>
       </table>
     </div>
