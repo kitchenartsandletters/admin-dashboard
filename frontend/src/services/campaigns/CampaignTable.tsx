@@ -5,6 +5,7 @@ type SortKey = "created_at" | "recorded_at" | "email" | "response" | "order_name
 type SortDirection = "asc" | "desc";
 
 export default function CampaignTable({ rows }: { rows: CampaignResponseRow[] }) {
+  console.log("CampaignTable rows prop:", rows);
   const [sortKey, setSortKey] = useState<SortKey>("recorded_at");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
 
@@ -17,7 +18,7 @@ export default function CampaignTable({ rows }: { rows: CampaignResponseRow[] })
     }
   }
 
-  const sorted = rows;
+  const sorted = rows || [];
 
   const getResponseStyle = (resp: string | null) => {
     const base = "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-tighter";
