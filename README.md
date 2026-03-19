@@ -767,6 +767,132 @@ Each route in the dashboard uses `SystemStatusService.ts` to call and evaluate t
 
 ---
 
+
+---
+
+# 📣 Campaign Dashboard (NGTBF Campaign)
+
+## Overview
+
+The Campaign Dashboard provides a real-time operational view of outbound email campaigns tied to preorder decision flows (e.g., signed copy confirmations).
+
+This module surfaces:
+- delivery performance
+- response rates
+- response breakdown by action
+
+The dashboard is **read-only** and backed by Supabase tables.
+
+---
+
+## 🗄️ Data Sources
+
+### Tables
+
+- `signed_copy_campaign_recipients`
+  - source of truth for recipients
+  - tracks `email_sent`
+
+- `email_log`
+  - delivery status (`sent`, `failed`)
+
+- `signed_copy_responses`
+  - user responses captured via email links
+
+---
+
+## 📊 Response Model (Canonical)
+
+Responses are stored in `signed_copy_responses.response`.
+
+Current values:
+
+| DB Value        | UI Label        | Meaning                         |
+|----------------|----------------|----------------------------------|
+| keep_order     | Confirm Order  | Customer keeps signed copy       |
+| unsigned_copy  | Send Unsigned  | Customer opts out of signed copy |
+| cancel_order   | Cancel Order   | Customer cancels order           |
+
+⚠️ These values are **authoritative** and must not be remapped in the backend.
+
+---
+
+## 🧮 Metric Definitions
+
+### Totals
+
+- **Recipients** = total rows in `signed_copy_campaign_recipients`
+- **Sent** = rows where `email_sent = true`
+- **Remaining** = recipients − sent
+
+### Delivery
+
+- **Sent** = `email_log.status = sent`
+- **Failed** = `email_log.status = failed`
+
+### Responses
+
+- **Total Responses** = count of `signed_copy_responses`
+- **Response Rate** = total_responses / total_sent
+
+### Breakdown
+
+Computed from `signed_copy_responses.response`:
+
+- `keep_order`
+- `unsigned_copy`
+- `cancel_order`
+
+### No Response
+
+Currently computed as:
+
+```
+no_response = total_sent - total_responses
+```
+
+⚠️ This is a **derived fallback**, not a relational join.
+
+Future improvement:
+- introduce `recipient_id` on responses for exact matching
+
+---
+
+## 🔌 API Endpoint
+
+```
+GET /api/campaign-stats
+```
+
+### Query Params
+
+- `campaign` (string)
+- `token` (admin token)
+
+### Auth
+
+- Bearer token OR `?token=` query param
+
+---
+
+## ⚠️ Design Constraints
+
+- No business logic is inferred in the frontend
+- Backend must reflect raw DB values
+- No remapping of response enums
+- Dashboard is **observational only** (no mutations)
+
+---
+
+## ✅ Current Status
+
+- Backend endpoint stable
+- Frontend aligned with response schema
+- Breakdown values now correctly reflect DB
+- No-response currently derived (acceptable for Phase 1)
+
+---
+
 ## ⚙️ Environment Variables
 
 ### Frontend `.env`

@@ -12,7 +12,7 @@ import WelcomePage from './pages/WelcomePage';
 import AccountPage from './pages/AccountPage';
 import ReportsPage from './reports/ReportsPage';
 import PreorderService from './services/preorder/PreorderService';
-import CampaignDashboard from './components/CampaignDashboard';
+import CampaignDashboard from './services/campaigns/CampaignService';
 import { supabase } from './lib/supabase';
 import DefaultRedirect from './auth/DefaultRedirect';
 import { useState, useEffect } from 'react';
