@@ -5,7 +5,7 @@ export async function fetchCampaignResponses({
 }: {
   limit?: number;
 }) {
-  const res = await fetch(`${BASE}/api/campaign-responses?limit=${limit}`);
+  const res = await fetch(`${BASE}/api/campaign-responses?limit=${limit}&token=${import.meta.env.VITE_ADMIN_TOKEN}`);
   if (!res.ok) throw new Error("Failed to fetch responses");
   return res.json();
 }
