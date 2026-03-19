@@ -43,6 +43,9 @@ export default function CampaignService() {
           fetchCampaignStats(),
         ]);
 
+        console.log("RAW statsRes:", statsRes);
+        console.log("RAW responsesRes:", responsesRes);
+
         setRows(responsesRes.rows);
         const normalizedStats = {
           totals: {
