@@ -5,9 +5,24 @@ export async function fetchCampaignResponses({
 }: {
   limit?: number;
 }) {
-  const res = await fetch(`${BASE}/api/campaign-responses?limit=${limit}&token=${import.meta.env.VITE_ADMIN_TOKEN}`);
-  if (!res.ok) throw new Error("Failed to fetch responses");
-  return res.json();
+  try {
+    console.log("FETCHING RESPONSES...");
+
+    const url = `${BASE}/api/campaign-responses?limit=${limit}&token=${import.meta.env.VITE_ADMIN_TOKEN}`;
+    console.log("RESPONSES URL:", url);
+
+    const res = await fetch(url);
+
+    if (!res.ok) throw new Error("Failed to fetch responses");
+
+    const data = await res.json();
+    console.log("RESPONSES DATA:", data);
+
+    return data;
+  } catch (err) {
+    console.error("FETCH RESPONSES ERROR:", err);
+    throw err;
+  }
 }
 
 export async function fetchCampaignStats() {
