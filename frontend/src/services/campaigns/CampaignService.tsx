@@ -46,49 +46,9 @@ export default function CampaignService() {
         console.log("RAW statsRes:", statsRes);
         console.log("RAW responsesRes:", responsesRes);
 
-        setRows(responsesRes.rows);
-        const normalizedStats = {
-          totals: {
-            recipients: statsRes.total,
-            sent: statsRes.total,
-            remaining: 0,
-          },
-          delivery: {
-            sent: statsRes.total,
-            failed: 0,
-          },
-          responses: {
-            total:
-              statsRes.keep_order +
-              statsRes.cancel_order +
-              statsRes.unsigned_copy,
-            rate:
-              statsRes.total > 0
-                ? (
-                    (statsRes.keep_order +
-                      statsRes.cancel_order +
-                      statsRes.unsigned_copy) /
-                    statsRes.total
-                  )
-                : 0,
-          },
-          breakdown: {
-            yes: statsRes.keep_order,
-            no: statsRes.cancel_order,
-            maybe: statsRes.unsigned_copy,
-            no_response:
-              statsRes.total -
-              (statsRes.keep_order +
-                statsRes.cancel_order +
-                statsRes.unsigned_copy),
-          },
-          meta: {
-            generated_at: Math.floor(Date.now() / 1000),
-            campaign: "ngtbf",
-          },
-        };
-
-        setStats(normalizedStats);
+        setRows(Array.isArray(responsesRes) ? responsesRes : responsesRes.rows || []);
+        // API already returns normalized stats — use directly
+        setStats(statsRes);
       } catch (err) {
         console.error("Campaign load failed:", err);
       } finally {

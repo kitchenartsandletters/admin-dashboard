@@ -11,7 +11,7 @@ export async function fetchCampaignResponses({
 }
 
 export async function fetchCampaignStats() {
-  const res = await fetch(`${BASE}/api/campaign-stats?campaign=ngtbf&token=${import.meta.env.VITE_ADMIN_TOKEN}`);
+  const res = await fetch(`${BASE}/api/campaign-stats?campaign=noma-signed-copy-decision&token=${import.meta.env.VITE_ADMIN_TOKEN}`);
   if (!res.ok) throw new Error("Failed to fetch stats");
   return res.json();
 }
