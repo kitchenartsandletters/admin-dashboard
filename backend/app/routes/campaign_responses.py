@@ -69,6 +69,9 @@ async def get_campaign_responses(
 
         result = query.execute()
 
+        print("RESULT DATA:", result.data)
+        print("RESULT COUNT:", result.count)
+
         rows: List[Dict[str, Any]] = []
 
         for r in result.data or []:
@@ -80,6 +83,7 @@ async def get_campaign_responses(
                     r.get("response"), r.get("response")
                 ),
                 "product_title": r.get("product_title"),
+                "order_id": r.get("order_id"),
                 "order_name": r.get("order_name"),
                 "customer_name": f"{r.get('customer_first_name') or ''} {r.get('customer_last_name') or ''}".strip(),
                 "recorded_at": r.get("recorded_at"),
