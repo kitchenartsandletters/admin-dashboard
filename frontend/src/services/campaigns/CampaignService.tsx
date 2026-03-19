@@ -32,126 +32,87 @@ export default function CampaignService() {
 
   const [loading, setLoading] = useState(true);
 
-  // --- load data ---
   useEffect(() => {
     async function load() {
       try {
         setLoading(true);
-
         const [responsesRes, statsRes] = await Promise.all([
           fetchCampaignResponses({ limit: 500 }),
           fetchCampaignStats(),
         ]);
 
-        console.log("RAW statsRes:", statsRes);
-        console.log("RAW responsesRes:", responsesRes);
-
         setRows(Array.isArray(responsesRes) ? responsesRes : responsesRes.rows || []);
-        // API already returns normalized stats — use directly
         setStats(statsRes);
       } catch (err) {
-        console.error("Campaign load failed:", err);
+        console.error("Failed to load campaign data", err);
       } finally {
         setLoading(false);
       }
     }
-
     load();
   }, []);
 
-  // --- filtering ---
   const filteredData = useMemo(() => {
-    const val = searchFilter.toLowerCase();
-
-    return rows.filter((row) => {
-      const normalize = (str: string) =>
-        str.toLowerCase().replace(/^#/, "");
-
-      const searchVal = val.replace(/^#/, "");
-
+    return rows.filter((r) => {
       const matchesSearch =
-        normalize(row.email || "").includes(searchVal) ||
-        normalize(row.product_title || "").includes(searchVal) ||
-        normalize(row.order_name || "").includes(searchVal);
+        !searchFilter ||
+        r.email.toLowerCase().includes(searchFilter.toLowerCase()) ||
+        r.order_name?.toLowerCase().includes(searchFilter.toLowerCase());
 
       const matchesResponse =
-        responseFilter === "all" ||
-        row.response === responseFilter;
+        responseFilter === "all" || r.response === responseFilter;
 
       return matchesSearch && matchesResponse;
     });
   }, [rows, searchFilter, responseFilter]);
 
-  if (loading && viewMode === "dashboard") {
-    return <div className="p-6">Loading campaign metrics...</div>;
-  }
-
   return (
-    <div className="p-4 sm:p-6 space-y-6 bg-white min-h-screen">
-      {/* Header */}
-      <div className="flex flex-col gap-4">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold">
-              Campaign Console
-            </h1>
-            <p className="text-sm text-gray-500">
-              Monitor responses and outcomes
-            </p>
-          </div>
-
-          <CampaignTabs
-            activeTab={viewMode}
-            onChange={setViewMode}
-          />
+    <div className="p-4 sm:p-6 space-y-6 bg-white dark:bg-gray-950 min-h-screen">
+      {/* Header & Tabs */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+            Campaign Metrics
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            NGTBF Response Tracking
+          </p>
         </div>
+        <CampaignTabs activeTab={viewMode} onChange={setViewMode} />
       </div>
 
-      {/* Dashboard */}
+      {/* Dashboard View */}
       {viewMode === "dashboard" && stats && (
         <CampaignDashboard data={stats} />
       )}
 
       {/* Responses View */}
       {viewMode === "responses" && (
-        <div>
-          {/* Filters */}
+        <div className="space-y-4">
           <div className="flex flex-col sm:flex-row gap-3">
             <input
               type="text"
-              placeholder="Search email, product, order..."
+              placeholder="Search email or order..."
               value={searchFilter}
-              onChange={(e) =>
-                setSearchFilter(e.target.value)
-              }
-              className="w-full sm:w-1/2 px-3 py-2 border rounded-md text-sm"
+              onChange={(e) => setSearchFilter(e.target.value)}
+              className="flex-1 px-3 py-2 border rounded-md text-sm dark:bg-gray-900 dark:border-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500/20 outline-none"
             />
 
             <select
               value={responseFilter}
-              onChange={(e) =>
-                setResponseFilter(
-                  e.target.value as ResponseFilter
-                )
-              }
-              className="px-3 py-2 border rounded-md text-sm"
+              onChange={(e) => setResponseFilter(e.target.value as ResponseFilter)}
+              className="px-3 py-2 border rounded-md text-sm dark:bg-gray-900 dark:border-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500/20 outline-none"
             >
-              <option value="all">All</option>
-              <option value="keep_order">Keep</option>
-              <option value="unsigned_copy">Unsigned</option>
-              <option value="cancel_order">Cancel</option>
+              <option value="all">All Responses</option>
+              <option value="keep_order">Keep Order</option>
+              <option value="unsigned_copy">Unsigned Copy</option>
+              <option value="cancel_order">Cancel Order</option>
             </select>
           </div>
 
-          {/* Loading */}
-          {loading && (
-            <div className="text-sm text-gray-500">
-              Loading...
-            </div>
-          )}
-
-          {/* Table */}
-          {!loading && (
+          {loading ? (
+            <div className="py-12 text-center text-gray-500 animate-pulse">Loading responses...</div>
+          ) : (
             <CampaignTable rows={filteredData} />
           )}
         </div>
