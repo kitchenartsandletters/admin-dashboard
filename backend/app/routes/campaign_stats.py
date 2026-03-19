@@ -23,7 +23,7 @@ router = APIRouter()
 @router.get("/campaign-stats")
 async def get_campaign_stats(
     request: Request,
-    campaign: str = "ngtbf",
+    campaign: str = "noma-signed-copy-decision",
     token: str = ""
 ) -> Dict[str, Any]:
 
