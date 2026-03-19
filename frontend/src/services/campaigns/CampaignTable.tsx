@@ -82,7 +82,6 @@ export default function CampaignTable({
           <tr>
             <SortHeader label="Email" field="email" />
             <SortHeader label="Response" field="response" />
-            <SortHeader label="Product" field="product_title" />
             <SortHeader label="Order" field="order_name" />
             <SortHeader label="Timestamp" field="created_at" />
           </tr>
@@ -104,11 +103,18 @@ export default function CampaignTable({
               </td>
 
               <td className="px-3 py-2">
-                {row.product_title || "—"}
-              </td>
-
-              <td className="px-3 py-2">
-                {row.order_id || "—"}
+                {row.order_id ? (
+                  <a
+                    href={`https://admin.shopify.com/store/castironbooks/orders/${row.order_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline"
+                  >
+                    {row.order_name}
+                  </a>
+                ) : (
+                  "—"
+                )}
               </td>
 
               <td className="px-3 py-2 text-gray-500">
