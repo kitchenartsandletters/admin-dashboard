@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import ConfirmModal from './ConfirmModal';
 import DamagedBooksService from './DamagedBooksService';
+import ScannerModal from './damaged/ScannerModal';
 
 /**
  * Input types supported by the wizard
@@ -61,6 +62,9 @@ export default function DamagedBooksWizard() {
   const [phase, setPhase] = useState<WizardPhase>('idle');
   const [result, setResult] = useState<ConfirmResponse | null>(null);
 
+  // Scanner state
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+
   /* -----------------------------
    * Helpers
    * ----------------------------- */
@@ -77,6 +81,26 @@ export default function DamagedBooksWizard() {
         return { type: 'product_id', value };
       });
   }
+
+  // Handler to append scanned values
+  const handleScan = (isbn: string) => {
+  
+  // 1. Haptic Feedback (Vibration)
+    if (window.navigator && window.navigator.vibrate) {
+      window.navigator.vibrate(100); 
+    }
+
+    // 2. Audio Feedback (Beep)
+    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/766/766-preview.mp3'); 
+    audio.play().catch(e => console.log("Audio play blocked by browser"));
+
+    // 3. Update State
+    setRawInput(prev => {
+      const clean = prev.trim();
+      const separator = clean.endsWith(',') || clean === '' ? '' : ', ';
+      return `${clean}${separator}${isbn}`;
+    });
+  };
 
   /* -----------------------------
    * Flat Mapper for Confirm Payload
@@ -192,6 +216,18 @@ export default function DamagedBooksWizard() {
           <label className="block text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">
             Source Products
           </label>
+          {/* 4. Add Scan Button */}
+          <button 
+            onClick={() => setIsScannerOpen(true)}
+            className="text-xs flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium"
+            type="button"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Scan via Camera
+          </button>
           <textarea
             value={rawInput}
             onChange={e => setRawInput(e.target.value)}
@@ -244,6 +280,13 @@ export default function DamagedBooksWizard() {
           </button>
         </div>
       </div>
+
+      {/* Scanner Modal */}
+      <ScannerModal 
+        isOpen={isScannerOpen} 
+        onClose={() => setIsScannerOpen(false)} 
+        onScan={handleScan} 
+      />
 
       {/* -----------------------------
           Preview / Confirm Modal
