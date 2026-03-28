@@ -108,24 +108,44 @@ const BlacklistManager = () => {
   useEffect(() => { fetchBlacklist(); }, []);
 
   const handleAdd = async () => {
-    if (loading || !barcodeInput.trim()) return;
+    const trimmedInput = barcodeInput.trim();
+    
+    if (!trimmedInput) {
+      setInputError("Please enter at least one barcode or product ID.");
+      return;
+    }
+
+    if (loading) return;
+
     setInputError(null);
-    const normalizedInputs = barcodeInput.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
+    const normalizedInputs = trimmedInput.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
 
     setLoading(true);
     const fetchedEntries: BlacklistEntry[] = [];
-    for (const input of normalizedInputs) {
-      const enriched = await fetchShopifyProductDetails(input);
-      if (enriched && !entries.some(e => e.product_id === enriched.product_id)) {
-        fetchedEntries.push(enriched);
+    
+    try {
+      for (const input of normalizedInputs) {
+        const enriched = await fetchShopifyProductDetails(input);
+        if (enriched && !entries.some(e => e.product_id === enriched.product_id)) {
+          fetchedEntries.push(enriched);
+        }
       }
-    }
-    setLoading(false);
 
-    if (fetchedEntries.length === 0) {
-      setErrorModal({ title: "No New Products", message: "Products not found or already blacklisted." });
-    } else {
-      setPreviewEntries(fetchedEntries);
+      if (fetchedEntries.length === 0) {
+        setErrorModal({ 
+          title: "No New Products", 
+          message: "Products not found or already exist in the blacklist." 
+        });
+      } else {
+        setPreviewEntries(fetchedEntries);
+        // CLEAR FIELD HERE: The items are now in the preview modal
+        setBarcodeInput(""); 
+      }
+    } catch (err) {
+      console.error(err);
+      setInputError("An error occurred while fetching product details.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -224,9 +244,16 @@ const BlacklistManager = () => {
         <div className="flex gap-2">
           <input
             value={barcodeInput}
-            onChange={(e) => setBarcodeInput(e.target.value)}
+            onChange={(e) => {
+              setBarcodeInput(e.target.value);
+              if (inputError) setInputError(null); // Clear error while user types
+            }}
             placeholder="Barcode or Product ID..."
-            className="flex-1 px-3 py-2 border rounded-md text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500/20 outline-none"
+            className={`flex-1 px-3 py-2 border rounded-md text-sm dark:bg-gray-800 dark:text-white outline-none transition-all
+              ${inputError 
+                ? "border-red-500 ring-2 ring-red-500/10" 
+                : "border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-blue-500/20"
+              }`}
             onKeyDown={(e) => e.key === "Enter" && handleAdd()}
           />
           <button
@@ -237,7 +264,12 @@ const BlacklistManager = () => {
             {loading ? "Searching..." : "Add"}
           </button>
         </div>
-        {inputError && <p className="text-red-500 text-xs">{inputError}</p>}
+        {/* Error Message with a little icon for visibility */}
+        {inputError && (
+          <p className="text-red-500 text-xs font-medium flex items-center gap-1">
+            <span>⚠️</span> {inputError}
+          </p>
+        )}
       </div>
 
       {/* Search/Filters */}
