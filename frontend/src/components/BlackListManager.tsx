@@ -309,7 +309,6 @@ const BlacklistManager = () => {
             </>
           ) : (
             <>
-              <span className="text-lg">📦</span>
               Export to Shopify
             </>
           )}
