@@ -95,6 +95,7 @@ const BlacklistManager = () => {
   const [selectedEntry, setSelectedEntry] = useState<BlacklistEntry | null>(null);
   const [docsFilePath, setDocsFilePath] = useState<string | null>(null);
   const removeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   const fetchBlacklist = async () => {
     try {
@@ -183,6 +184,24 @@ const BlacklistManager = () => {
     setExportModal(null);
   };
 
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const res = await fetch(`${BLACKLIST_API_BASE}/api/blacklist/export_snippet?token=${ADMIN_API_TOKEN}`, { 
+        method: "POST" 
+      });
+      const json = await res.json();
+      setExportModal({ 
+        success: json.success, 
+        message: json.success ? "Liquid snippet exported successfully." : "Export failed." 
+      });
+    } catch (err) {
+      setExportModal({ success: false, message: "A network error occurred during export." });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="p-4 sm:p-6 space-y-6 bg-white dark:bg-gray-950 min-h-screen">
       {/* Header */}
@@ -268,18 +287,32 @@ const BlacklistManager = () => {
         </table>
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex justify-end pt-4 border-t dark:border-gray-800">
         <button
-          onClick={async () => {
-            setLoading(true);
-            const res = await fetch(`${BLACKLIST_API_BASE}/api/blacklist/export_snippet?token=${ADMIN_API_TOKEN}`, { method: "POST" });
-            const json = await res.json();
-            setExportModal({ success: json.success, message: json.success ? "Liquid snippet exported successfully." : "Export failed." });
-            setLoading(false);
-          }}
-          className="bg-gray-800 dark:bg-gray-700 text-white px-6 py-2 rounded-md text-sm font-bold hover:bg-black transition-all"
+          onClick={handleExport}
+          disabled={isExporting}
+          className={`
+            flex items-center gap-2 px-6 py-2.5 rounded-md text-sm font-bold transition-all
+            ${isExporting 
+              ? "bg-gray-400 cursor-not-allowed text-white" 
+              : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm active:scale-95"
+            }
+          `}
         >
-          Push to Shopify
+          {isExporting ? (
+            <>
+              <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              Exporting to Shopify...
+            </>
+          ) : (
+            <>
+              <span className="text-lg">📦</span>
+              Export to Shopify
+            </>
+          )}
         </button>
       </div>
 
