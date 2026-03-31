@@ -2,7 +2,8 @@
 import {
   PreorderRow,
   ReleaseReviewRow,
-  PreorderSummaryMetrics
+  PreorderSummaryMetrics,
+  ReportablePreorderRow
 } from "../src/types/preorderTypes"
 
 // -----------------------------------------------------------------------------
@@ -49,9 +50,11 @@ type PreorderMetricsAPI = {
   early_arrivals: number
   releases_due_for_review: number
   releases_this_week: number
-  total_live_presold_units: number
-  total_estimated_presold_units: number
+  total_live_presold_units: number | string
+  total_estimated_presold_units: number | string
 }
+
+type ReportableAPI = ReportablePreorderRow
 
 // -----------------------------------------------------------------------------
 // Generic Fetch Helper
@@ -121,8 +124,8 @@ function adaptMetrics(row: PreorderMetricsAPI): PreorderSummaryMetrics {
     early_arrivals: row.early_arrivals ?? 0,
     releases_due_for_review: row.releases_due_for_review ?? 0,
     releases_this_week: row.releases_this_week ?? 0,
-    total_live_presold_units: row.total_live_presold_units ?? 0,
-    total_estimated_presold_units: row.total_estimated_presold_units ?? 0,
+    total_live_presold_units: Number(row.total_live_presold_units) ?? 0,
+    total_estimated_presold_units: Number(row.total_estimated_presold_units) ?? 0,
   }
 }
 
@@ -153,4 +156,34 @@ export async function fetchPreorderMetrics(): Promise<PreorderSummaryMetrics> {
 
 export async function reclassifyProduct(productId: number) {
   return fetchFromService(`/admin/preorders/reclassify/${productId}`)
+}
+
+export async function fetchUpcomingReleases(): Promise<ReleaseReviewRow[]> {
+  const data = await fetchFromService<ReleaseQueueAPI[]>(
+    "/admin/preorders/upcoming"
+  )
+  return data.map(adaptReleaseQueueRow)
+}
+
+export async function fetchReportablePreorders(): Promise<ReportablePreorderRow[]> {
+  const data = await fetchFromService<ReportableAPI[]>(
+    "/admin/preorders/reportable"
+  )
+  return data  // view shape matches type directly, no adapter needed
+}
+
+export async function generateReportPreview(
+  productIds: number[],
+  weekAnchor: string
+): Promise<Blob> {
+  const res = await fetch(`${PREORDER_BASE_URL}/admin/preorders/report/preview`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ product_ids: productIds, week_anchor: weekAnchor }),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Report preview failed (${res.status}): ${text}`)
+  }
+  return res.blob()
 }

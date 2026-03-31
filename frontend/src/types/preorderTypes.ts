@@ -83,3 +83,25 @@ export interface PreorderSummaryMetrics {
 
   // Removed: anomalies (not in backend view), already_reported_this_week (Phase 6)
 }
+
+export interface ReportablePreorderRow {
+  product_id: number
+  title: string | null
+  isbn: string | null
+  pub_date: string | null
+  live_presale_qty: number
+  estimated_presale_qty: number
+  total_presale_qty: number
+  data_confidence: "verified" | "estimated"
+  report_week_start: string   // YYYY-MM-DD, Sunday
+  report_week_end: string     // YYYY-MM-DD, Saturday
+  already_reported: boolean
+  current_week_start: string
+  current_week_end: string
+  anomaly_type: string | null
+}
+
+export interface UpcomingReleaseRow extends ReleaseReviewRow {
+  // due_for_release_review is always true for rows from /upcoming
+  // days_until_pub is computed client-side from pub_date
+}

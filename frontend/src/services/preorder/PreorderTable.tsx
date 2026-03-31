@@ -5,6 +5,7 @@ import { PreorderRow } from "../../types/preorderTypes"
 interface PreorderTableProps {
   data: PreorderRow[]
   onRowClick: (row: PreorderRow) => void
+  isHistorical?: boolean
 }
 
 function getClassificationBadgeClass(status: string) {
@@ -35,7 +36,7 @@ function formatClassificationLabel(status: string) {
   return status?.replace(/_preorder|_arrival/g, "").replace(/_/g, " ") ?? "—"
 }
 
-const PreorderTable: React.FC<PreorderTableProps> = ({ data, onRowClick }) => {
+const PreorderTable: React.FC<PreorderTableProps> = ({ data, onRowClick, isHistorical = false }) => {
   return (
     <div className="overflow-x-auto border rounded-md dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
       <table className="min-w-full border-collapse text-sm">
@@ -44,16 +45,24 @@ const PreorderTable: React.FC<PreorderTableProps> = ({ data, onRowClick }) => {
             <th className="px-3 sm:px-4 py-3 border-b dark:border-gray-700 text-left">Title</th>
             <th className="px-3 sm:px-4 py-3 border-b dark:border-gray-700 text-left">Status</th>
             <th className="hidden sm:table-cell px-4 py-3 border-b dark:border-gray-700 text-left">Pub Date</th>
-            <th className="hidden md:table-cell px-4 py-3 border-b dark:border-gray-700 text-right">Presales</th>
-            <th className="px-3 sm:px-4 py-3 border-b dark:border-gray-700 text-right">Action</th>
+            <th className="hidden md:table-cell px-4 py-3 border-b dark:border-gray-700 text-right">
+              {isHistorical ? "Total Presales" : "Live Presales"}
+            </th>
+            {!isHistorical && (
+              <th className="px-3 sm:px-4 py-3 border-b dark:border-gray-700 text-right">Action</th>
+            )}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
           {data.map((row) => (
             <tr
               key={row.product_id}
-              className="even:bg-gray-50/50 dark:even:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
-              onClick={() => onRowClick(row)}
+              className={`even:bg-gray-50/50 dark:even:bg-gray-800/50 transition-colors ${
+                isHistorical
+                  ? "opacity-75"
+                  : "hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+              }`}
+              onClick={isHistorical ? undefined : () => onRowClick(row)}
             >
               <td className="px-3 sm:px-4 py-3 font-medium text-gray-900 dark:text-white max-w-[150px] sm:max-w-xs truncate">
                 {row.title}
@@ -74,17 +83,21 @@ const PreorderTable: React.FC<PreorderTableProps> = ({ data, onRowClick }) => {
               </td>
               <td className="hidden md:table-cell px-4 py-3 text-right">
                 <span className="font-mono font-bold text-gray-900 dark:text-white text-xs">
-                  {row.live_presale_qty.toLocaleString()}
+                  {isHistorical
+                    ? row.total_presale_qty.toLocaleString()
+                    : row.live_presale_qty.toLocaleString()}
                 </span>
                 <span className={getConfidenceBadgeClass(row.data_confidence)}>
                   {row.data_confidence}
                 </span>
               </td>
-              <td className="px-3 sm:px-4 py-3 text-right">
-                <button className="text-blue-600 dark:text-blue-400 font-medium text-xs sm:text-sm">
-                  Details
-                </button>
-              </td>
+              {!isHistorical && (
+                <td className="px-3 sm:px-4 py-3 text-right">
+                  <button className="text-blue-600 dark:text-blue-400 font-medium text-xs sm:text-sm">
+                    Details
+                  </button>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
