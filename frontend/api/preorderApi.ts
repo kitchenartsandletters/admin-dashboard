@@ -1,3 +1,4 @@
+// preorderApi.ts
 import {
   PreorderRow,
   ReleaseReviewRow,
@@ -17,21 +18,27 @@ const headers = {
 }
 
 // -----------------------------------------------------------------------------
-// API Response Types (matches SQL view schema)
+// API Response Types — aligned to Phase 3/5 view column names
 // -----------------------------------------------------------------------------
 
 type PreorderProductAPI = {
   product_id: number
-  title: string
+  title: string | null
   isbn: string | null
   inventory: number | null
-  presold_qty: number | null
+  live_presale_qty: number | null
+  estimated_presale_qty: number | null
+  total_presale_qty: number | null
+  data_confidence: "verified" | "estimated"
   pub_date: string | null
   classification: string
-  preorder_tag_present: boolean
-  preorder_collection_present: boolean
+  preorder_tag_present: boolean | null
+  preorder_collection_present: boolean | null
   override_status: string | null
   anomaly_type: string | null
+  arrival_timing: string | null
+  due_for_release_review: boolean
+  early_stock_arrival: boolean
   last_updated: string | null
 }
 
@@ -40,9 +47,10 @@ type ReleaseQueueAPI = PreorderProductAPI
 type PreorderMetricsAPI = {
   active_preorders: number
   early_arrivals: number
-  anomalies: number
-  release_queue_count: number
-  released_this_week: number
+  releases_due_for_review: number
+  releases_this_week: number
+  total_live_presold_units: number
+  total_estimated_presold_units: number
 }
 
 // -----------------------------------------------------------------------------
@@ -69,40 +77,21 @@ function adaptProductRow(row: PreorderProductAPI): PreorderRow {
     product_id: row.product_id,
     title: row.title,
     isbn: row.isbn,
-
-    vendor: null,
-    handle: undefined,
-
-    classification_status: row.classification as PreorderRow["classification_status"],
+    inventory: row.inventory ?? 0,
+    live_presale_qty: row.live_presale_qty ?? 0,
+    estimated_presale_qty: row.estimated_presale_qty ?? 0,
+    total_presale_qty: row.total_presale_qty ?? 0,
+    data_confidence: row.data_confidence ?? "estimated",
+    classification: row.classification,
     anomaly_type: row.anomaly_type,
-
-    effective_pub_date: row.pub_date,
-    effective_pub_date_source: row.override_status ? "override_date" : "unknown",
-
-    arrival_timing: row.inventory && row.inventory > 0 ? "early_arrival" : "no_arrival",
-
-    first_positive_inventory_at: null,
-    first_positive_inventory_qty: row.inventory,
-
-    lifecycle_state: row.classification,
-    lifecycle_snapshot_at: row.last_updated,
-    lifecycle_closed_at: null,
-
-    presale_commitment_total: row.presold_qty ?? 0,
-
-    reporting_state: row.preorder_collection_present ? "queued" : "not_queued",
-
-    released_to_reporting: false,
-    release_report_week_start: null,
-    release_report_week_end: null,
-    released_at: null,
-    csv_filename: null,
-
-    can_reclassify: true,
-    last_reclassified_at: null,
-
-    created_at: row.last_updated,
-    updated_at: row.last_updated
+    pub_date: row.pub_date,
+    arrival_timing: row.arrival_timing as PreorderRow["arrival_timing"],
+    preorder_tag_present: row.preorder_tag_present,
+    preorder_collection_present: row.preorder_collection_present,
+    override_status: (row.override_status ?? "none") as PreorderRow["override_status"],
+    due_for_release_review: row.due_for_release_review ?? false,
+    early_stock_arrival: row.early_stock_arrival ?? false,
+    last_updated: row.last_updated,
   }
 }
 
@@ -111,32 +100,29 @@ function adaptReleaseQueueRow(row: ReleaseQueueAPI): ReleaseReviewRow {
     product_id: row.product_id,
     title: row.title,
     isbn: row.isbn,
-
-    target_report_week_start: row.pub_date ?? "TBD",
-    target_report_week_end: null,
-
-    presales_banked: row.presold_qty ?? 0,
-    weekly_sales: 0,
-
-    reporting_quantity: row.presold_qty ?? 0,
-
-    already_reported: false,
-
-    released_at: null,
-    csv_filename: null,
-
-    classification_status: row.classification as ReleaseReviewRow["classification_status"],
-    anomaly_type: row.anomaly_type
+    live_presale_qty: row.live_presale_qty ?? 0,
+    estimated_presale_qty: row.estimated_presale_qty ?? 0,
+    total_presale_qty: row.total_presale_qty ?? 0,
+    data_confidence: row.data_confidence ?? "estimated",
+    classification: row.classification,
+    pub_date: row.pub_date,
+    arrival_timing: row.arrival_timing as ReleaseReviewRow["arrival_timing"],
+    due_for_release_review: row.due_for_release_review ?? false,
+    early_stock_arrival: row.early_stock_arrival ?? false,
+    anomaly_type: row.anomaly_type,
+    override_status: (row.override_status ?? "none") as ReleaseReviewRow["override_status"],
+    last_updated: row.last_updated,
   }
 }
 
 function adaptMetrics(row: PreorderMetricsAPI): PreorderSummaryMetrics {
   return {
     active_preorders: row.active_preorders ?? 0,
-    early_stock_arrivals: row.early_arrivals ?? 0,
-    anomalies: row.anomalies ?? 0,
-    eligible_for_reporting_this_week: row.release_queue_count ?? 0,
-    already_reported_this_week: row.released_this_week ?? 0
+    early_arrivals: row.early_arrivals ?? 0,
+    releases_due_for_review: row.releases_due_for_review ?? 0,
+    releases_this_week: row.releases_this_week ?? 0,
+    total_live_presold_units: row.total_live_presold_units ?? 0,
+    total_estimated_presold_units: row.total_estimated_presold_units ?? 0,
   }
 }
 
@@ -148,7 +134,6 @@ export async function fetchPreorderProducts(): Promise<PreorderRow[]> {
   const data = await fetchFromService<PreorderProductAPI[]>(
     "/admin/preorders/products"
   )
-
   return data.map(adaptProductRow)
 }
 
@@ -156,7 +141,6 @@ export async function fetchPreorderReleaseQueue(): Promise<ReleaseReviewRow[]> {
   const data = await fetchFromService<ReleaseQueueAPI[]>(
     "/admin/preorders/release-queue"
   )
-
   return data.map(adaptReleaseQueueRow)
 }
 
@@ -164,7 +148,6 @@ export async function fetchPreorderMetrics(): Promise<PreorderSummaryMetrics> {
   const data = await fetchFromService<PreorderMetricsAPI>(
     "/admin/preorders/metrics"
   )
-
   return adaptMetrics(data)
 }
 

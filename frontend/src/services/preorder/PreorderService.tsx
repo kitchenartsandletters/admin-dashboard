@@ -72,7 +72,14 @@ function PreorderService() {
           </div>
         </div>
 
-        <PreorderSummaryCards metrics={metrics ?? { active_preorders: 0, early_stock_arrivals: 0, anomalies: 0, eligible_for_reporting_this_week: 0, already_reported_this_week: 0 }} />
+        <PreorderSummaryCards metrics={metrics ?? {
+          active_preorders: 0,
+          early_arrivals: 0,
+          releases_due_for_review: 0,
+          releases_this_week: 0,
+          total_live_presold_units: 0,
+          total_estimated_presold_units: 0,
+        }} />
 
         {viewMode === "overview" && (
           <input

@@ -1,144 +1,85 @@
-// src/types/preorderTypes.ts
-// ⚠️ MVP / Beta scaffold
-// Purpose: shared frontend types for preorder-service admin dashboard integration
-// Source of truth for business logic remains backend persistence.
-// The UI should display these values, not derive them independently.
-
-export type PreorderClassificationStatus =
-  | 'active_preorder'
-  | 'early_stock_arrival'
-  | 'historical_preorder'
-  | 'not_a_preorder_product'
-  | `anomaly_${string}`;
-
-export type ArrivalTiming =
-  | 'no_arrival'
-  | 'early_arrival'
-  | 'on_time_arrival'
-  | 'late_arrival';
-
-export type LifecycleState =
-  // Keep this intentionally flexible because backend naming is transitional.
-  | 'unknown'
-  | 'presale_open'
-  | 'released'
-  | 'closed'
-  | 'backordered'
-  | string;
-
-export type ReportingState =
-  | 'not_queued'
-  | 'queued'
-  | 'reported'
-  | 'unknown';
-
-export type EffectivePubDateSource =
-  | 'override_date'
-  | 'custom_pub_date'
-  | 'legacy_tag'
-  | 'unresolved'
-  | 'unknown';
+// types/preorderTypes.ts
+// Updated for Phase 5 — aligned to actual backend view columns.
+// See docs/Trust_Tier_Labeling.md for data_confidence semantics.
 
 export interface PreorderRow {
-  // Core identity
-  product_id: number;
-  title: string;
-  isbn: string | null;
-  vendor?: string | null;
-  handle?: string | null;
+  // Identity
+  product_id: number
+  title: string | null
+  isbn: string | null
 
-  // Canonical preorder classification
-  classification_status: PreorderClassificationStatus;
-  anomaly_type: string | null;
+  // Inventory
+  inventory: number
 
-  // Publication date
-  effective_pub_date: string | null; // ISO date: YYYY-MM-DD
-  effective_pub_date_source?: EffectivePubDateSource | null;
+  // Presale quantities — all three must be present after Phase 3 migration
+  live_presale_qty: number       // Tier 1 verified only: post-cutover live events
+  estimated_presale_qty: number  // Tier 3 backfill-sourced
+  total_presale_qty: number      // Combined display figure
 
-  // Inventory / arrival
-  arrival_timing: ArrivalTiming;
-  first_positive_inventory_at: string | null; // ISO datetime
-  first_positive_inventory_qty?: number | null;
+  // Confidence label — always present, never omit from display
+  data_confidence: "verified" | "estimated"
 
-  // Lifecycle
-  lifecycle_state: LifecycleState;
-  lifecycle_snapshot_at?: string | null; // ISO datetime
-  lifecycle_closed_at?: string | null; // ISO datetime
-  presale_commitment_total?: number | null;
+  // Classification
+  classification: string         // active_preorder | historical_preorder | early_stock_arrival | anomaly_* | not_a_preorder_product
+  anomaly_type: string | null
 
-  // Reporting / release workflow
-  reporting_state?: ReportingState | null;
-  released_to_reporting: boolean;
-  release_report_week_start: string | null; // ISO date
-  release_report_week_end?: string | null; // ISO date
-  released_at?: string | null; // ISO datetime
-  csv_filename?: string | null;
+  // Pub date
+  pub_date: string | null        // YYYY-MM-DD
 
-  // Safe admin actions / metadata
-  can_reclassify?: boolean;
-  last_reclassified_at?: string | null; // ISO datetime
+  // Arrival timing — joined from vw_arrival_timing
+  arrival_timing: "early_arrival" | "on_time_arrival" | "late_arrival" | "no_arrival" | null
 
-  // Display/meta helpers
-  created_at?: string | null;
-  updated_at?: string | null;
+  // Override and tag state
+  preorder_tag_present: boolean | null
+  preorder_collection_present: boolean | null
+  override_status: "override" | "none"
+
+  // Release queue flags (from vw_preorder_release_queue)
+  due_for_release_review: boolean
+  early_stock_arrival: boolean
+
+  // Metadata
+  last_updated: string | null
 }
 
 export interface ReleaseReviewRow {
-  product_id: number;
-  title: string;
-  isbn: string | null;
+  // Identity
+  product_id: number
+  title: string | null
+  isbn: string | null
 
-  target_report_week_start: string; // ISO date
-  target_report_week_end?: string | null; // ISO date
+  // Presale quantities — using live as the reporting figure
+  live_presale_qty: number
+  estimated_presale_qty: number
+  total_presale_qty: number
+  data_confidence: "verified" | "estimated"
 
-  presales_banked: number;
-  weekly_sales: number;
-  reporting_quantity: number;
+  // Classification and timing
+  classification: string
+  pub_date: string | null
+  arrival_timing: "early_arrival" | "on_time_arrival" | "late_arrival" | "no_arrival" | null
 
-  already_reported: boolean;
-  released_at?: string | null;
-  csv_filename?: string | null;
+  // Release queue flags
+  due_for_release_review: boolean
+  early_stock_arrival: boolean
 
-  classification_status?: PreorderClassificationStatus;
-  anomaly_type?: string | null;
+  // Anomaly
+  anomaly_type: string | null
+  override_status: "override" | "none"
+
+  last_updated: string | null
 }
 
 export interface PreorderSummaryMetrics {
-  active_preorders: number;
-  early_stock_arrivals: number;
-  anomalies: number;
-  eligible_for_reporting_this_week: number;
-  already_reported_this_week: number;
-}
+  // Counts — aligned to vw_preorder_metrics column names
+  active_preorders: number
+  early_arrivals: number           // was early_stock_arrivals — backend column is early_arrivals
+  releases_due_for_review: number  // was eligible_for_reporting_this_week
+  releases_this_week: number       // count of active preorders with pub_date in next 7 days
 
-export interface PreorderFilters {
-  search: string;
-  classification_status: PreorderClassificationStatus | 'all';
-  arrival_timing: ArrivalTiming | 'all';
-  anomaly_mode: 'all' | 'anomaly_only' | 'non_anomaly_only';
-  reporting_state: ReportingState | 'all';
-  release_week_start: string | 'all';
-}
+  // Presale aggregates — two figures, both required
+  total_live_presold_units: number       // verified only
+  total_estimated_presold_units: number  // includes backfill
 
-export interface PreorderListResponse {
-  data: PreorderRow[];
-  meta?: {
-    total?: number;
-    page?: number;
-    limit?: number;
-  };
-}
-
-export interface ReleaseReviewListResponse {
-  data: ReleaseReviewRow[];
-  meta?: {
-    total?: number;
-    target_report_week_start?: string;
-  };
-}
-
-export interface ReclassifyProductResponse {
-  success: boolean;
-  product_id: number;
-  message?: string;
+  // Removed: anomalies (not in backend view), already_reported_this_week (Phase 6)
 }
