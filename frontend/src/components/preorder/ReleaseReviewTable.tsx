@@ -98,6 +98,8 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({ upcoming, repor
     setSelectedIds(new Set())
   }
 
+  const weekIsInFuture = week.start > new Date()
+
   return (
     <div className="space-y-8">
 
@@ -189,7 +191,9 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({ upcoming, repor
 
         {reportableForWeek.length === 0 ? (
           <p className="text-sm text-gray-400 dark:text-gray-500 italic px-1">
-            No reportable titles for this reporting week.
+            {weekIsInFuture
+              ? "Titles for this week have not yet published. Check back after pub dates pass."
+              : "No reportable titles for this reporting week."}
           </p>
         ) : (
           <>

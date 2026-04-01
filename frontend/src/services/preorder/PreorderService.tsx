@@ -27,8 +27,23 @@ function PreorderService() {
   const [reportable, setReportable] = useState<ReportablePreorderRow[]>([])
   const [searchFilter, setSearchFilter] = useState("")
   const [classFilter, setClassFilter] = useState<string>("all")
+  const [historicalFilter, setHistoricalFilter] = useState<string>("all")
   const [selectedRow, setSelectedRow] = useState<PreorderRow | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>("overview")
+
+  const HISTORICAL_FILTERS = [
+    { key: "all", label: "All Historical" },
+    { key: "late_arrival", label: "Late Arrivals" },
+    { key: "on_time_arrival", label: "On Time" },
+    { key: "early_arrival", label: "Early" },
+    { key: "no_arrival", label: "No Record" },
+  ]
+
+  const handleViewMode = (mode: ViewMode) => {
+    setViewMode(mode)
+    setSearchFilter("")
+    if (mode !== "historical") setHistoricalFilter("all")
+  }
 
   useEffect(() => {
     const loadData = async () => {
@@ -82,12 +97,17 @@ function PreorderService() {
 
   const filteredHistorical = useMemo(() => {
     const val = searchFilter.toLowerCase()
-    return historicalProducts.filter((row) =>
-      (row.title?.toLowerCase() || "").includes(val) ||
-      (row.isbn?.toLowerCase() || "").includes(val) ||
-      String(row.product_id).includes(val)
-    )
-  }, [historicalProducts, searchFilter])
+    return historicalProducts
+      .filter((row) => {
+        if (historicalFilter === "all") return true
+        return row.arrival_timing === historicalFilter
+      })
+      .filter((row) =>
+        (row.title?.toLowerCase() || "").includes(val) ||
+        (row.isbn?.toLowerCase() || "").includes(val) ||
+        String(row.product_id).includes(val)
+      )
+  }, [historicalProducts, searchFilter, historicalFilter])
 
   const CLASS_FILTERS = [
     { key: "all", label: "All Active" },
@@ -126,7 +146,7 @@ function PreorderService() {
                     ? "bg-white dark:bg-gray-700 text-blue-600 shadow-sm"
                     : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
                 }`}
-                onClick={() => setViewMode(tab.key)}
+                onClick={() => handleViewMode(tab.key)}
               >
                 {tab.label}
               </button>
@@ -142,6 +162,8 @@ function PreorderService() {
             releases_this_week: 0,
             total_live_presold_units: 0,
             total_estimated_presold_units: 0,
+            late_arrivals_unresolved: 0,
+            no_arrival_count: 0,
           }}
         />
 
@@ -173,17 +195,42 @@ function PreorderService() {
           </div>
         )}
 
-        {/* Search for historical */}
         {viewMode === "historical" && (
-          <input
-            type="text"
-            placeholder="Search title, ISBN, product ID..."
-            value={searchFilter}
-            onChange={(e) => setSearchFilter(e.target.value)}
-            className="w-full px-3 py-2 border rounded-md text-sm dark:bg-gray-900 dark:border-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500/20 outline-none"
-          />
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="inline-flex p-0.5 bg-gray-100 dark:bg-gray-800 rounded border dark:border-gray-700 text-xs flex-wrap">
+              {HISTORICAL_FILTERS.map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => setHistoricalFilter(f.key)}
+                  className={`px-3 py-1.5 rounded font-medium transition-all ${
+                    historicalFilter === f.key
+                      ? "bg-white dark:bg-gray-700 text-blue-600 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  }`}
+                >
+                  {f.label}
+                  {f.key === "late_arrival" && metrics && metrics.late_arrivals_unresolved > 0 && (
+                    <span className="ml-1 px-1 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-[9px] font-bold">
+                      {metrics.late_arrivals_unresolved}
+                    </span>
+                  )}
+                  {f.key === "no_arrival" && metrics && metrics.no_arrival_count > 0 && (
+                    <span className="ml-1 px-1 rounded bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 text-[9px] font-bold">
+                      {metrics.no_arrival_count}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <input
+              type="text"
+              placeholder="Search title, ISBN, product ID..."
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+              className="flex-1 px-3 py-1.5 border rounded text-xs dark:bg-gray-900 dark:border-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500/20 outline-none"
+            />
+          </div>
         )}
-      </div>
 
       {/* Content */}
       <div>
@@ -214,6 +261,7 @@ function PreorderService() {
         row={selectedRow}
         onClose={() => setSelectedRow(null)}
       />
+      </div>
     </div>
   )
 }

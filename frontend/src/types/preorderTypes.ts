@@ -81,6 +81,10 @@ export interface PreorderSummaryMetrics {
   total_live_presold_units: number       // verified only
   total_estimated_presold_units: number  // includes backfill
 
+  // Late arrivals — aligned to vw_arrival_timing
+  late_arrivals_unresolved: number   // count of preorders with late_arrival timing but not yet marked as early_stock_arrival
+  no_arrival_count: number             // count of preorders with no_arrival timing
+
   // Removed: anomalies (not in backend view), already_reported_this_week (Phase 6)
 }
 

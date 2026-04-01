@@ -52,6 +52,8 @@ type PreorderMetricsAPI = {
   releases_this_week: number
   total_live_presold_units: number | string
   total_estimated_presold_units: number | string
+  late_arrivals_unresolved: number
+  no_arrival_count: number
 }
 
 type ReportableAPI = ReportablePreorderRow
@@ -126,6 +128,8 @@ function adaptMetrics(row: PreorderMetricsAPI): PreorderSummaryMetrics {
     releases_this_week: row.releases_this_week ?? 0,
     total_live_presold_units: Number(row.total_live_presold_units) ?? 0,
     total_estimated_presold_units: Number(row.total_estimated_presold_units) ?? 0,
+    late_arrivals_unresolved: row.late_arrivals_unresolved ?? 0,
+    no_arrival_count: row.no_arrival_count ?? 0,
   }
 }
 

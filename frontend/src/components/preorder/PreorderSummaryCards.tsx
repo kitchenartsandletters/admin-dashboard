@@ -26,30 +26,50 @@ const MetricCard = ({
 
 const PreorderSummaryCards: React.FC<{ metrics: PreorderSummaryMetrics }> = ({ metrics }) => {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-      <MetricCard
-        label="Active Preorders"
-        value={metrics.active_preorders}
-      />
-      <MetricCard
-        label="Early Stock"
-        value={metrics.early_arrivals}
-      />
-      <MetricCard
-        label="Releasing This Week"
-        value={metrics.releases_this_week}
-      />
-      <MetricCard
-        label="Live Presales"
-        value={metrics.total_live_presold_units}
-        sub={
-          metrics.total_estimated_presold_units > metrics.total_live_presold_units
-            ? `${metrics.total_estimated_presold_units.toLocaleString()} incl. estimated`
-            : "all verified"
-        }
-      />
+    <div className="space-y-3">
+      {/* Active pipeline cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+        <MetricCard label="Active Preorders" value={metrics.active_preorders} />
+        <MetricCard label="Early Stock" value={metrics.early_arrivals} />
+        <MetricCard label="Releasing This Week" value={metrics.releases_this_week} />
+        <MetricCard
+          label="Live Presales"
+          value={metrics.total_live_presold_units}
+          sub={
+            metrics.total_estimated_presold_units > metrics.total_live_presold_units
+              ? `${metrics.total_estimated_presold_units.toLocaleString()} incl. estimated`
+              : "all verified"
+          }
+        />
+      </div>
+
+      {/* Historical diagnostic card — only shown when late arrivals exist */}
+      {(metrics.late_arrivals_unresolved > 0 || metrics.no_arrival_count > 0) && (
+        <div className="flex flex-col gap-1.5">
+          {metrics.no_arrival_count > 0 && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
+              <span className="text-red-600 dark:text-red-400 text-sm font-bold">
+                {metrics.no_arrival_count}
+              </span>
+              <span className="text-xs text-red-700 dark:text-red-300">
+                {metrics.no_arrival_count === 1 ? "title" : "titles"} published with no inventory received — contact vendor
+              </span>
+            </div>
+          )}
+          {metrics.late_arrivals_unresolved > 0 && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
+              <span className="text-amber-600 dark:text-amber-400 text-sm font-bold">
+                {metrics.late_arrivals_unresolved}
+              </span>
+              <span className="text-xs text-amber-700 dark:text-amber-300">
+                {metrics.late_arrivals_unresolved === 1 ? "title" : "titles"} received inventory after pub date with open presale commitments
+              </span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
-  )
-}
+  );
+};
 
 export default PreorderSummaryCards
