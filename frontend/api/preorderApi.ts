@@ -41,6 +41,8 @@ type PreorderProductAPI = {
   due_for_release_review: boolean
   early_stock_arrival: boolean
   last_updated: string | null
+  first_positive_inventory_at: string | null
+  lifecycle_closed: boolean
 }
 
 type ReleaseQueueAPI = PreorderProductAPI
@@ -97,7 +99,7 @@ function adaptProductRow(row: PreorderProductAPI): PreorderRow {
     due_for_release_review: row.due_for_release_review ?? false,
     early_stock_arrival: row.early_stock_arrival ?? false,
     last_updated: row.last_updated,
-    first_positive_inventory_at: null,
+    first_positive_inventory_at: row.first_positive_inventory_at ?? null,
     lifecycle_closed: false,
   }
 }
