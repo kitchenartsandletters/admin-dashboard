@@ -141,7 +141,7 @@ const App = () => {
                       <Route
                         path="/preorders"
                         element={
-                          <ProtectedRoute requiredRoles={['admin']}>
+                          <ProtectedRoute requiredRoles={['admin', 'editor']}>
                             <PreorderService />
                           </ProtectedRoute>
                         }

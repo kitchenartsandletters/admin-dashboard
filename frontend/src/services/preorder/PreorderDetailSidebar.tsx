@@ -8,6 +8,7 @@ interface PreorderDetailSidebarProps {
 }
 
 const SHOPIFY_ADMIN_PREFIX = "https://admin.shopify.com/store/castironbooks/products/"
+const LEDGER_CUTOVER = "2026-02-11"
 
 const DetailItem = ({
   label,
@@ -59,17 +60,6 @@ const ConfidenceBadge = ({ confidence }: { confidence: "verified" | "estimated" 
   </span>
 )
 
-function formatArrivalTiming(timing: string | null | undefined): string {
-  if (!timing) return "—"
-  switch (timing) {
-    case "early_arrival":   return "Early — more than 7 days before pub date"
-    case "on_time_arrival": return "On time — within 7 days of pub date"
-    case "late_arrival":    return "Late — after pub date"
-    case "no_arrival":      return "No inventory received"
-    default:                return timing.replace(/_/g, " ")
-  }
-}
-
 const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onClose }) => {
   const [isVisible, setIsVisible] = useState(false)
   const [shouldRender, setShouldRender] = useState(false)
@@ -106,6 +96,29 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
 
   const isHistorical = row.classification === "historical_preorder"
 
+  // Arrival timing is only reliable when:
+  // 1. An arrival record exists
+  // 2. The record postdates the cutover (Feb 11 2026)
+  // 3. The product's pub date also postdates the cutover
+  // Pre-cutover products had no inventory event tracking — any arrival
+  // record they have reflects a later adjustment, not actual first receipt.
+  const arrivalIsReliable =
+    row.first_positive_inventory_at !== null &&
+    row.first_positive_inventory_at >= LEDGER_CUTOVER &&
+    row.pub_date !== null &&
+    row.pub_date >= LEDGER_CUTOVER
+
+  function formatArrivalTiming(timing: string | null | undefined): string {
+    if (!timing) return "—"
+    switch (timing) {
+      case "early_arrival":   return "Early — more than 7 days before pub date"
+      case "on_time_arrival": return "On time — within 7 days of pub date"
+      case "late_arrival":    return "Late — after pub date"
+      case "no_arrival":      return "No inventory receipt recorded"
+      default:                return timing.replace(/_/g, " ")
+    }
+  }
+
   return (
     <>
       <div
@@ -138,13 +151,13 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
           </button>
         </div>
 
-        {/* Scrollable Content */}
+        {/* Content */}
         <div
           ref={contentRef}
           className="p-5 text-sm space-y-8 overflow-y-auto h-[calc(100%-4.5rem)] pb-10"
         >
 
-          {/* ── Product Identity — shared by both views ── */}
+          {/* ── Product Identity — identical in both views ── */}
           <section>
             <div className="flex justify-between items-start mb-4">
               <SectionHeader label="Product Identity" color="blue" />
@@ -164,59 +177,16 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
           </section>
 
           {isHistorical ? (
-            /* ── Historical layout ── */
             <>
-              {/* Lifecycle closure */}
+              {/* Publication */}
               <section>
-                <SectionHeader label="Lifecycle" color="green" />
-                <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-md border dark:border-gray-800 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">
-                      Lifecycle Status
-                    </span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                      row.lifecycle_closed
-                        ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-                        : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-                    }`}>
-                      {row.lifecycle_closed ? "Closed" : "Open"}
-                    </span>
-                  </div>
-                  <DetailItem
-                    label="Pub Date"
-                    value={formatDate(row.pub_date)}
-                  />
-                </div>
+                <SectionHeader label="Publication" color="purple" />
+                <DetailItem label="Pub Date" value={formatDate(row.pub_date)} />
               </section>
 
-              {/* Inventory receipt */}
+              {/* Presale Record */}
               <section>
-                <SectionHeader label="Inventory Receipt" color="purple" />
-                <div className="space-y-3">
-                  <DetailItem
-                    label="First Stock Recorded"
-                    value={formatDate(row.first_positive_inventory_at)}
-                  />
-                  <DetailItem
-                    label="Arrival Timing"
-                    value={formatArrivalTiming(row.arrival_timing)}
-                  />
-                  {row.arrival_timing === "late_arrival" && (
-                    <div className="px-3 py-2 bg-amber-50 dark:bg-amber-900/20 rounded text-xs text-amber-700 dark:text-amber-300">
-                      Inventory arrived after pub date. Presale customers waited beyond publication.
-                    </div>
-                  )}
-                  {row.arrival_timing === "no_arrival" && (
-                    <div className="px-3 py-2 bg-red-50 dark:bg-red-900/20 rounded text-xs text-red-700 dark:text-red-300">
-                      No inventory receipt recorded. Contact vendor for status.
-                    </div>
-                  )}
-                </div>
-              </section>
-
-              {/* Presale data */}
-              <section>
-                <SectionHeader label="Presale Record" color="gray" />
+                <SectionHeader label="Presale Record" color="green" />
                 <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-md border dark:border-gray-800 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">
@@ -238,13 +208,49 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
                   </div>
                   {row.data_confidence === "estimated" && (
                     <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-relaxed">
-                      Includes backfill-sourced history. Live figure reflects post-Feb 2026 verified events only.
+                      Includes backfill-sourced history. Live figure reflects
+                      post-Feb 2026 verified events only.
                     </p>
                   )}
                 </div>
               </section>
 
-              {/* Anomaly note if present */}
+              {/* Inventory */}
+              <section>
+                <SectionHeader label="Inventory Receipt" color="gray" />
+                {arrivalIsReliable ? (
+                  <div className="space-y-3">
+                    <DetailItem
+                      label="First Stock Recorded"
+                      value={formatDate(row.first_positive_inventory_at)}
+                    />
+                    <DetailItem
+                      label="Arrival Timing"
+                      value={formatArrivalTiming(row.arrival_timing)}
+                    />
+                    {row.arrival_timing === "late_arrival" && (
+                      <div className="px-3 py-2 bg-amber-50 dark:bg-amber-900/20 rounded text-xs text-amber-700 dark:text-amber-300">
+                        Inventory arrived after pub date. Presale customers
+                        waited beyond publication.
+                      </div>
+                    )}
+                    {row.arrival_timing === "no_arrival" && (
+                      <div className="px-3 py-2 bg-red-50 dark:bg-red-900/20 rounded text-xs text-red-700 dark:text-red-300">
+                        No inventory receipt recorded. Contact vendor for status.
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
+                    Inventory event tracking began February 11, 2026. Arrival
+                    timing for titles that published before that date is not
+                    available — any records reflect later adjustments, not
+                    actual first receipt.
+                  </p>
+                )}
+              </section>
+
+              {/* Anomaly note — only if one was ever recorded */}
               {row.anomaly_type && (
                 <section>
                   <SectionHeader label="Anomaly Record" color="amber" />
@@ -255,7 +261,6 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
               )}
             </>
           ) : (
-            /* ── Active layout ── */
             <>
               {/* Classification & Timing */}
               <section>
@@ -308,7 +313,8 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
                   </div>
                   {row.data_confidence === "estimated" && (
                     <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-relaxed">
-                      This title has backfill-sourced history. Live figure reflects post-Feb 2026 verified events only.
+                      This title has backfill-sourced history. Live figure
+                      reflects post-Feb 2026 verified events only.
                     </p>
                   )}
                 </div>
@@ -323,7 +329,6 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
                 </div>
               </section>
 
-              {/* Footer action */}
               <div className="pt-2">
                 <button
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded shadow-lg transition-all active:scale-[0.98]"
