@@ -1,6 +1,9 @@
-// PreorderTable.tsx
-import React from "react"
+import React, { useState, useMemo } from "react"
 import { PreorderRow } from "../../types/preorderTypes"
+import {
+  sortTitle, formatDate, SortConfig, SortIcon,
+  nextSortDirection
+} from "../../utils/tableUtils"
 
 interface PreorderTableProps {
   data: PreorderRow[]
@@ -25,6 +28,10 @@ function getClassificationBadgeClass(status: string) {
   }
 }
 
+function formatClassificationLabel(status: string) {
+  return status?.replace(/_preorder|_arrival/g, "").replace(/_/g, " ") ?? "—"
+}
+
 function getConfidenceBadgeClass(confidence: string) {
   const base = "inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium border-0 ml-1.5"
   return confidence === "verified"
@@ -32,34 +39,78 @@ function getConfidenceBadgeClass(confidence: string) {
     : `${base} bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300`
 }
 
-function formatClassificationLabel(status: string) {
-  return status?.replace(/_preorder|_arrival/g, "").replace(/_/g, " ") ?? "—"
-}
+type SortKey = "title" | "classification" | "pub_date"
 
-const PreorderTable: React.FC<PreorderTableProps> = ({ data, onRowClick, isHistorical = false }) => {
+const PreorderTable: React.FC<PreorderTableProps> = ({
+  data,
+  onRowClick,
+  isHistorical = false,
+}) => {
+  const [sortConfig, setSortConfig] = useState<SortConfig<{ title: string; classification: string; pub_date: string }> | null>(null)
+
+  const handleSort = (key: SortKey) => {
+    setSortConfig({
+      key,
+      direction: nextSortDirection(sortConfig as any, key),
+    })
+  }
+
+  const sorted = useMemo(() => {
+    if (!sortConfig) return data
+    return [...data].sort((a, b) => {
+      const dir = sortConfig.direction === "asc" ? 1 : -1
+      switch (sortConfig.key) {
+        case "title":
+          return sortTitle(a.title).localeCompare(sortTitle(b.title)) * dir
+        case "classification":
+          return (a.classification ?? "").localeCompare(b.classification ?? "") * dir
+        case "pub_date":
+          return ((a.pub_date ?? "9999") > (b.pub_date ?? "9999") ? 1 : -1) * dir
+        default:
+          return 0
+      }
+    })
+  }, [data, sortConfig])
+
+  const thClass = (key: SortKey) =>
+    `px-3 sm:px-4 py-3 border-b dark:border-gray-700 text-left cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200 transition-colors`
+
   return (
     <div className="overflow-x-auto border rounded-md dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
       <table className="min-w-full border-collapse text-sm">
         <thead className="bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[10px] sm:text-xs uppercase tracking-wider font-semibold">
           <tr>
-            <th className="px-3 sm:px-4 py-3 border-b dark:border-gray-700 text-left">Title</th>
-            <th className="px-3 sm:px-4 py-3 border-b dark:border-gray-700 text-left">Status</th>
-            <th className="hidden sm:table-cell px-4 py-3 border-b dark:border-gray-700 text-left">Pub Date</th>
+            <th className={thClass("title")} onClick={() => handleSort("title")}>
+              Title
+              <SortIcon active={sortConfig?.key === "title"} direction={sortConfig?.direction ?? "asc"} />
+            </th>
+            {!isHistorical && (
+              <th className={thClass("classification")} onClick={() => handleSort("classification")}>
+                Status
+                <SortIcon active={sortConfig?.key === "classification"} direction={sortConfig?.direction ?? "asc"} />
+              </th>
+            )}
+            <th className={thClass("pub_date")} onClick={() => handleSort("pub_date")}>
+              Pub Date
+              <SortIcon active={sortConfig?.key === "pub_date"} direction={sortConfig?.direction ?? "asc"} />
+            </th>
             <th className="hidden md:table-cell px-4 py-3 border-b dark:border-gray-700 text-right">
               {isHistorical ? "Total Presales" : "Live Presales"}
             </th>
             {!isHistorical && (
-              <th className="px-3 sm:px-4 py-3 border-b dark:border-gray-700 text-right">Action</th>
+              <th className="px-3 sm:px-4 py-3 border-b dark:border-gray-700 text-right">
+                Action
+              </th>
             )}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-          {data.map((row) => (
+          {sorted.map((row) => (
             <tr
               key={row.product_id}
               className={`even:bg-gray-50/50 dark:even:bg-gray-800/50 transition-colors ${
                 isHistorical
-                  ? "opacity-75"
+                  ? "opacity-80"
                   : "hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
               }`}
               onClick={isHistorical ? undefined : () => onRowClick(row)}
@@ -68,18 +119,20 @@ const PreorderTable: React.FC<PreorderTableProps> = ({ data, onRowClick, isHisto
                 {row.title}
                 <div className="text-[10px] font-mono text-gray-400 mt-0.5">{row.product_id}</div>
               </td>
-              <td className="px-3 sm:px-4 py-3">
-                <span className={getClassificationBadgeClass(row.classification)}>
-                  {formatClassificationLabel(row.classification)}
-                </span>
-                {row.anomaly_type && (
-                  <div className="text-[9px] text-red-500 dark:text-red-400 mt-0.5 font-mono">
-                    {row.anomaly_type}
-                  </div>
-                )}
-              </td>
-              <td className="hidden sm:table-cell px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap font-mono text-xs">
-                {row.pub_date ?? "—"}
+              {!isHistorical && (
+                <td className="px-3 sm:px-4 py-3">
+                  <span className={getClassificationBadgeClass(row.classification)}>
+                    {formatClassificationLabel(row.classification)}
+                  </span>
+                  {row.anomaly_type && (
+                    <div className="text-[9px] text-red-500 dark:text-red-400 mt-0.5 font-mono">
+                      {row.anomaly_type}
+                    </div>
+                  )}
+                </td>
+              )}
+              <td className="px-3 sm:px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap text-xs">
+                {formatDate(row.pub_date)}
               </td>
               <td className="hidden md:table-cell px-4 py-3 text-right">
                 <span className="font-mono font-bold text-gray-900 dark:text-white text-xs">
@@ -100,6 +153,16 @@ const PreorderTable: React.FC<PreorderTableProps> = ({ data, onRowClick, isHisto
               )}
             </tr>
           ))}
+          {sorted.length === 0 && (
+            <tr>
+              <td
+                colSpan={isHistorical ? 3 : 5}
+                className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500 italic"
+              >
+                No titles found.
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>

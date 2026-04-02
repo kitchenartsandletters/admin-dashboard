@@ -1,6 +1,7 @@
 // PreorderDetailSidebar.tsx
 import React, { useEffect, useState, useRef } from "react"
 import { PreorderRow } from "../../types/preorderTypes"
+import { formatDate } from "../../utils/tableUtils"
 
 interface PreorderDetailSidebarProps {
   row: PreorderRow | null
@@ -146,7 +147,7 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
                 label="Arrival Timing"
                 value={row.arrival_timing?.replace(/_/g, " ") ?? "—"}
               />
-              <DetailItem label="Pub Date" value={row.pub_date} mono />
+              <DetailItem label="Pub Date" value={formatDate(row.pub_date)} mono />
               <DetailItem label="Anomaly" value={row.anomaly_type} />
             </div>
             {row.early_stock_arrival && (
