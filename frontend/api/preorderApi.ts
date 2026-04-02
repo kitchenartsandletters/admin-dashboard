@@ -97,6 +97,8 @@ function adaptProductRow(row: PreorderProductAPI): PreorderRow {
     due_for_release_review: row.due_for_release_review ?? false,
     early_stock_arrival: row.early_stock_arrival ?? false,
     last_updated: row.last_updated,
+    first_positive_inventory_at: null,
+    lifecycle_closed: false,
   }
 }
 

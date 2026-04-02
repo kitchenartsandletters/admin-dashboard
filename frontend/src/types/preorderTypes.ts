@@ -40,6 +40,9 @@ export interface PreorderRow {
 
   // Metadata
   last_updated: string | null
+
+  first_positive_inventory_at: string | null
+  lifecycle_closed: boolean
 }
 
 export interface ReleaseReviewRow {

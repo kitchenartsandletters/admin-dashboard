@@ -95,11 +95,25 @@ function PreorderService() {
       )
   }, [activeProducts, searchFilter, classFilter])
 
+  const LEDGER_CUTOVER_DATE = "2026-02-11"
+
   const filteredHistorical = useMemo(() => {
     const val = searchFilter.toLowerCase()
     return historicalProducts
       .filter((row) => {
         if (historicalFilter === "all") return true
+
+        if (historicalFilter === "late_arrival") {
+          // Only show post-cutover late arrivals.
+          // Pre-cutover arrivals are observation artifacts — the system
+          // did not capture inventory events before 2026-02-11 so any
+          // arrival timestamp before that date reflects when tracking
+          // began, not when stock physically arrived.
+          return row.arrival_timing === "late_arrival"
+            && row.first_positive_inventory_at !== null
+            && row.first_positive_inventory_at >= LEDGER_CUTOVER_DATE
+        }
+
         return row.arrival_timing === historicalFilter
       })
       .filter((row) =>
