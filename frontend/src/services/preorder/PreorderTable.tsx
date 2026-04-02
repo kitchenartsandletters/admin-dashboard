@@ -97,23 +97,17 @@ const PreorderTable: React.FC<PreorderTableProps> = ({
             <th className="hidden md:table-cell px-4 py-3 border-b dark:border-gray-700 text-right">
               {isHistorical ? "Total Presales" : "Live Presales"}
             </th>
-            {!isHistorical && (
               <th className="px-3 sm:px-4 py-3 border-b dark:border-gray-700 text-right">
                 Action
               </th>
-            )}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
           {sorted.map((row) => (
             <tr
               key={row.product_id}
-              className={`even:bg-gray-50/50 dark:even:bg-gray-800/50 transition-colors ${
-                isHistorical
-                  ? "opacity-80"
-                  : "hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
-              }`}
-              onClick={isHistorical ? undefined : () => onRowClick(row)}
+              className="even:bg-gray-50/50 dark:even:bg-gray-800/50 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+              onClick={() => onRowClick(row)}
             >
               <td className="px-3 sm:px-4 py-3 font-medium text-gray-900 dark:text-white max-w-[150px] sm:max-w-xs truncate">
                 {row.title}
@@ -144,19 +138,17 @@ const PreorderTable: React.FC<PreorderTableProps> = ({
                   {row.data_confidence}
                 </span>
               </td>
-              {!isHistorical && (
                 <td className="px-3 sm:px-4 py-3 text-right">
                   <button className="text-blue-600 dark:text-blue-400 font-medium text-xs sm:text-sm">
                     Details
                   </button>
                 </td>
-              )}
             </tr>
           ))}
           {sorted.length === 0 && (
             <tr>
               <td
-                colSpan={isHistorical ? 3 : 5}
+                colSpan={5}
                 className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500 italic"
               >
                 No titles found.
