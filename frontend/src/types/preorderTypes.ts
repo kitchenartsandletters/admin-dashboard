@@ -62,6 +62,8 @@ export interface ReleaseReviewRow {
   pub_date: string | null
   arrival_timing: "early_arrival" | "on_time_arrival" | "late_arrival" | "no_arrival" | null
 
+  inventory: number | null
+
   // Release queue flags
   due_for_release_review: boolean
   early_stock_arrival: boolean

@@ -119,6 +119,7 @@ function adaptReleaseQueueRow(row: ReleaseQueueAPI): ReleaseReviewRow {
     anomaly_type: row.anomaly_type,
     override_status: (row.override_status ?? "none") as ReleaseReviewRow["override_status"],
     last_updated: row.last_updated,
+    inventory: row.inventory ?? null,
   }
 }
 

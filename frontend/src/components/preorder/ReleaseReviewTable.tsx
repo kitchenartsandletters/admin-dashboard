@@ -178,7 +178,7 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {sortedUpcoming.map((row) => {
                   const days = daysUntil(row.pub_date)
-                  const stock = stockReceivedLabel(row.arrival_timing)
+                  const stock = stockReceivedLabel(row.inventory ?? 0, row.arrival_timing)
                   return (
                     <tr key={row.product_id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                       <td className="px-4 py-3 font-medium text-gray-900 dark:text-white max-w-xs truncate">

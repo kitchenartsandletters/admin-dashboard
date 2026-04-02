@@ -21,17 +21,18 @@ export function formatDate(date: string | null | undefined): string {
 
 /** Operational stock status label for the Releases Upcoming section */
 export function stockReceivedLabel(
+  inventory: number,
   arrivalTiming: string | null | undefined
 ): { label: string; received: boolean } {
-  switch (arrivalTiming) {
-    case "early_arrival":
-    case "on_time_arrival":
-    case "late_arrival":
-      return { label: "Stock in hand", received: true }
-    case "no_arrival":
-    default:
-      return { label: "Awaiting stock", received: false }
+  // Primary signal: current inventory count.
+  // If inventory is positive, stock is physically on hand now.
+  // arrival_timing is not used here because it reflects historical
+  // first-positive event which may have been a refund restock,
+  // manual adjustment, or incoming PO allocation — not publisher receipt.
+  if (inventory > 0) {
+    return { label: "Stock in hand", received: true }
   }
+  return { label: "Awaiting stock", received: false }
 }
 
 export type SortDirection = "asc" | "desc"
