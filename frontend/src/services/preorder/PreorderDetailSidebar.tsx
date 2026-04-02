@@ -102,9 +102,14 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
   // 3. The product's pub date also postdates the cutover
   // Pre-cutover products had no inventory event tracking — any arrival
   // record they have reflects a later adjustment, not actual first receipt.
+  // Reliable: arrival was captured by live webhook after cutover
   const arrivalIsReliable =
     row.first_positive_inventory_at !== null &&
-    row.first_positive_inventory_at >= LEDGER_CUTOVER &&
+    row.first_positive_inventory_at >= LEDGER_CUTOVER
+
+  // Additionally true: we can confirm this is full picture (no pre-cutover gap)
+  const arrivalIsComplete =
+    arrivalIsReliable &&
     row.pub_date !== null &&
     row.pub_date >= LEDGER_CUTOVER
 
@@ -221,17 +226,22 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
                 {arrivalIsReliable ? (
                   <div className="space-y-3">
                     <DetailItem
-                      label="First Stock Recorded"
+                      label={arrivalIsComplete ? "First Stock Received" : "First Stock Recorded After Feb 2026"}
                       value={formatDate(row.first_positive_inventory_at)}
                     />
                     <DetailItem
                       label="Arrival Timing"
                       value={formatArrivalTiming(row.arrival_timing)}
                     />
-                    {row.arrival_timing === "late_arrival" && (
+                    {!arrivalIsComplete && (
+                      <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-relaxed">
+                        This title published before inventory tracking began. Stock may have
+                        arrived earlier than the date shown — this is the first event we captured.
+                      </p>
+                    )}
+                    {row.arrival_timing === "late_arrival" && arrivalIsComplete && (
                       <div className="px-3 py-2 bg-amber-50 dark:bg-amber-900/20 rounded text-xs text-amber-700 dark:text-amber-300">
-                        Inventory arrived after pub date. Presale customers
-                        waited beyond publication.
+                        Inventory arrived after pub date. Presale customers waited beyond publication.
                       </div>
                     )}
                     {row.arrival_timing === "no_arrival" && (
@@ -242,10 +252,8 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
                   </div>
                 ) : (
                   <p className="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
-                    Inventory event tracking began February 11, 2026. Arrival
-                    timing for titles that published before that date is not
-                    available — any records reflect later adjustments, not
-                    actual first receipt.
+                    Inventory event tracking began February 11, 2026. No receipt data is
+                    available for this title.
                   </p>
                 )}
               </section>
