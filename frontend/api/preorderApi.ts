@@ -41,6 +41,7 @@ type PreorderProductAPI = {
   arrival_record_is_live: boolean
   due_for_release_review: boolean
   early_stock_arrival: boolean
+  already_reported: boolean
   last_updated: string | null
   first_positive_inventory_at: string | null
   lifecycle_closed: boolean
@@ -100,6 +101,7 @@ function adaptProductRow(row: PreorderProductAPI): PreorderRow {
     override_status: (row.override_status ?? "none") as PreorderRow["override_status"],
     due_for_release_review: row.due_for_release_review ?? false,
     early_stock_arrival: row.early_stock_arrival ?? false,
+    already_reported: row.already_reported ?? false,
     last_updated: row.last_updated,
     first_positive_inventory_at: row.first_positive_inventory_at ?? null,
     lifecycle_closed: false,
@@ -180,7 +182,23 @@ export async function fetchReportablePreorders(): Promise<ReportablePreorderRow[
   const data = await fetchFromService<ReportableAPI[]>(
     "/admin/preorders/reportable"
   )
-  return data  // view shape matches type directly, no adapter needed
+  return data
+}
+
+export async function markReported(
+  productIds: number[],
+  weekAnchor: string
+): Promise<{ marked: number; week_start: string; week_end: string }> {
+  const res = await fetch(`${PREORDER_BASE_URL}/admin/preorders/mark-reported`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ product_ids: productIds, week_anchor: weekAnchor }),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Mark reported failed (${res.status}): ${text}`)
+  }
+  return res.json()
 }
 
 export async function generateReportPreview(

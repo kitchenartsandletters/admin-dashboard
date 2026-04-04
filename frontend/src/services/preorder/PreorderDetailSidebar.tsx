@@ -317,6 +317,20 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
                       reflects post-Feb 2026 verified events only.
                     </p>
                   )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">
+                      Reporting Status
+                    </span>
+                    {row.already_reported ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 font-medium">
+                        ✓ Reported
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 font-medium">
+                        Not yet reported
+                      </span>
+                    )}
+                  </div>
                 </div>
               </section>
 

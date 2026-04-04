@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react"
 import { ReleaseReviewRow, ReportablePreorderRow } from "../../types/preorderTypes"
-import { generateReportPreview } from "../../../api/preorderApi"
+import { generateReportPreview, markReported } from "../../../api/preorderApi"
 import {
   sortTitle, formatDate, stockReceivedLabel,
   SortConfig, SortIcon, nextSortDirection
@@ -9,6 +9,7 @@ import {
 interface ReleaseReviewTableProps {
   upcoming: ReleaseReviewRow[]
   reportable: ReportablePreorderRow[]
+  onReported?: () => void
 }
 
 function ConfidenceBadge({ confidence }: { confidence: "verified" | "estimated" }) {
@@ -49,11 +50,15 @@ type ReportableSortKey = "title" | "pub_date"
 const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
   upcoming,
   reportable,
+  onReported,
 }) => {
   const [weekAnchor, setWeekAnchor] = useState<Date>(new Date())
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const [marking, setMarking] = useState(false)
+  const [markSuccess, setMarkSuccess] = useState(false)
 
   const [upcomingSort, setUpcomingSort] = useState<SortConfig<{ title: string; pub_date: string }> | null>(null)
   const [reportableSort, setReportableSort] = useState<SortConfig<{ title: string; pub_date: string }> | null>(null)
@@ -133,6 +138,24 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
     next.setDate(weekAnchor.getDate() + direction * 7)
     setWeekAnchor(next)
     setSelectedIds(new Set())
+  }
+
+  const handleMarkReported = async () => {
+    if (selectedIds.size === 0) return
+    setMarking(true)
+    setMarkSuccess(false)
+    setError(null)
+    try {
+      await markReported(Array.from(selectedIds), toISODate(weekAnchor))
+      setMarkSuccess(true)
+      setSelectedIds(new Set())
+      // Signal parent to reload data so badges update
+      onReported?.()
+    } catch (err: any) {
+      setError(err.message || "Failed to mark as reported")
+    } finally {
+      setMarking(false)
+    }
   }
 
   const thClass = "px-4 py-3 border-b dark:border-gray-700 text-left cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200 transition-colors text-[10px] sm:text-xs uppercase tracking-wider font-semibold"
@@ -336,18 +359,30 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 {selectedIds.size > 0
                   ? `${selectedIds.size} title${selectedIds.size !== 1 ? "s" : ""} selected`
-                  : "Select titles to include in the test report"}
+                  : "Select titles to include in report"}
               </p>
               <div className="flex items-center gap-3">
                 {error && (
                   <span className="text-xs text-red-500 dark:text-red-400">{error}</span>
                 )}
+                {markSuccess && (
+                  <span className="text-xs text-green-600 dark:text-green-400">
+                    ✓ Marked as reported
+                  </span>
+                )}
                 <button
                   onClick={handleGeneratePreview}
                   disabled={selectedIds.size === 0 || generating}
-                  className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white disabled:text-gray-500 rounded shadow transition-all active:scale-[0.98]"
+                  className="px-4 py-2 text-xs font-bold bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 disabled:opacity-40 rounded transition-all"
                 >
                   {generating ? "Generating…" : "Generate Test Report"}
+                </button>
+                <button
+                  onClick={handleMarkReported}
+                  disabled={selectedIds.size === 0 || marking}
+                  className="px-4 py-2 text-xs font-bold bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white rounded shadow transition-all active:scale-[0.98]"
+                >
+                  {marking ? "Saving…" : "Mark as Reported"}
                 </button>
               </div>
             </div>

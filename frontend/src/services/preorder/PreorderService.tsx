@@ -45,8 +45,7 @@ function PreorderService() {
     if (mode !== "historical") setHistoricalFilter("all")
   }
 
-  useEffect(() => {
-    const loadData = async () => {
+  const loadData = async () => {
       try {
         const [productsData, queueData, metricsData, upcomingData, reportableData] =
           await Promise.all([
@@ -65,6 +64,8 @@ function PreorderService() {
         console.error("Failed to load preorder data", err)
       }
     }
+
+  useEffect(() => {
     loadData()
   }, [])
 
@@ -94,8 +95,6 @@ function PreorderService() {
         String(row.product_id).includes(val)
       )
   }, [activeProducts, searchFilter, classFilter])
-
-  const LEDGER_CUTOVER_DATE = "2026-02-11"
 
   const filteredHistorical = useMemo(() => {
     const val = searchFilter.toLowerCase()
@@ -261,6 +260,7 @@ function PreorderService() {
           <ReleaseReviewTable
             upcoming={upcoming}
             reportable={reportable}
+            onReported={loadData}
           />
         )}
       </div>

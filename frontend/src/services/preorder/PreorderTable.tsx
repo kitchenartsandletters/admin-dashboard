@@ -109,8 +109,15 @@ const PreorderTable: React.FC<PreorderTableProps> = ({
               className="even:bg-gray-50/50 dark:even:bg-gray-800/50 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
               onClick={() => onRowClick(row)}
             >
-              <td className="px-3 sm:px-4 py-3 font-medium text-gray-900 dark:text-white max-w-[150px] sm:max-w-xs truncate">
-                {row.title}
+              <td className="px-3 sm:px-4 py-3 font-medium text-gray-900 dark:text-white max-w-[150px] sm:max-w-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="truncate">{row.title}</span>
+                  {isHistorical && row.already_reported && (
+                    <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 font-medium">
+                      Reported
+                    </span>
+                  )}
+                </div>
                 <div className="text-[10px] font-mono text-gray-400 mt-0.5">{row.product_id}</div>
               </td>
               {!isHistorical && (

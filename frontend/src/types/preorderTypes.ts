@@ -30,6 +30,9 @@ export interface PreorderRow {
   arrival_timing: "early_arrival" | "on_time_arrival" | "late_arrival" | "no_arrival" | null
   arrival_record_is_live: boolean
 
+  // Reporting flags
+  already_reported: boolean
+
   // Override and tag state
   preorder_tag_present: boolean | null
   preorder_collection_present: boolean | null
