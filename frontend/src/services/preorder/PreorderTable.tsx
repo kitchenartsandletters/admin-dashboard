@@ -29,6 +29,7 @@ function getClassificationBadgeClass(status: string) {
 }
 
 function formatClassificationLabel(status: string) {
+  if (status === "early_stock_arrival") return "stock in hand"
   return status?.replace(/_preorder|_arrival/g, "").replace(/_/g, " ") ?? "—"
 }
 
