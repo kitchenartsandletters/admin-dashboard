@@ -59,8 +59,7 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
   const [reportableSort, setReportableSort] = useState<SortConfig<{ title: string; pub_date: string }> | null>(null)
 
   const week = useMemo(() => resolveWeekBounds(weekAnchor), [weekAnchor])
-
-  const weekIsInFuture = week.start > new Date()
+  const isCurrentWeek = toISODate(week.start) === toISODate(resolveWeekBounds(new Date()).start)
 
   const reportableForWeek = useMemo(() =>
     reportable.filter((r) => r.report_week_start === toISODate(week.start)),
@@ -239,16 +238,17 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
             </span>
             <button
               onClick={() => shiftWeek(1)}
-              className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+              disabled={isCurrentWeek}
+              className={`px-2 py-1 rounded text-xs ${
+                isCurrentWeek
+                  ? "bg-gray-50 dark:bg-gray-900 text-gray-300 dark:text-gray-600 cursor-not-allowed"
+                  : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+              }`}
             >→</button>
           </div>
         </div>
 
-        {weekIsInFuture ? (
-          <p className="text-sm text-gray-400 dark:text-gray-500 italic px-1">
-            Titles for this week have not yet published. Check back after pub dates pass.
-          </p>
-        ) : sortedReportable.length === 0 ? (
+        {sortedReportable.length === 0 ? (
           <p className="text-sm text-gray-400 dark:text-gray-500 italic px-1">
             No reportable titles for this reporting week.
           </p>
