@@ -28,6 +28,7 @@ export interface PreorderRow {
 
   // Arrival timing — joined from vw_arrival_timing
   arrival_timing: "early_arrival" | "on_time_arrival" | "late_arrival" | "no_arrival" | null
+  arrival_record_is_live: boolean
 
   // Override and tag state
   preorder_tag_present: boolean | null

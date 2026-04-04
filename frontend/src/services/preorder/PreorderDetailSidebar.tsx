@@ -8,7 +8,6 @@ interface PreorderDetailSidebarProps {
 }
 
 const SHOPIFY_ADMIN_PREFIX = "https://admin.shopify.com/store/castironbooks/products/"
-const LEDGER_CUTOVER = "2026-02-11"
 
 const DetailItem = ({
   label,
@@ -96,22 +95,14 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
 
   const isHistorical = row.classification === "historical_preorder"
 
-  // Arrival timing is only reliable when:
-  // 1. An arrival record exists
-  // 2. The record postdates the cutover (Feb 11 2026)
-  // 3. The product's pub date also postdates the cutover
-  // Pre-cutover products had no inventory event tracking — any arrival
-  // record they have reflects a later adjustment, not actual first receipt.
-  // Reliable: arrival was captured by live webhook after cutover
-  const arrivalIsReliable =
-    row.first_positive_inventory_at !== null &&
-    row.first_positive_inventory_at >= LEDGER_CUTOVER
+  const arrivalIsLive = row.arrival_record_is_live === true
 
-  // Additionally true: we can confirm this is full picture (no pre-cutover gap)
+  // arrivalIsComplete: live record AND pub date is also post-cutover,
+  // meaning we have full coverage with no pre-tracking gap
   const arrivalIsComplete =
-    arrivalIsReliable &&
+    arrivalIsLive &&
     row.pub_date !== null &&
-    row.pub_date >= LEDGER_CUTOVER
+    row.pub_date >= "2026-02-11"
 
   function formatArrivalTiming(timing: string | null | undefined): string {
     if (!timing) return "—"
@@ -223,10 +214,10 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
               {/* Inventory */}
               <section>
                 <SectionHeader label="Inventory Receipt" color="gray" />
-                {arrivalIsReliable ? (
+                {arrivalIsLive ? (
                   <div className="space-y-3">
                     <DetailItem
-                      label={arrivalIsComplete ? "First Stock Received" : "First Stock Recorded After Feb 2026"}
+                      label={arrivalIsComplete ? "First Stock Received" : "First Stock Recorded"}
                       value={formatDate(row.first_positive_inventory_at)}
                     />
                     <DetailItem
@@ -252,8 +243,9 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
                   </div>
                 ) : (
                   <p className="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
-                    Inventory event tracking began February 11, 2026. No receipt data is
-                    available for this title.
+                    Inventory receipt data is not available for this title. Records before
+                    March 2026 were written by a batch scan and do not reflect actual
+                    first stock arrival.
                   </p>
                 )}
               </section>

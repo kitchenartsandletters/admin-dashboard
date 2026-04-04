@@ -38,6 +38,7 @@ type PreorderProductAPI = {
   override_status: string | null
   anomaly_type: string | null
   arrival_timing: string | null
+  arrival_record_is_live: boolean
   due_for_release_review: boolean
   early_stock_arrival: boolean
   last_updated: string | null
@@ -93,6 +94,7 @@ function adaptProductRow(row: PreorderProductAPI): PreorderRow {
     anomaly_type: row.anomaly_type,
     pub_date: row.pub_date,
     arrival_timing: row.arrival_timing as PreorderRow["arrival_timing"],
+    arrival_record_is_live: row.arrival_record_is_live ?? false,
     preorder_tag_present: row.preorder_tag_present,
     preorder_collection_present: row.preorder_collection_present,
     override_status: (row.override_status ?? "none") as PreorderRow["override_status"],
