@@ -65,6 +65,14 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
 
   const week = useMemo(() => resolveWeekBounds(weekAnchor), [weekAnchor])
   const isCurrentWeek = toISODate(week.start) === toISODate(resolveWeekBounds(new Date()).start)
+  const currentWeekStart = toISODate(resolveWeekBounds(new Date()).start)
+  const weeksFromCurrent = Math.abs(
+    Math.round(
+      (week.start.getTime() - resolveWeekBounds(new Date()).start.getTime())
+      / (7 * 24 * 60 * 60 * 1000)
+    )
+  )
+  const showReturnButton = weeksFromCurrent > 2
 
   const reportableForWeek = useMemo(() =>
     reportable.filter((r) => r.report_week_start === toISODate(week.start)),
@@ -252,6 +260,17 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
             Reportable — NYT Eligible
           </h2>
           <div className="flex items-center gap-2 text-xs">
+            {showReturnButton && (
+              <button
+                onClick={() => {
+                  setWeekAnchor(new Date())
+                  setSelectedIds(new Set())
+                }}
+                className="px-2 py-1 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 font-medium transition-colors"
+              >
+                ↩ Current week
+              </button>
+            )}
             <button
               onClick={() => shiftWeek(-1)}
               className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
@@ -262,7 +281,7 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
             <button
               onClick={() => shiftWeek(1)}
               disabled={isCurrentWeek}
-              className={`px-2 py-1 rounded text-xs ${
+              className={`px-2 py-1 rounded ${
                 isCurrentWeek
                   ? "bg-gray-50 dark:bg-gray-900 text-gray-300 dark:text-gray-600 cursor-not-allowed"
                   : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"

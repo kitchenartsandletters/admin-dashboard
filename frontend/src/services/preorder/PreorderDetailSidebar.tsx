@@ -180,36 +180,51 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
                 <DetailItem label="Pub Date" value={formatDate(row.pub_date)} />
               </section>
 
-              {/* Presale Record */}
-              <section>
-                <SectionHeader label="Presale Record" color="green" />
-                <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-md border dark:border-gray-800 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">
-                      Data Confidence
-                    </span>
-                    <ConfidenceBadge confidence={row.data_confidence} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 pt-1 border-t dark:border-gray-700">
-                    <DetailItem
-                      label="Live Presales"
-                      value={row.live_presale_qty.toLocaleString()}
-                      mono
-                    />
-                    <DetailItem
-                      label="Total Presales"
-                      value={row.total_presale_qty.toLocaleString()}
-                      mono
-                    />
-                  </div>
-                  {row.data_confidence === "estimated" && (
-                    <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-relaxed">
-                      Includes backfill-sourced history. Live figure reflects
-                      post-Feb 2026 verified events only.
-                    </p>
-                  )}
-                </div>
-              </section>
+          {/* Presale Record */}
+          <section>
+            <SectionHeader label="Presale Record" color="green" />
+            <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-md border dark:border-gray-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">
+                  Data Confidence
+                </span>
+                <ConfidenceBadge confidence={row.data_confidence} />
+              </div>
+              <div className="grid grid-cols-2 gap-4 pt-1 border-t dark:border-gray-700">
+                <DetailItem
+                  label="Live Presales"
+                  value={row.live_presale_qty.toLocaleString()}
+                  mono
+                />
+                <DetailItem
+                  label="Total Presales"
+                  value={row.total_presale_qty.toLocaleString()}
+                  mono
+                />
+              </div>
+              {row.data_confidence === "estimated" && (
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-relaxed">
+                  Includes backfill-sourced history. Live figure reflects
+                  post-Feb 2026 verified events only.
+                </p>
+              )}
+              {/* Reporting Status — belongs here in historical layout */}
+              <div className="flex items-center justify-between pt-1 border-t dark:border-gray-700">
+                <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">
+                  Reporting Status
+                </span>
+                {row.already_reported ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 font-medium">
+                    ✓ Reported
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 font-medium">
+                    Not yet reported
+                  </span>
+                )}
+              </div>
+            </div>
+          </section>
 
               {/* Inventory */}
               <section>
