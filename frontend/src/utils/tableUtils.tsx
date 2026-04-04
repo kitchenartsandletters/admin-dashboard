@@ -9,13 +9,17 @@ export function sortTitle(title: string | null | undefined): string {
 /** Format YYYY-MM-DD or ISO timestamp to "Month DD, YYYY" */
 export function formatDate(date: string | null | undefined): string {
   if (!date) return "—"
-  const d = new Date(date)
-  if (isNaN(d.getTime())) return "—"
-  return d.toLocaleDateString("en-US", {
+  // Split YYYY-MM-DD directly to avoid timezone offset issues.
+  // new Date("2026-04-07") parses as UTC midnight which shifts to the
+  // prior day when converted to ET. Parsing parts directly avoids this.
+  const parts = date.substring(0, 10).split("-")
+  if (parts.length !== 3) return "—"
+  const [year, month, day] = parts.map(Number)
+  if (!year || !month || !day) return "—"
+  return new Date(year, month - 1, day).toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
     year: "numeric",
-    timeZone: "America/New_York",
   })
 }
 

@@ -46,7 +46,10 @@ const PreorderTable: React.FC<PreorderTableProps> = ({
   onRowClick,
   isHistorical = false,
 }) => {
-  const [sortConfig, setSortConfig] = useState<SortConfig<{ title: string; classification: string; pub_date: string }> | null>(null)
+  const [sortConfig, setSortConfig] = useState<SortConfig<{ title: string; classification: string; pub_date: string }> | null>({
+    key: "pub_date",
+    direction: "asc",
+  })
 
   const handleSort = (key: SortKey) => {
     setSortConfig({
