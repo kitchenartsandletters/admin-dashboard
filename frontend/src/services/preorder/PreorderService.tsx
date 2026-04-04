@@ -19,6 +19,46 @@ import {
 
 type ViewMode = "overview" | "historical" | "release-review"
 
+function TableSkeleton() {
+  return (
+    <div className="overflow-x-auto border rounded-md dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
+      <table className="min-w-full border-collapse text-sm">
+        <thead className="bg-gray-50 dark:bg-gray-800">
+          <tr>
+            {["w-48", "w-24", "w-28", "w-20", "w-16"].map((w, i) => (
+              <th key={i} className="px-4 py-3 border-b dark:border-gray-700">
+                <div className={`h-3 ${w} bg-gray-200 dark:bg-gray-700 rounded animate-pulse`} />
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <tr key={i} className="even:bg-gray-50/50 dark:even:bg-gray-800/50">
+              <td className="px-4 py-3">
+                <div className="h-3 w-40 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-1.5" />
+                <div className="h-2 w-24 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+              </td>
+              <td className="px-4 py-3">
+                <div className="h-4 w-16 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse" />
+              </td>
+              <td className="px-4 py-3">
+                <div className="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+              </td>
+              <td className="px-4 py-3 text-right">
+                <div className="h-3 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse ml-auto" />
+              </td>
+              <td className="px-4 py-3 text-right">
+                <div className="h-3 w-10 bg-gray-200 dark:bg-gray-700 rounded animate-pulse ml-auto" />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function PreorderService() {
   const [products, setProducts] = useState<PreorderRow[]>([])
   const [releaseQueue, setReleaseQueue] = useState<ReleaseReviewRow[]>([])
@@ -30,6 +70,7 @@ function PreorderService() {
   const [historicalFilter, setHistoricalFilter] = useState<string>("all")
   const [selectedRow, setSelectedRow] = useState<PreorderRow | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>("overview")
+  const [loading, setLoading] = useState(true)
 
   const HISTORICAL_FILTERS = [
     { key: "all", label: "All Historical" },
@@ -46,24 +87,27 @@ function PreorderService() {
   }
 
   const loadData = async () => {
-      try {
-        const [productsData, queueData, metricsData, upcomingData, reportableData] =
-          await Promise.all([
-            fetchPreorderProducts(),
-            fetchPreorderReleaseQueue(),
-            fetchPreorderMetrics(),
-            fetchUpcomingReleases(),
-            fetchReportablePreorders(),
-          ])
-        setProducts(productsData)
-        setReleaseQueue(queueData)
-        setMetrics(metricsData)
-        setUpcoming(upcomingData)
-        setReportable(reportableData)
-      } catch (err) {
-        console.error("Failed to load preorder data", err)
-      }
+    setLoading(true)
+    try {
+      const [productsData, queueData, metricsData, upcomingData, reportableData] =
+        await Promise.all([
+          fetchPreorderProducts(),
+          fetchPreorderReleaseQueue(),
+          fetchPreorderMetrics(),
+          fetchUpcomingReleases(),
+          fetchReportablePreorders(),
+        ])
+      setProducts(productsData)
+      setReleaseQueue(queueData)
+      setMetrics(metricsData)
+      setUpcoming(upcomingData)
+      setReportable(reportableData)
+    } catch (err) {
+      console.error("Failed to load preorder data", err)
+    } finally {
+      setLoading(false)
     }
+  }
 
   useEffect(() => {
     loadData()
@@ -172,6 +216,7 @@ function PreorderService() {
             late_arrivals_unresolved: 0,
             no_arrival_count: 0,
           }}
+          loading={loading}
         />
 
         {/* Classification filter strip — overview only */}
@@ -242,26 +287,13 @@ function PreorderService() {
       {/* Content */}
       <div>
         {viewMode === "overview" && (
-          <PreorderTable
-            data={filteredActive}
-            onRowClick={setSelectedRow}
-          />
+          loading ? <TableSkeleton /> : <PreorderTable data={filteredActive} onRowClick={setSelectedRow} />
         )}
-
         {viewMode === "historical" && (
-          <PreorderTable
-            data={filteredHistorical}
-            onRowClick={setSelectedRow}
-            isHistorical
-          />
+          loading ? <TableSkeleton /> : <PreorderTable data={filteredHistorical} onRowClick={setSelectedRow} isHistorical />
         )}
-
         {viewMode === "release-review" && (
-          <ReleaseReviewTable
-            upcoming={upcoming}
-            reportable={reportable}
-            onReported={loadData}
-          />
+          <ReleaseReviewTable upcoming={upcoming} reportable={reportable} onReported={loadData} />
         )}
       </div>
 

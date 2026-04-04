@@ -2,11 +2,7 @@
 import React from "react"
 import { PreorderSummaryMetrics } from "../../types/preorderTypes"
 
-const MetricCard = ({
-  label,
-  value,
-  sub,
-}: {
+const MetricCard = ({ label, value, sub }: {
   label: string
   value: number | string
   sub?: string
@@ -24,10 +20,32 @@ const MetricCard = ({
   </div>
 )
 
-const PreorderSummaryCards: React.FC<{ metrics: PreorderSummaryMetrics }> = ({ metrics }) => {
+const MetricCardSkeleton = () => (
+  <div className="bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-md p-3 sm:p-4 shadow-sm">
+    <div className="h-2.5 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-3" />
+    <div className="h-7 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+  </div>
+)
+
+const PreorderSummaryCards: React.FC<{
+  metrics: PreorderSummaryMetrics
+  loading?: boolean
+}> = ({ metrics, loading = false }) => {
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+          <MetricCardSkeleton />
+          <MetricCardSkeleton />
+          <MetricCardSkeleton />
+          <MetricCardSkeleton />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-3">
-      {/* Active pipeline cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <MetricCard label="Active Preorders" value={metrics.active_preorders} />
         <MetricCard label="Early Stock" value={metrics.early_arrivals} />
@@ -43,7 +61,6 @@ const PreorderSummaryCards: React.FC<{ metrics: PreorderSummaryMetrics }> = ({ m
         />
       </div>
 
-      {/* Historical diagnostic card — only shown when late arrivals exist */}
       {(metrics.late_arrivals_unresolved > 0 || metrics.no_arrival_count > 0) && (
         <div className="flex flex-col gap-1.5">
           {metrics.no_arrival_count > 0 && (
@@ -69,7 +86,7 @@ const PreorderSummaryCards: React.FC<{ metrics: PreorderSummaryMetrics }> = ({ m
         </div>
       )}
     </div>
-  );
-};
+  )
+}
 
 export default PreorderSummaryCards
