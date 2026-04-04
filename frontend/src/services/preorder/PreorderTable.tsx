@@ -29,8 +29,14 @@ function getClassificationBadgeClass(status: string) {
 }
 
 function formatClassificationLabel(status: string) {
-  if (status === "early_stock_arrival") return "stock in hand"
-  return status?.replace(/_preorder|_arrival/g, "").replace(/_/g, " ") ?? "—"
+  switch (status) {
+    case "early_stock_arrival": return "early stock"
+    case "active_preorder":     return "active"
+    case "historical_preorder": return "historical"
+    default:
+      if (status?.startsWith("anomaly")) return status.replace("anomaly_", "").replace(/_/g, " ")
+      return status?.replace(/_/g, " ") ?? "—"
+  }
 }
 
 function getConfidenceBadgeClass(confidence: string) {
@@ -129,6 +135,15 @@ const PreorderTable: React.FC<PreorderTableProps> = ({
                   <span className={getClassificationBadgeClass(row.classification)}>
                     {formatClassificationLabel(row.classification)}
                   </span>
+                  {row.classification === "early_stock_arrival" && row.arrival_timing && (
+                    <div className={`text-[9px] mt-0.5 font-medium ${
+                      row.arrival_timing === "early_arrival"
+                        ? "text-purple-600 dark:text-purple-400"
+                        : "text-gray-500 dark:text-gray-400"
+                    }`}>
+                      {row.arrival_timing === "early_arrival" ? "⚡ early — stock arrived well before pub date" : "✓ on time"}
+                    </div>
+                  )}
                   {row.anomaly_type && (
                     <div className="text-[9px] text-red-500 dark:text-red-400 mt-0.5 font-mono">
                       {row.anomaly_type}

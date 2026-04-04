@@ -283,11 +283,7 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
                 <div className="grid grid-cols-2 gap-4">
                   <DetailItem
                     label="Classification"
-                    value={
-                      row.classification === "early_stock_arrival"
-                        ? "Stock in hand"
-                        : row.classification?.replace(/_/g, " ")
-                    }
+                    value={row.classification?.replace(/_/g, " ")}
                   />
                   <DetailItem
                     label="Arrival Timing"
