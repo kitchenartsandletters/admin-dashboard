@@ -65,7 +65,7 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
 
   const week = useMemo(() => resolveWeekBounds(weekAnchor), [weekAnchor])
   const isCurrentWeek = toISODate(week.start) === toISODate(resolveWeekBounds(new Date()).start)
-  const currentWeekStart = toISODate(resolveWeekBounds(new Date()).start)
+  const weekIsClosed = toISODate(week.end) < toISODate(new Date())
   const weeksFromCurrent = Math.abs(
     Math.round(
       (week.start.getTime() - resolveWeekBounds(new Date()).start.getTime())
@@ -378,7 +378,10 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 {selectedIds.size > 0
                   ? `${selectedIds.size} title${selectedIds.size !== 1 ? "s" : ""} selected`
-                  : "Select titles to include in report"}
+                  : weekIsClosed
+                  ? "Select titles to include in report"
+                  : `Reporting week closes ${formatDate(toISODate(week.end))}. Actions available from ${formatDate(toISODate(new Date(week.end.getTime() + 86400000)))}.`
+                }
               </p>
               <div className="flex items-center gap-3">
                 {error && (
@@ -391,15 +394,15 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
                 )}
                 <button
                   onClick={handleGeneratePreview}
-                  disabled={selectedIds.size === 0 || generating}
-                  className="px-4 py-2 text-xs font-bold bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 disabled:opacity-40 rounded transition-all"
+                  disabled={selectedIds.size === 0 || generating || !weekIsClosed}
+                  className="px-4 py-2 text-xs font-bold bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed rounded transition-all"
                 >
                   {generating ? "Generating…" : "Generate Test Report"}
                 </button>
                 <button
                   onClick={handleMarkReported}
-                  disabled={selectedIds.size === 0 || marking}
-                  className="px-4 py-2 text-xs font-bold bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white rounded shadow transition-all active:scale-[0.98]"
+                  disabled={selectedIds.size === 0 || marking || !weekIsClosed}
+                  className="px-4 py-2 text-xs font-bold bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded shadow transition-all active:scale-[0.98]"
                 >
                   {marking ? "Saving…" : "Mark as Reported"}
                 </button>
