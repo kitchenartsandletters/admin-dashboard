@@ -3,20 +3,20 @@ export type ReportId =
   | 'weekly_maintenance'
   | 'lop_unfulfilled';
 
+export type DeliveryMethod = 'email' | 'table';
+export type ReportFormat = 'pdf' | 'csv';
+
 export interface ReportDefinition {
   id: ReportId;
-
   title: string;
   description: string;
-
   cadence: 'daily' | 'weekly' | 'on_demand';
-
   rolesAllowed: Array<'admin' | 'editor' | 'user'>;
-
   supportsManualRun: boolean;
-
-  supportsParameters: boolean; // Phase 1: always false
-
+  supportsParameters: boolean;
+  supportsDateRange: boolean;
+  supportedFormats: ReportFormat[];
+  supportedDeliveryMethods: DeliveryMethod[];
   status: 'active' | 'disabled' | 'experimental';
 }
 
@@ -29,10 +29,12 @@ export const REPORTS: ReportDefinition[] = [
     cadence: 'daily',
     rolesAllowed: ['admin', 'editor'],
     supportsManualRun: true,
-    supportsParameters: false,
+    supportsParameters: true,
+    supportsDateRange: true,
+    supportedFormats: ['pdf', 'csv'],
+    supportedDeliveryMethods: ['email', 'table'],
     status: 'active',
   },
-
   {
     id: 'weekly_maintenance',
     title: 'Weekly Maintenance Report',
@@ -41,10 +43,12 @@ export const REPORTS: ReportDefinition[] = [
     cadence: 'weekly',
     rolesAllowed: ['admin'],
     supportsManualRun: true,
-    supportsParameters: false,
+    supportsParameters: true,
+    supportsDateRange: true,
+    supportedFormats: ['csv'],
+    supportedDeliveryMethods: ['email', 'table'],
     status: 'active',
   },
-
   {
     id: 'lop_unfulfilled',
     title: 'LOP Unfulfilled Orders',
@@ -53,7 +57,10 @@ export const REPORTS: ReportDefinition[] = [
     cadence: 'on_demand',
     rolesAllowed: ['admin', 'editor'],
     supportsManualRun: true,
-    supportsParameters: false,
+    supportsParameters: true,
+    supportsDateRange: true,
+    supportedFormats: ['csv'],
+    supportedDeliveryMethods: ['email', 'table'],
     status: 'active',
   },
 ];
