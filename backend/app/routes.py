@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from pydantic import BaseModel
 from fastapi.responses import Response
 from app.supabase_client import insert_interest, supabase, update_status, SHOP_URL, SHOPIFY_ACCESS_TOKEN, SHOPIFY_API_VERSION
+from app.report_jobs_repo import enqueue_report_job, fetch_report_job
 import re
 import logging
 from typing import Optional
@@ -44,6 +45,10 @@ class BlacklistEntry(BaseModel):
 class RemoveEntry(BaseModel):
     barcode: str
     product_id: int | None = None
+
+class RunReportRequest(BaseModel):
+    report_id: str
+    parameters: dict | None = None
 
 def validate_admin_token(request: Request, token: str = "") -> str:
     """Validate admin token from Authorization header or `token` query param.
@@ -470,6 +475,117 @@ async def export_blacklist_snippet(token: str = ""):
     except Exception as e:
         print("Export failed:", e)
         return { "success": False, "error": str(e) }
+
+@router.post("/reports/run")
+async def run_report(
+    payload: RunReportRequest,
+    request: Request,
+    token: str = "",
+):
+    """
+    Enqueue a report job. Returns the new job id immediately.
+    The worker picks it up asynchronously.
+ 
+    Body:
+        report_id   – one of 'daily_sales' | 'weekly_maintenance' | 'lop_unfulfilled'
+        parameters  – optional dict, e.g.:
+                        {
+                          "start_date":       "2026-04-01",
+                          "end_date":         "2026-04-10",
+                          "delivery_method":  "table",
+                          "formats":          ["csv", "pdf"]
+                        }
+    """
+    validate_admin_token(request, token)
+ 
+    VALID_REPORT_IDS = {"daily_sales", "weekly_maintenance", "lop_unfulfilled"}
+    if payload.report_id not in VALID_REPORT_IDS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown report_id '{payload.report_id}'. "
+                   f"Valid values: {sorted(VALID_REPORT_IDS)}",
+        )
+ 
+    try:
+        # requested_by: pull user id from auth header if available (best-effort)
+        requested_by: str | None = None
+        auth_header = request.headers.get("Authorization", "")
+        # In a future iteration this can decode a JWT to get the user sub.
+        # For now we leave it as None and rely on the Supabase auth context.
+ 
+        job = enqueue_report_job(
+            report_id=payload.report_id,
+            requested_by=requested_by,
+            parameters=payload.parameters or {},
+        )
+        return {"id": job["id"], "status": job["status"], "report_id": job["report_id"]}
+ 
+    except Exception as e:
+        logger.exception(f"Failed to enqueue report job: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/reports/jobs/{job_id}")
+async def get_report_job(
+    job_id: str,
+    request: Request,
+    token: str = "",
+):
+    """
+    Return the full job record for the given job_id.
+ 
+    Response shape:
+        id, report_id, status, parameters, result, error,
+        requested_by, created_at, started_at, completed_at
+    """
+    validate_admin_token(request, token)
+ 
+    try:
+        job = fetch_report_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+        return job
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to fetch report job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@router.get("/reports/jobs")
+async def list_report_jobs(
+    request: Request,
+    token: str = "",
+    report_id: str | None = None,
+    limit: int = 20,
+):
+    """
+    Return recent report jobs, newest first.
+    Optionally filter by report_id.
+ 
+    Query params:
+        report_id  – optional filter
+        limit      – max rows (default 20, max 100)
+    """
+    validate_admin_token(request, token)
+ 
+    limit = min(max(1, limit), 100)
+ 
+    try:
+        q = (
+            supabase.schema("reports")
+            .table("report_jobs")
+            .select("id, report_id, status, parameters, result, error, requested_by, created_at, started_at, completed_at")
+            .order("created_at", desc=True)
+            .limit(limit)
+        )
+        if report_id:
+            q = q.eq("report_id", report_id)
+ 
+        resp = q.execute()
+        return resp.data or []
+ 
+    except Exception as e:
+        logger.exception(f"Failed to list report jobs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/shopify/graphql")
 async def proxy_to_shopify(request: Request):

@@ -14,6 +14,7 @@ import ReportsPage from './reports/ReportsPage';
 import PreorderService from './services/preorder/PreorderService';
 import CampaignDashboard from './services/campaigns/CampaignService';
 import BusinessCalendarPage from './components/BusinessCalendarPage';
+import ReportJobPage from './components/ReportJobPage';
 import { supabase } from './lib/supabase';
 import DefaultRedirect from './auth/DefaultRedirect';
 import { useState, useEffect } from 'react';
