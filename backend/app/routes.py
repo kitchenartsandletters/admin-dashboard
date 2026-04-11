@@ -5,7 +5,6 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from pydantic import BaseModel
 from fastapi.responses import Response
 from app.supabase_client import insert_interest, supabase, update_status, SHOP_URL, SHOPIFY_ACCESS_TOKEN, SHOPIFY_API_VERSION
-from app.report_jobs_repo import enqueue_report_job, fetch_report_job
 import re
 import logging
 from typing import Optional
@@ -14,6 +13,7 @@ router = APIRouter()
 logger = logging.getLogger("uvicorn.error")
 
 OOP_HANDLES = ["out-of-print-offers", "out-of-print-offers-1"]
+VALID_REPORT_IDS = {"daily_sales", "weekly_maintenance", "lop_unfulfilled"}
 
 class InterestRequest(BaseModel):
     email: str
@@ -482,23 +482,8 @@ async def run_report(
     request: Request,
     token: str = "",
 ):
-    """
-    Enqueue a report job. Returns the new job id immediately.
-    The worker picks it up asynchronously.
- 
-    Body:
-        report_id   – one of 'daily_sales' | 'weekly_maintenance' | 'lop_unfulfilled'
-        parameters  – optional dict, e.g.:
-                        {
-                          "start_date":       "2026-04-01",
-                          "end_date":         "2026-04-10",
-                          "delivery_method":  "table",
-                          "formats":          ["csv", "pdf"]
-                        }
-    """
     validate_admin_token(request, token)
  
-    VALID_REPORT_IDS = {"daily_sales", "weekly_maintenance", "lop_unfulfilled"}
     if payload.report_id not in VALID_REPORT_IDS:
         raise HTTPException(
             status_code=422,
@@ -507,49 +492,50 @@ async def run_report(
         )
  
     try:
-        # requested_by: pull user id from auth header if available (best-effort)
-        requested_by: str | None = None
-        auth_header = request.headers.get("Authorization", "")
-        # In a future iteration this can decode a JWT to get the user sub.
-        # For now we leave it as None and rely on the Supabase auth context.
+        resp = supabase.schema("reports").table("report_jobs").insert({
+            "report_id":  payload.report_id,
+            "status":     "queued",
+            "parameters": payload.parameters or {},
+        }).execute()
  
-        job = enqueue_report_job(
-            report_id=payload.report_id,
-            requested_by=requested_by,
-            parameters=payload.parameters or {},
-        )
+        if not resp.data:
+            raise Exception("Insert returned no data.")
+ 
+        job = resp.data[0]
         return {"id": job["id"], "status": job["status"], "report_id": job["report_id"]}
  
     except Exception as e:
         logger.exception(f"Failed to enqueue report job: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
+ 
+ 
 @router.get("/reports/jobs/{job_id}")
 async def get_report_job(
     job_id: str,
     request: Request,
     token: str = "",
 ):
-    """
-    Return the full job record for the given job_id.
- 
-    Response shape:
-        id, report_id, status, parameters, result, error,
-        requested_by, created_at, started_at, completed_at
-    """
     validate_admin_token(request, token)
  
     try:
-        job = fetch_report_job(job_id)
-        if not job:
+        resp = supabase.schema("reports").table("report_jobs") \
+            .select("*") \
+            .eq("id", job_id) \
+            .single() \
+            .execute()
+ 
+        if not resp.data:
             raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-        return job
+ 
+        return resp.data
+ 
     except HTTPException:
         raise
     except Exception as e:
         logger.exception(f"Failed to fetch report job {job_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-    
+ 
+ 
 @router.get("/reports/jobs")
 async def list_report_jobs(
     request: Request,
@@ -557,26 +543,16 @@ async def list_report_jobs(
     report_id: str | None = None,
     limit: int = 20,
 ):
-    """
-    Return recent report jobs, newest first.
-    Optionally filter by report_id.
- 
-    Query params:
-        report_id  – optional filter
-        limit      – max rows (default 20, max 100)
-    """
     validate_admin_token(request, token)
  
     limit = min(max(1, limit), 100)
  
     try:
-        q = (
-            supabase.schema("reports")
-            .table("report_jobs")
-            .select("id, report_id, status, parameters, result, error, requested_by, created_at, started_at, completed_at")
-            .order("created_at", desc=True)
+        q = supabase.schema("reports").table("report_jobs") \
+            .select("id, report_id, status, parameters, result, error, requested_by, created_at, started_at, completed_at") \
+            .order("created_at", desc=True) \
             .limit(limit)
-        )
+ 
         if report_id:
             q = q.eq("report_id", report_id)
  
