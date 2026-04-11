@@ -13,7 +13,6 @@ router = APIRouter()
 logger = logging.getLogger("uvicorn.error")
 
 OOP_HANDLES = ["out-of-print-offers", "out-of-print-offers-1"]
-VALID_REPORT_IDS = {"daily_sales", "weekly_maintenance", "lop_unfulfilled"}
 
 class InterestRequest(BaseModel):
     email: str
@@ -45,10 +44,6 @@ class BlacklistEntry(BaseModel):
 class RemoveEntry(BaseModel):
     barcode: str
     product_id: int | None = None
-
-class RunReportRequest(BaseModel):
-    report_id: str
-    parameters: dict | None = None
 
 def validate_admin_token(request: Request, token: str = "") -> str:
     """Validate admin token from Authorization header or `token` query param.
@@ -475,93 +470,6 @@ async def export_blacklist_snippet(token: str = ""):
     except Exception as e:
         print("Export failed:", e)
         return { "success": False, "error": str(e) }
-
-@router.post("/reports/run")
-async def run_report(
-    payload: RunReportRequest,
-    request: Request,
-    token: str = "",
-):
-    validate_admin_token(request, token)
- 
-    if payload.report_id not in VALID_REPORT_IDS:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Unknown report_id '{payload.report_id}'. "
-                   f"Valid values: {sorted(VALID_REPORT_IDS)}",
-        )
- 
-    try:
-        resp = supabase.schema("reports").table("report_jobs").insert({
-            "report_id":  payload.report_id,
-            "status":     "queued",
-            "parameters": payload.parameters or {},
-        }).execute()
- 
-        if not resp.data:
-            raise Exception("Insert returned no data.")
- 
-        job = resp.data[0]
-        return {"id": job["id"], "status": job["status"], "report_id": job["report_id"]}
- 
-    except Exception as e:
-        logger.exception(f"Failed to enqueue report job: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
- 
- 
-@router.get("/reports/jobs/{job_id}")
-async def get_report_job(
-    job_id: str,
-    request: Request,
-    token: str = "",
-):
-    validate_admin_token(request, token)
- 
-    try:
-        resp = supabase.schema("reports").table("report_jobs") \
-            .select("*") \
-            .eq("id", job_id) \
-            .single() \
-            .execute()
- 
-        if not resp.data:
-            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
- 
-        return resp.data
- 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception(f"Failed to fetch report job {job_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
- 
- 
-@router.get("/reports/jobs")
-async def list_report_jobs(
-    request: Request,
-    token: str = "",
-    report_id: str | None = None,
-    limit: int = 20,
-):
-    validate_admin_token(request, token)
- 
-    limit = min(max(1, limit), 100)
- 
-    try:
-        q = supabase.schema("reports").table("report_jobs") \
-            .select("id, report_id, status, parameters, result, error, requested_by, created_at, started_at, completed_at") \
-            .order("created_at", desc=True) \
-            .limit(limit)
- 
-        if report_id:
-            q = q.eq("report_id", report_id)
- 
-        resp = q.execute()
-        return resp.data or []
- 
-    except Exception as e:
-        logger.exception(f"Failed to list report jobs: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/shopify/graphql")
 async def proxy_to_shopify(request: Request):

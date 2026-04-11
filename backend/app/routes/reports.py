@@ -3,8 +3,13 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from app.supabase_client import supabase
 import os
+import logging
+
+logger = logging.getLogger("uvicorn.error")
 
 router = APIRouter(prefix="/reports", tags=["reports"])
+
+VALID_REPORT_IDS = {"daily_sales", "weekly_maintenance", "lop_unfulfilled"}
 
 
 class RunReportRequest(BaseModel):
@@ -29,56 +34,84 @@ def validate_admin_token(request: Request):
 def run_report(payload: RunReportRequest, request: Request):
     validate_admin_token(request)
 
-    resp = (
-        supabase
-        .schema("reports")
-        .table("report_jobs")
-        .insert({
-            "report_id": payload.report_id,
-            "parameters": payload.parameters or {},
-            "status": "queued",
-        })
-        .execute()
-    )
+    if payload.report_id not in VALID_REPORT_IDS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown report_id '{payload.report_id}'. "
+                   f"Valid values: {sorted(VALID_REPORT_IDS)}",
+        )
 
-    if not resp.data:
-        raise HTTPException(status_code=500, detail="Failed to create report job")
+    try:
+        resp = (
+            supabase
+            .schema("reports")
+            .table("report_jobs")
+            .insert({
+                "report_id":  payload.report_id,
+                "parameters": payload.parameters or {},
+                "status":     "queued",
+            })
+            .execute()
+        )
 
-    return resp.data[0]
+        if not resp.data:
+            raise Exception("Insert returned no data.")
+
+        job = resp.data[0]
+        return {"id": job["id"], "status": job["status"], "report_id": job["report_id"]}
+
+    except Exception as e:
+        logger.exception(f"Failed to enqueue report job: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/jobs/{job_id}")
 def get_job(job_id: str, request: Request):
     validate_admin_token(request)
 
-    resp = (
-        supabase
-        .schema("reports")
-        .table("report_jobs")
-        .select("*")
-        .eq("id", job_id)
-        .single()
-        .execute()
-    )
+    try:
+        resp = (
+            supabase
+            .schema("reports")
+            .table("report_jobs")
+            .select("*")
+            .eq("id", job_id)
+            .single()
+            .execute()
+        )
 
-    if not resp.data:
-        raise HTTPException(status_code=404, detail="Job not found")
+        if not resp.data:
+            raise HTTPException(status_code=404, detail="Job not found")
 
-    return resp.data
+        return resp.data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to fetch report job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/jobs")
-def list_jobs(report_id: str, request: Request):
+def list_jobs(request: Request, report_id: Optional[str] = None):
     validate_admin_token(request)
 
-    resp = (
-        supabase
-        .schema("reports")
-        .table("report_jobs")
-        .select("*")
-        .eq("report_id", report_id)
-        .order("created_at", desc=True)
-        .limit(5)
-        .execute()
-    )
+    try:
+        q = (
+            supabase
+            .schema("reports")
+            .table("report_jobs")
+            .select("id, report_id, status, parameters, result, error, requested_by, created_at, started_at, completed_at")
+            .order("created_at", desc=True)
+            .limit(20)
+        )
 
-    return resp.data or []
+        if report_id:
+            q = q.eq("report_id", report_id)
+
+        resp = q.execute()
+        return resp.data or []
+
+    except Exception as e:
+        logger.exception(f"Failed to list report jobs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
