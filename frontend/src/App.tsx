@@ -13,6 +13,7 @@ import AccountPage from './pages/AccountPage';
 import ReportsPage from './reports/ReportsPage';
 import PreorderService from './services/preorder/PreorderService';
 import CampaignDashboard from './services/campaigns/CampaignService';
+import BusinessCalendarPage from './components/BusinessCalendarPage';
 import { supabase } from './lib/supabase';
 import DefaultRedirect from './auth/DefaultRedirect';
 import { useState, useEffect } from 'react';
@@ -138,6 +139,25 @@ const App = () => {
                           </ProtectedRoute>
                         }
                       />
+
+                      <Route
+                        path="/reports/calendar"
+                        element={
+                          <ProtectedRoute requiredRoles={['admin']}>
+                            <BusinessCalendarPage />
+                          </ProtectedRoute>
+                        }
+                      />
+
+                      <Route
+                        path="/reports/jobs/:jobId"
+                        element={
+                          <ProtectedRoute requiredRoles={['admin']}>
+                            <ReportJobPage />
+                          </ProtectedRoute>
+                        }
+                      />
+
                       <Route
                         path="/preorders"
                         element={

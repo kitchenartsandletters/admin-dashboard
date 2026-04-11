@@ -23,7 +23,14 @@ const navItems = [
   { label: 'Preorders', path: '/preorders', roles: ['admin', 'editor'] },
   { label: 'Campaigns', path: '/campaigns', roles: ['admin', 'editor'] },
   { label: 'System Status', path: '/status', roles: ['admin'] },
-  { label: 'Reports', path: '/reports', roles: ['admin'] },
+  {
+    label: 'Reports',
+    path: '/reports',
+    roles: ['admin', 'editor', 'user'],
+    children: [
+        { label: 'Business Calendar', path: '/reports/calendar', roles: ['admin'] },
+    ]
+  },
   { label: 'Account', path: '/account', roles: ['admin', 'editor', 'user'] },
 ];
 
