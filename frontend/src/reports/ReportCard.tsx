@@ -75,7 +75,7 @@ export default function ReportCard({ report, onRun }: Props) {
 
   const fetchJobs = async () => {
     if (!apiBase || !token) return;
-    const res = await fetch(`${apiBase}/reports/jobs?report_id=${report.id}`, {
+    const res = await fetch(`${apiBase}/api/reports/jobs?report_id=${report.id}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (res.ok) setJobs(await res.json());
