@@ -16,7 +16,7 @@ export default function ReportsPage() {
     const apiBase = import.meta.env.VITE_API_BASE_URL;
     if (!apiBase) throw new Error('Missing VITE_API_BASE_URL');
 
-    const response = await fetch(`${apiBase}/reports/run`, {
+    const response = await fetch(`${apiBase}/api/reports/run`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
