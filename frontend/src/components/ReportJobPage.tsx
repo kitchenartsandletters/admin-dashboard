@@ -62,6 +62,31 @@ interface ReportJob {
   started_at:   string | null;
   completed_at: string | null;
 }
+// ─── Article-agnostic sort ────────────────────────────────────────────────────
+// Mirrors sort_title_key() from daily_sales_report.py.
+// Strips leading articles in English, French, and Spanish before comparing.
+
+const ARTICLES = [
+  // English
+  'the ', 'a ', 'an ',
+  // French
+  'les ', 'la ', 'le ', "l'", 'des ', 'du ', 'de la ', 'de ',
+  // Spanish
+  'los ', 'las ', 'el ', 'la ', 'un ', 'una ', 'unos ', 'unas ',
+  'a la ', 'al ',
+];
+
+function sortTitleKey(title: string): string {
+  const lower = title.trim().toLowerCase();
+  for (const article of ARTICLES) {
+    if (lower.startsWith(article)) {
+      return lower.slice(article.length).trimStart();
+    }
+  }
+  return lower;
+}
+
+
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -146,8 +171,8 @@ function SectionTable({ rows, sectionKey }: { rows: ProductRow[]; sectionKey: ke
   );
 
   const sorted = [...filtered].sort((a, b) => {
-    const av = a[sortCol] ?? '';
-    const bv = b[sortCol] ?? '';
+    const av = sortCol === 'title' ? sortTitleKey(String(a[sortCol] ?? '')) : (a[sortCol] ?? '');
+    const bv = sortCol === 'title' ? sortTitleKey(String(b[sortCol] ?? '')) : (b[sortCol] ?? '');
     const cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
     return sortDir === 'asc' ? cmp : -cmp;
   });
@@ -242,6 +267,106 @@ function SectionTable({ rows, sectionKey }: { rows: ProductRow[]; sectionKey: ke
     </div>
   );
 }
+
+
+// ─── Download helpers ─────────────────────────────────────────────────────────
+
+function downloadCSV(sections: Sections, windowStart: string, windowEnd: string, jobId: string) {
+  const rows: string[] = [];
+  const fmt = (v: any) => String(v ?? '').includes(',') ? `"${v}"` : String(v ?? '');
+  const header = ['Product','Author','Vendor','ISBN','Price','Collection','On Hand','Incoming','Online','POS','Attributes'];
+
+  rows.push(`Report window: ${fmtWindow(windowStart, windowEnd)}`);
+  rows.push('');
+
+  const writeSection = (label: string, data: ProductRow[]) => {
+    if (!data.length) return;
+    rows.push(label);
+    rows.push('');
+    rows.push(header.join(','));
+    const sorted = [...data].sort((a, b) =>
+      sortTitleKey(a.title).localeCompare(sortTitleKey(b.title), undefined, { sensitivity: 'base' })
+    );
+    sorted.forEach(r => rows.push([
+      r.title, r.author, r.vendor, r.isbn, r.price,
+      r.collections.join(' | '),
+      r.available ?? '', r.incoming, r.ol_sold, r.pos_sold, r.attributes,
+    ].map(fmt).join(',')));
+    rows.push('');
+  };
+
+  writeSection('SALES', sections.main);
+  writeSection('BACKORDERS', sections.backorders);
+  writeSection('OUT OF STOCK', sections.out_of_stock);
+  writeSection('PREORDER SALES', sections.preorders);
+
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `daily_sales_report_${jobId.slice(0, 8)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadPDF(sections: Sections, windowStart: string, windowEnd: string, jobId: string) {
+  // Dynamically load jsPDF + autotable then generate
+  const script1 = document.createElement('script');
+  script1.src = 'https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js';
+  script1.onload = () => {
+    const script2 = document.createElement('script');
+    script2.src = 'https://unpkg.com/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js';
+    script2.onload = () => {
+      const { jsPDF } = (window as any).jspdf;
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+
+      const title = `Daily Sales Report`;
+      const window_text = fmtWindow(windowStart, windowEnd);
+      doc.setFontSize(14);
+      doc.text(title, 40, 40);
+      doc.setFontSize(9);
+      doc.text(window_text, 40, 56);
+
+      let y = 70;
+      const cols = ['Title','Author','Vendor','ISBN','Price','Collection','On Hand','Incoming','Online','POS','Attrs'];
+
+      const writeSection = (label: string, data: ProductRow[]) => {
+        if (!data.length) return;
+        const sorted = [...data].sort((a, b) =>
+          sortTitleKey(a.title).localeCompare(sortTitleKey(b.title), undefined, { sensitivity: 'base' })
+        );
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text(label, 40, y + 14);
+        y += 6;
+        (doc as any).autoTable({
+          startY: y + 10,
+          head: [cols],
+          body: sorted.map(r => [
+            r.title, r.author, r.vendor, r.isbn, r.price,
+            r.collections.join(' | '),
+            r.available ?? '', r.incoming, r.ol_sold, r.pos_sold, r.attributes,
+          ]),
+          styles: { fontSize: 7, cellPadding: 2 },
+          headStyles: { fillColor: [160, 160, 160] },
+          columnStyles: { 0: { cellWidth: 120 } },
+          margin: { left: 40, right: 40 },
+        });
+        y = (doc as any).lastAutoTable.finalY + 16;
+      };
+
+      writeSection('Sales', sections.main);
+      writeSection('Backorders', sections.backorders);
+      writeSection('Out of Stock', sections.out_of_stock);
+      writeSection('Preorder Sales', sections.preorders);
+
+      doc.save(`daily_sales_report_${jobId.slice(0, 8)}.pdf`);
+    };
+    document.head.appendChild(script2);
+  };
+  document.head.appendChild(script1);
+}
+
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
@@ -511,6 +636,28 @@ export default function ReportJobPage() {
               );
             })}
           </div>
+
+          {/* Download buttons */}
+          {sections && (
+            <div className="flex items-center gap-2 justify-end">
+              <button
+                onClick={() => downloadCSV(sections, result.window_start!, result.window_end!, job.id)}
+                className="text-xs px-3 py-1.5 rounded border border-gray-200 dark:border-gray-700
+                  text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800
+                  flex items-center gap-1.5"
+              >
+                <span>↓</span> CSV
+              </button>
+              <button
+                onClick={() => downloadPDF(sections, result.window_start!, result.window_end!, job.id)}
+                className="text-xs px-3 py-1.5 rounded border border-gray-200 dark:border-gray-700
+                  text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800
+                  flex items-center gap-1.5"
+              >
+                <span>↓</span> PDF
+              </button>
+            </div>
+          )}
 
           {/* Section table */}
           {sections ? (
