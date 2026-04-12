@@ -170,25 +170,48 @@ def upsert_schedule_override(payload: ScheduleOverrideRequest, request: Request)
         raise HTTPException(status_code=422, detail="start_date must be on or before end_date")
 
     try:
-        resp = (
-            supabase
-            .schema("reports")
-            .table("report_schedule_overrides")
-            .upsert(
-                {
+        table = supabase.schema("reports").table("report_schedule_overrides")
+
+        # Check if a row already exists for this report + scheduled_date
+        existing = (
+            table
+            .select("id")
+            .eq("report_id", payload.report_id)
+            .eq("scheduled_date", payload.scheduled_date)
+            .limit(1)
+            .execute()
+        )
+
+        if existing.data:
+            # Update existing row
+            row_id = existing.data[0]["id"]
+            resp = (
+                table
+                .update({
+                    "start_date": payload.start_date,
+                    "end_date":   payload.end_date,
+                    "label":      payload.label,
+                    "used_at":    None,
+                })
+                .eq("id", row_id)
+                .execute()
+            )
+        else:
+            # Insert new row
+            resp = (
+                table
+                .insert({
                     "report_id":      payload.report_id,
                     "scheduled_date": payload.scheduled_date,
                     "start_date":     payload.start_date,
                     "end_date":       payload.end_date,
                     "label":          payload.label,
-                    "used_at":        None,  # reset consumed flag on re-edit
-                },
-                on_conflict="report_id,scheduled_date",
+                })
+                .execute()
             )
-            .execute()
-        )
+
         if not resp.data:
-            raise Exception("Upsert returned no data.")
+            raise Exception("Operation returned no data.")
         return resp.data[0]
     except Exception as e:
         logger.exception(f"Failed to upsert schedule override: {e}")
@@ -252,22 +275,41 @@ def upsert_calendar_override(payload: CalendarOverrideRequest, request: Request)
         raise HTTPException(status_code=422, detail="override_type must be 'holiday_closure' or 'special_open_sunday'")
 
     try:
-        resp = (
-            supabase
-            .schema("reports")
-            .table("business_calendar_overrides")
-            .upsert(
-                {
+        table = supabase.schema("reports").table("business_calendar_overrides")
+
+        # Check if a row already exists for this date + override_type
+        existing = (
+            table
+            .select("id")
+            .eq("date", payload.date)
+            .eq("override_type", payload.override_type)
+            .limit(1)
+            .execute()
+        )
+
+        if existing.data:
+            # Update label on existing row
+            row_id = existing.data[0]["id"]
+            resp = (
+                table
+                .update({"label": payload.label})
+                .eq("id", row_id)
+                .execute()
+            )
+        else:
+            # Insert new override row
+            resp = (
+                table
+                .insert({
                     "date":          payload.date,
                     "override_type": payload.override_type,
                     "label":         payload.label,
-                },
-                on_conflict="date,override_type",
+                })
+                .execute()
             )
-            .execute()
-        )
+
         if not resp.data:
-            raise Exception("Upsert returned no data.")
+            raise Exception("Operation returned no data.")
         return resp.data[0]
     except Exception as e:
         logger.exception(f"Failed to upsert calendar override: {e}")
