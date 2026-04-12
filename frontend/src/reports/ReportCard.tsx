@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ReportDefinition, DeliveryMethod, ReportFormat } from './registry';
 import { useAuth } from '../auth/AuthProvider';
@@ -159,8 +159,11 @@ export default function ReportCard({ report, onRun }: Props) {
   const [formats, setFormats] = useState<ReportFormat[]>(report.supportedFormats.slice());
 
   // Schedule override state
-  const nextRunDate    = getNextScheduledDate(report);
-  const defaultWindow  = nextRunDate ? getDefaultWindow(nextRunDate) : null;
+  const nextRunDate = useMemo(() => getNextScheduledDate(report), [report.id]);
+  const defaultWindow = useMemo(
+    () => nextRunDate ? getDefaultWindow(nextRunDate) : null,
+    [nextRunDate?.toDateString()]
+  );
   const editOpen       = nextRunDate && report.scheduledRunHourET !== null
     ? isBeforeCutoff(nextRunDate, report.editCutoffMinutes, report.scheduledRunHourET)
     : false;
@@ -209,11 +212,12 @@ export default function ReportCard({ report, onRun }: Props) {
         setOverrideEnd(data.end_date.slice(0, 10));
         setOverrideLabel(data.label ?? '');
       } else if (defaultWindow) {
-        setOverrideStart(defaultWindow.start);
-        setOverrideEnd(defaultWindow.end);
+        // Only initialise to default window if the user hasn't already changed the inputs
+        setOverrideStart(prev => prev || defaultWindow.start);
+        setOverrideEnd(prev => prev || defaultWindow.end);
       }
     }
-  }, [apiBase, token, report.id, nextRunDate]);
+  }, [apiBase, token, report.id, nextRunDate, defaultWindow]);
 
   useEffect(() => {
     fetchJobs();
