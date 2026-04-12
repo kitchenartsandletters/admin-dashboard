@@ -205,8 +205,8 @@ export default function ReportCard({ report, onRun }: Props) {
       const data = await res.json();
       setExistingOverride(data ?? null);
       if (data) {
-        setOverrideStart(data.start_date);
-        setOverrideEnd(data.end_date);
+        setOverrideStart(data.start_date.slice(0, 10));
+        setOverrideEnd(data.end_date.slice(0, 10));
         setOverrideLabel(data.label ?? '');
       } else if (defaultWindow) {
         setOverrideStart(defaultWindow.start);
@@ -361,7 +361,6 @@ export default function ReportCard({ report, onRun }: Props) {
                 <input
                   type="date"
                   value={overrideStart}
-                  max={overrideEnd}
                   onChange={e => setOverrideStart(e.target.value)}
                   className="flex-1 rounded border px-2 py-1.5 text-xs
                     bg-white text-gray-900 border-gray-300
@@ -372,7 +371,6 @@ export default function ReportCard({ report, onRun }: Props) {
                 <input
                   type="date"
                   value={overrideEnd}
-                  min={overrideStart}
                   onChange={e => setOverrideEnd(e.target.value)}
                   className="flex-1 rounded border px-2 py-1.5 text-xs
                     bg-white text-gray-900 border-gray-300
