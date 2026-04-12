@@ -29,6 +29,7 @@ export default function ReportsPage() {
           ...(params.end_date   ? { end_date:   params.end_date   } : {}),
           delivery_method: params.delivery_method,
           formats: params.formats,
+          ...(params.recipients ? { recipients: params.recipients } : {}),
         },
       }),
     });

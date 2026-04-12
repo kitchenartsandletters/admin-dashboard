@@ -17,6 +17,7 @@ export interface RunParameters {
   end_date?:       string;
   delivery_method: DeliveryMethod;
   formats:         ReportFormat[];
+  recipients?:     string[];
 }
 
 interface ScheduleOverride {
@@ -176,6 +177,7 @@ export default function ReportCard({ report, onRun }: Props) {
   const [overrideLabel, setOverrideLabel]           = useState('');
   const [overrideSaving, setOverrideSaving]         = useState(false);
   const [overrideMsg, setOverrideMsg]               = useState<string | null>(null);
+  const [recipients, setRecipients]                 = useState<string>('');  // comma-separated, empty = use env default
 
   const apiBase = import.meta.env.VITE_API_BASE_URL;
   const token   = import.meta.env.VITE_ADMIN_TOKEN;
@@ -283,13 +285,17 @@ export default function ReportCard({ report, onRun }: Props) {
   }
 
   async function handleRun() {
-    if (formats.length === 0) { setMessage('Select at least one format.'); return; }
+    if (delivery === 'email' && formats.length === 0) { setMessage('Select at least one format.'); return; }
     try {
       setIsRunning(true); setMessage(null);
+      const recipientList = recipients.trim()
+        ? recipients.split(',').map(r => r.trim()).filter(Boolean)
+        : undefined;
       const params: RunParameters = {
         delivery_method: delivery,
-        formats,
+        formats: delivery === 'table' ? [] : formats,
         ...(report.supportsDateRange ? { start_date: startDate, end_date: endDate } : {}),
+        ...(recipientList ? { recipients: recipientList } : {}),
       };
       const job = await onRun(report.id, params);
       if (delivery === 'table') {
@@ -474,8 +480,8 @@ export default function ReportCard({ report, onRun }: Props) {
             </div>
           )}
 
-          {/* Format */}
-          {report.supportedFormats.length > 0 && (
+          {/* Format — hidden for table delivery */}
+          {report.supportedFormats.length > 0 && delivery !== 'table' && (
             <div className="space-y-1.5">
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Format</label>
               <div className="flex gap-2">
@@ -515,11 +521,32 @@ export default function ReportCard({ report, onRun }: Props) {
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-gray-400 dark:text-gray-500">
-                {delivery === 'email'
-                  ? 'Report will be sent to configured recipients.'
-                  : 'Results will open in the dashboard when ready.'}
-              </p>
+              {delivery === 'email' ? (
+                <div className="space-y-1.5 mt-2">
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    Recipients
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Override recipients (comma-separated) — leave blank to use default"
+                    value={recipients}
+                    onChange={e => setRecipients(e.target.value)}
+                    className="w-full rounded border px-2 py-1.5 text-xs
+                      bg-white text-gray-900 border-gray-300
+                      dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600
+                      focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  />
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    {recipients.trim()
+                      ? 'Report will be sent to the addresses above.'
+                      : 'Report will be sent to default configured recipients.'}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  Results will open in the dashboard when ready.
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -530,7 +557,7 @@ export default function ReportCard({ report, onRun }: Props) {
         <div className="flex items-center gap-3">
           {showConfig && (
             <button
-              disabled={!showConfig || isRunning || formats.length === 0}
+              disabled={!showConfig || isRunning || (delivery === 'email' && formats.length === 0)}
               onClick={handleRun}
               className="px-4 py-1.5 rounded text-sm font-medium
                 bg-gray-900 text-white hover:bg-gray-700
