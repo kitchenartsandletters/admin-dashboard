@@ -140,6 +140,7 @@ def get_schedule_override(
     try:
         resp = (
             supabase
+            .schema("reports")
             .table("report_schedule_overrides")
             .select("*")
             .eq("report_id", report_id)
@@ -169,7 +170,7 @@ def upsert_schedule_override(payload: ScheduleOverrideRequest, request: Request)
         raise HTTPException(status_code=422, detail="start_date must be on or before end_date")
 
     try:
-        table = supabase.table("report_schedule_overrides")
+        table = supabase.schema("reports").table("report_schedule_overrides")
 
         # Check if a row already exists for this report + scheduled_date
         existing = (
@@ -224,6 +225,7 @@ def delete_schedule_override(override_id: str, request: Request):
 
     try:
         supabase \
+            .schema("reports") \
             .table("report_schedule_overrides") \
             .delete() \
             .eq("id", override_id) \
@@ -247,6 +249,7 @@ def list_calendar_overrides(request: Request, year: Optional[int] = None):
     try:
         q = (
             supabase
+            .schema("reports")
             .table("business_calendar_overrides")
             .select("id, date, year, override_type, label, created_at")
             .order("date", desc=False)
@@ -272,7 +275,7 @@ def upsert_calendar_override(payload: CalendarOverrideRequest, request: Request)
         raise HTTPException(status_code=422, detail="override_type must be 'holiday_closure' or 'special_open_sunday'")
 
     try:
-        table = supabase.table("business_calendar_overrides")
+        table = supabase.schema("reports").table("business_calendar_overrides")
 
         # Check if a row already exists for this date + override_type
         existing = (
@@ -324,6 +327,7 @@ def delete_calendar_override(
 
     try:
         supabase \
+            .schema("reports") \
             .table("business_calendar_overrides") \
             .delete() \
             .eq("date", date) \
