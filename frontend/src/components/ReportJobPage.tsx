@@ -267,7 +267,7 @@ export default function ReportJobPage() {
 
   async function fetchJob() {
     try {
-      const res = await fetch(`${apiBase}/reports/jobs/${jobId}`, {
+      const res = await fetch(`${apiBase}/api/reports/jobs/${jobId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
