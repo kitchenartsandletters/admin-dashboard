@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ReportDefinition, DeliveryMethod, ReportFormat } from './registry';
 import { useAuth } from '../auth/AuthProvider';
@@ -172,6 +172,7 @@ export default function ReportCard({ report, onRun }: Props) {
   const [showOverrideEditor, setShowOverrideEditor] = useState(false);
   const [overrideStart, setOverrideStart]           = useState('');
   const [overrideEnd, setOverrideEnd]               = useState('');
+  const overrideInitialised = React.useRef(false);
   const [overrideLabel, setOverrideLabel]           = useState('');
   const [overrideSaving, setOverrideSaving]         = useState(false);
   const [overrideMsg, setOverrideMsg]               = useState<string | null>(null);
@@ -208,16 +209,19 @@ export default function ReportCard({ report, onRun }: Props) {
       const data = await res.json();
       setExistingOverride(data ?? null);
       if (data) {
+        overrideInitialised.current = true;
         setOverrideStart(data.start_date.slice(0, 10));
         setOverrideEnd(data.end_date.slice(0, 10));
         setOverrideLabel(data.label ?? '');
-      } else if (defaultWindow) {
-        // Only initialise to default window if the user hasn't already changed the inputs
-        setOverrideStart(prev => prev || defaultWindow.start);
-        setOverrideEnd(prev => prev || defaultWindow.end);
+      } else if (defaultWindow && !overrideInitialised.current) {
+        // Only initialise once — never overwrite user edits
+        overrideInitialised.current = true;
+        setOverrideStart(defaultWindow.start);
+        setOverrideEnd(defaultWindow.end);
       }
     }
-  }, [apiBase, token, report.id, nextRunDate, defaultWindow]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiBase, token, report.id, nextRunDate ? toISO(nextRunDate) : null]);
 
   useEffect(() => {
     fetchJobs();
@@ -263,6 +267,7 @@ export default function ReportCard({ report, onRun }: Props) {
       });
       setExistingOverride(null);
       setOverrideMsg('Override cleared — automated window restored.');
+      overrideInitialised.current = false;
       if (defaultWindow) { setOverrideStart(defaultWindow.start); setOverrideEnd(defaultWindow.end); }
       setOverrideLabel('');
     } catch {
