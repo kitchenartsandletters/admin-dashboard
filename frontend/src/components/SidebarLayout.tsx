@@ -28,8 +28,8 @@ const navItems = [
     path: '/reports',
     roles: ['admin', 'editor', 'user'],
     children: [
-        { label: 'Business Calendar', path: '/reports/calendar', roles: ['admin'] },
-        { label: 'Report Jobs', path: '/reports/jobs', roles: ['admin'] },
+        { label: 'Business Calendar', path: '/reports/calendar', roles: ['admin', 'editor'] },
+        { label: 'Report Jobs', path: '/reports/jobs', roles: ['admin', 'editor'] },
     ]
   },
   { label: 'Account', path: '/account', roles: ['admin', 'editor', 'user'] },
