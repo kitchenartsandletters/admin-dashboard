@@ -74,7 +74,7 @@ def get_job(job_id: str, request: Request):
             supabase
             .schema("reports")
             .table("report_jobs")
-            .select("*")
+            .select("id, report_id, status, parameters, result, error, created_at, started_at, completed_at")
             .eq("id", job_id)
             .single()
             .execute()
