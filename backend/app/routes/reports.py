@@ -101,7 +101,7 @@ def list_jobs(request: Request, report_id: Optional[str] = None):
             supabase
             .schema("reports")
             .table("report_jobs")
-            .select("id, report_id, status, parameters, result, error, requested_by, created_at, started_at, completed_at")
+            .select("id, report_id, status, parameters, result, error, created_at, started_at, completed_at")
             .order("created_at", desc=True)
             .limit(20)
         )
