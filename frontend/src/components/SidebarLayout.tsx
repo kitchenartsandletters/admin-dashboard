@@ -29,6 +29,7 @@ const navItems = [
     roles: ['admin', 'editor', 'user'],
     children: [
         { label: 'Business Calendar', path: '/reports/calendar', roles: ['admin'] },
+        { label: 'Report Jobs', path: '/reports/jobs', roles: ['admin'] },
     ]
   },
   { label: 'Account', path: '/account', roles: ['admin', 'editor', 'user'] },
