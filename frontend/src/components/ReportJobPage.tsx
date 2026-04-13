@@ -310,61 +310,165 @@ function downloadCSV(sections: Sections, windowStart: string, windowEnd: string,
 }
 
 function downloadPDF(sections: Sections, windowStart: string, windowEnd: string, jobId: string) {
-  // Dynamically load jsPDF + autotable then generate
-  const script1 = document.createElement('script');
-  script1.src = 'https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js';
-  script1.onload = () => {
-    const script2 = document.createElement('script');
-    script2.src = 'https://unpkg.com/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js';
-    script2.onload = () => {
-      const { jsPDF } = (window as any).jspdf;
-      const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+  // Load jsPDF + autotable dynamically, then build PDF matching daily_sales_pdf.py layout
+  const loadScript = (src: string) => new Promise<void>((resolve) => {
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = src; s.onload = () => resolve();
+    document.head.appendChild(s);
+  });
 
-      const title = `Daily Sales Report`;
-      const window_text = fmtWindow(windowStart, windowEnd);
-      doc.setFontSize(14);
-      doc.text(title, 40, 40);
+  Promise.all([
+    loadScript('https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js'),
+  ]).then(() =>
+    loadScript('https://unpkg.com/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js')
+  ).then(() => {
+    const { jsPDF } = (window as any).jspdf;
+    // Letter portrait, points, matching ReportLab margins (0.8in = 57.6pt)
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+    const ML = 57.6; const MR = 57.6; const pageW = 612;
+    const contentW = pageW - ML - MR;
+
+    // Column widths matching daily_sales_pdf.py (inches → points at 72pt/in)
+    // 2.4, 1.6, 0.8, 0.8, 2.0 inches = 172.8, 115.2, 57.6, 57.6, 144 pt
+    const colWidths = [172.8, 115.2, 57.6, 57.6, 144];
+
+    const reportTitle  = `Daily Sales Report`;
+    const window_label = fmtWindow(windowStart, windowEnd);
+
+    // Page header (mirrors add_page_header in daily_sales_pdf.py)
+    const addHeader = () => {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text(reportTitle, ML, 43);
+      doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
-      doc.text(window_text, 40, 56);
-
-      let y = 70;
-      const cols = ['Title','Author','Vendor','ISBN','Price','Collection','On Hand','Incoming','Online','POS','Attrs'];
-
-      const writeSection = (label: string, data: ProductRow[]) => {
-        if (!data.length) return;
-        const sorted = [...data].sort((a, b) =>
-          sortTitleKey(a.title).localeCompare(sortTitleKey(b.title), undefined, { sensitivity: 'base' })
-        );
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.text(label, 40, y + 14);
-        y += 6;
-        (doc as any).autoTable({
-          startY: y + 10,
-          head: [cols],
-          body: sorted.map(r => [
-            r.title, r.author, r.vendor, r.isbn, r.price,
-            r.collections.join(' | '),
-            r.available ?? '', r.incoming, r.ol_sold, r.pos_sold, r.attributes,
-          ]),
-          styles: { fontSize: 7, cellPadding: 2 },
-          headStyles: { fillColor: [160, 160, 160] },
-          columnStyles: { 0: { cellWidth: 120 } },
-          margin: { left: 40, right: 40 },
-        });
-        y = (doc as any).lastAutoTable.finalY + 16;
-      };
-
-      writeSection('Sales', sections.main);
-      writeSection('Backorders', sections.backorders);
-      writeSection('Out of Stock', sections.out_of_stock);
-      writeSection('Preorder Sales', sections.preorders);
-
-      doc.save(`daily_sales_report_${jobId.slice(0, 8)}.pdf`);
+      doc.text(window_label, ML, 57);
     };
-    document.head.appendChild(script2);
-  };
-  document.head.appendChild(script1);
+    addHeader();
+
+    const SECTION_LABELS: [keyof Sections, string][] = [
+      ['main',        'Main Sales'],
+      ['backorders',  'Backorders'],
+      ['out_of_stock','Out of Stock'],
+      ['preorders',   'Preorders'],
+    ];
+
+    const writeSection = (label: string, rows: ProductRow[]) => {
+      if (!rows.length) return;
+
+      const sorted = [...rows].sort((a, b) =>
+        sortTitleKey(a.title).localeCompare(sortTitleKey(b.title), undefined, { sensitivity: 'base' })
+      );
+
+      // Build body: two rows per product — main row + metadata subrow
+      const body: any[] = [];
+      const metaRowIndices: number[] = [];
+
+      sorted.forEach(r => {
+        const priceRaw = r.price ? parseFloat(String(r.price)) : null;
+        const priceStr = priceRaw != null && !isNaN(priceRaw) ? `$${priceRaw.toFixed(2)}` : '—';
+        const isbnStr  = r.isbn && r.isbn !== 'NO BARCODE' ? `ISBN: ${r.isbn}` : 'ISBN: —';
+        const vendorStr = r.vendor ? `Vendor: ${r.vendor}` : 'Vendor: —';
+
+        // Main product row
+        body.push([
+          r.title      || '',
+          r.author     || '',
+          r.available != null ? String(r.available) : '',
+          String(r.incoming  ?? 0),
+          r.attributes || '',
+        ]);
+
+        // Metadata subrow (ISBN | Price spanning cols 2-3 | Vendor)
+        body.push(['', isbnStr, priceStr, '', vendorStr]);
+        metaRowIndices.push(body.length - 1);
+      });
+
+      (doc as any).autoTable({
+        head: [[
+          'Title', 'Author', 'On Hand', 'Incoming', 'Attributes'
+        ]],
+        body,
+        startY: (doc as any).lastAutoTable
+          ? (doc as any).lastAutoTable.finalY + 20
+          : 80,
+        margin: { left: ML, right: MR },
+        tableWidth: contentW,
+        columnStyles: {
+          0: { cellWidth: colWidths[0] },
+          1: { cellWidth: colWidths[1] },
+          2: { cellWidth: colWidths[2] },
+          3: { cellWidth: colWidths[3] },
+          4: { cellWidth: colWidths[4] },
+        },
+        headStyles: {
+          fillColor: [160, 160, 160],
+          textColor: 0,
+          fontStyle: 'normal',
+          fontSize: 8,
+          cellPadding: 3,
+        },
+        styles: {
+          fontSize: 7,
+          cellPadding: 2,
+          lineColor: [236, 236, 237],
+          lineWidth: 0.25,
+          overflow: 'linebreak',
+        },
+        bodyStyles: {
+          fillColor: [255, 255, 255],
+          textColor: 0,
+        },
+        // Style metadata subrows: gray bg + left padding + span cols 2-3
+        didParseCell: (data: any) => {
+          if (metaRowIndices.includes(data.row.index)) {
+            data.cell.styles.fillColor = [240, 240, 240];
+            data.cell.styles.fontSize  = 7;
+            if (data.column.index === 0) {
+              data.cell.styles.cellPadding = { left: 12, top: 1, right: 2, bottom: 1 };
+            }
+            if (data.column.index === 1) {
+              data.cell.styles.cellPadding = { left: 12, top: 1, right: 2, bottom: 1 };
+            }
+            if (data.column.index === 2) {
+              data.cell.styles.cellPadding = { left: 12, top: 1, right: 2, bottom: 1 };
+            }
+          }
+        },
+        didDrawPage: () => { addHeader(); },
+        // Section label drawn above the table
+        didDrawCell: undefined,
+      });
+
+      // Draw section label above this table
+      const tableStartY = (doc as any).lastAutoTable.finalY;
+      // Label was drawn before autoTable call — handled via beforePageContent below
+    };
+
+    // Draw each section with a bold uppercase label
+    SECTION_LABELS.forEach(([key, label]) => {
+      if (!sections[key]?.length) return;
+
+      const prevY = (doc as any).lastAutoTable?.finalY ?? 68;
+      const labelY = prevY + (prevY === 68 ? 0 : 24);
+
+      // Check if we need a new page for the label + at least one row
+      if (labelY > 700) {
+        doc.addPage();
+        addHeader();
+      }
+
+      const drawY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 24 : 80;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.text(label.toUpperCase(), ML, drawY);
+
+      writeSection(label, sections[key]);
+    });
+
+    doc.save(`daily_sales_report_${jobId.slice(0, 8)}.pdf`);
+  });
 }
 
 
