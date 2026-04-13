@@ -90,7 +90,7 @@ export default function RightSidebar({ title, onClose, row, renderRowContent, do
 
         <div
           ref={contentRef}
-          className="p-3 text-sm space-y-3 overflow-y-auto h-[calc(100%-3.25rem)] relative"
+          className="p-3 pb-12 text-sm space-y-3 overflow-y-auto h-[calc(100%-3.25rem)] relative"
         >
           {row && renderRowContent ? (
             renderRowContent()

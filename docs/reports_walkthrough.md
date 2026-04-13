@@ -1,8 +1,6 @@
 # Reports — How It Works
 
-Hi team,
-
-We've added a Reports section to the admin dashboard. Here's a quick walkthrough of what it does, how the automation works, and what you can control from the dashboard.
+I've added a Reports section to the admin dashboard. Here's a quick walkthrough of what it does, how the automation works, and what you can control from the dashboard.
 
 ---
 

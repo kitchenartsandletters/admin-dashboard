@@ -5,6 +5,7 @@
 **Daily Sales** runs automatically every business day at 10:00 AM ET. It covers sales from the previous business day's 10:00 AM ET through 9:59 AM ET today. On Mondays it covers the full weekend. After holidays it covers all closed days.
 
 **Weekly Maintenance** runs automatically every Friday. It covers three inventory hygiene checks: negative inventory with no pending orders, products published but not in any collection, and out-of-stock products with unfulfilled orders.
+
 NOTE: This is scheduled for deprecation and will be replaced by Weekly Unfulfilled Line Items (Age / Order Date Companion Report).
 
 **LOP Unfulfilled Orders** is on-demand only. It covers all unfulfilled and partially fulfilled shipping orders since the most recent order tagged LOP.
