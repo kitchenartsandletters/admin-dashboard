@@ -368,16 +368,57 @@ def list_exclusions(request: Request):
 
 @router.post("/exclusions")
 def add_exclusion(payload: ExclusionRequest, request: Request):
-    """Add a product to the report exclusions list."""
+    """
+    Add a product to the report exclusions list.
+    If product_title is not provided, attempts to resolve it from Shopify.
+    """
     validate_admin_token(request)
+
+    product_title = payload.product_title
+
+    # Auto-resolve title from Shopify if not provided
+    if not product_title:
+        try:
+            shop_url     = os.getenv("SHOP_URL", "")
+            access_token = os.getenv("SHOPIFY_ACCESS_TOKEN", "")
+            api_version  = os.getenv("SHOPIFY_API_VERSION", "2025-01")
+
+            if shop_url and access_token:
+                # Extract numeric ID from GID if needed
+                numeric_id = payload.product_id.split("/")[-1]
+                gql_query  = """
+                    query GetProduct($id: ID!) {
+                      product(id: $id) { title }
+                    }
+                """
+                gid = payload.product_id if payload.product_id.startswith("gid://")                     else f"gid://shopify/Product/{numeric_id}"
+
+                resp = requests.post(
+                    f"https://{shop_url}/admin/api/{api_version}/graphql.json",
+                    headers={
+                        "X-Shopify-Access-Token": access_token,
+                        "Content-Type": "application/json",
+                    },
+                    json={"query": gql_query, "variables": {"id": gid}},
+                    timeout=10,
+                )
+                if resp.ok:
+                    data = resp.json()
+                    product_title = (data.get("data") or {}).get("product", {}).get("title")
+        except Exception as e:
+            logger.warning(f"Could not resolve product title from Shopify: {e}")
+
     try:
+        # Normalise to full GID
+        product_id = payload.product_id if payload.product_id.startswith("gid://")             else f"gid://shopify/Product/{payload.product_id}"
+
         resp = (
             supabase
             .schema("reports")
             .table("report_product_exclusions")
             .insert({
-                "product_id":    payload.product_id,
-                "product_title": payload.product_title,
+                "product_id":    product_id,
+                "product_title": product_title,
                 "reason":        payload.reason,
             })
             .execute()

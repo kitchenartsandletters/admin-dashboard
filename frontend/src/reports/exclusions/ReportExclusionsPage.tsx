@@ -261,7 +261,7 @@ export default function ReportExclusionsPage() {
                     </td>
                     <td className="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-400">
                       <a
-                        href={`https://admin.shopify.com/store/kitchenartsandletters/products/${numericId(ex.product_id)}`}
+                        href={`https://admin.shopify.com/store/castironbooks/products/${numericId(ex.product_id)}`}
                         target="_blank"
                         rel="noreferrer"
                         className="hover:underline"
