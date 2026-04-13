@@ -337,3 +337,71 @@ def delete_calendar_override(
     except Exception as e:
         logger.exception(f"Failed to delete calendar override {date}/{override_type}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── Report product exclusion routes ─────────────────────────────────────────
+
+class ExclusionRequest(BaseModel):
+    product_id:    str
+    product_title: Optional[str] = None
+    reason:        Optional[str] = None
+
+
+@router.get("/exclusions")
+def list_exclusions(request: Request):
+    """Return all report product exclusions, newest first."""
+    validate_admin_token(request)
+    try:
+        resp = (
+            supabase
+            .schema("reports")
+            .table("report_product_exclusions")
+            .select("id, product_id, product_title, reason, created_at")
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return resp.data or []
+    except Exception as e:
+        logger.exception(f"Failed to list exclusions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/exclusions")
+def add_exclusion(payload: ExclusionRequest, request: Request):
+    """Add a product to the report exclusions list."""
+    validate_admin_token(request)
+    try:
+        resp = (
+            supabase
+            .schema("reports")
+            .table("report_product_exclusions")
+            .insert({
+                "product_id":    payload.product_id,
+                "product_title": payload.product_title,
+                "reason":        payload.reason,
+            })
+            .execute()
+        )
+        if not resp.data:
+            raise Exception("Insert returned no data.")
+        return resp.data[0]
+    except Exception as e:
+        logger.exception(f"Failed to add exclusion: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/exclusions/{exclusion_id}")
+def remove_exclusion(exclusion_id: str, request: Request):
+    """Remove a product exclusion by its UUID."""
+    validate_admin_token(request)
+    try:
+        supabase \
+            .schema("reports") \
+            .table("report_product_exclusions") \
+            .delete() \
+            .eq("id", exclusion_id) \
+            .execute()
+        return {"success": True}
+    except Exception as e:
+        logger.exception(f"Failed to remove exclusion {exclusion_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

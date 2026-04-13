@@ -13,11 +13,12 @@ interface Job {
 }
 
 export interface RunParameters {
-  start_date?:     string;
-  end_date?:       string;
-  delivery_method: DeliveryMethod;
-  formats:         ReportFormat[];
-  recipients?:     string[];
+  start_date?:        string;
+  end_date?:          string;
+  delivery_method:    DeliveryMethod;
+  formats:            ReportFormat[];
+  recipients?:        string[];
+  ignore_exclusions?: boolean;
 }
 
 interface ScheduleOverride {
@@ -196,6 +197,7 @@ export default function ReportCard({ report, onRun }: Props) {
   const [overrideSaving, setOverrideSaving]         = useState(false);
   const [overrideMsg, setOverrideMsg]               = useState<string | null>(null);
   const [recipients, setRecipients]                 = useState<string>('');  // comma-separated, empty = use env default
+  const [ignoreExclusions, setIgnoreExclusions]       = useState(false);
 
   const apiBase = import.meta.env.VITE_API_BASE_URL;
   const token   = import.meta.env.VITE_ADMIN_TOKEN;
@@ -310,10 +312,11 @@ export default function ReportCard({ report, onRun }: Props) {
         ? recipients.split(',').map(r => r.trim()).filter(Boolean)
         : undefined;
       const params: RunParameters = {
-        delivery_method: delivery,
-        formats: delivery === 'table' ? [] : formats,
+        delivery_method:   delivery,
+        formats:           delivery === 'table' ? [] : formats,
         ...(report.supportsDateRange ? { start_date: startDate, end_date: endDate } : {}),
-        ...(recipientList ? { recipients: recipientList } : {}),
+        ...(recipientList        ? { recipients: recipientList }          : {}),
+        ...(ignoreExclusions     ? { ignore_exclusions: true }            : {}),
       };
       const job = await onRun(report.id, params);
       if (delivery === 'table') {
@@ -539,6 +542,28 @@ export default function ReportCard({ report, onRun }: Props) {
                   </button>
                 ))}
               </div>
+              {/* Exclusions toggle */}
+              <div className="flex items-center gap-2 mt-1">
+                <input
+                  type="checkbox"
+                  id={`ignore-exclusions-${report.id}`}
+                  checked={ignoreExclusions}
+                  onChange={e => setIgnoreExclusions(e.target.checked)}
+                  className="rounded border-gray-300 dark:border-gray-600"
+                />
+                <label
+                  htmlFor={`ignore-exclusions-${report.id}`}
+                  className="text-xs text-gray-600 dark:text-gray-400 cursor-pointer"
+                >
+                  Include excluded products
+                </label>
+                {ignoreExclusions && (
+                  <span className="text-xs text-amber-600 dark:text-amber-400">
+                    · exclusion list bypassed
+                  </span>
+                )}
+              </div>
+
               {delivery === 'email' ? (
                 <div className="space-y-1.5 mt-2">
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">

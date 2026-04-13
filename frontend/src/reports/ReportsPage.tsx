@@ -29,7 +29,8 @@ export default function ReportsPage() {
           ...(params.end_date   ? { end_date:   params.end_date   } : {}),
           delivery_method: params.delivery_method,
           formats: params.formats,
-          ...(params.recipients ? { recipients: params.recipients } : {}),
+          ...(params.recipients        ? { recipients: params.recipients }             : {}),
+          ...(params.ignore_exclusions ? { ignore_exclusions: params.ignore_exclusions } : {}),
         },
       }),
     });

@@ -156,6 +156,15 @@ function SectionTable({ rows, sectionKey }: { rows: ProductRow[]; sectionKey: ke
   const [sortCol, setSortCol]   = useState<keyof ProductRow>('title');
   const [sortDir, setSortDir]   = useState<'asc' | 'desc'>('asc');
   const [search, setSearch]     = useState('');
+  const [fontSize, setFontSize] = useState<number>(() => {
+    const saved = localStorage.getItem('report_table_font_size');
+    return saved ? Number(saved) : 12;
+  });
+
+  function handleFontSize(v: number) {
+    setFontSize(v);
+    localStorage.setItem('report_table_font_size', String(v));
+  }
   const meta = SECTION_META[sectionKey];
 
   function toggleSort(col: keyof ProductRow) {
@@ -202,8 +211,24 @@ function SectionTable({ rows, sectionKey }: { rows: ProductRow[]; sectionKey: ke
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-xs text-gray-400 dark:text-gray-500">{sorted.length} of {rows.length} items</span>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-400 dark:text-gray-500">{sorted.length} of {rows.length} items</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-gray-400 dark:text-gray-500">A</span>
+            <input
+              type="range"
+              min={9}
+              max={14}
+              step={1}
+              value={fontSize}
+              onChange={e => handleFontSize(Number(e.target.value))}
+              className="w-16 h-1 accent-gray-500"
+              title={`Font size: ${fontSize}px`}
+            />
+            <span className="text-xs text-gray-600 dark:text-gray-300" style={{ fontSize: '14px' }}>A</span>
+          </div>
+        </div>
         <input
           type="text"
           placeholder="Filter by title, author, ISBN…"
@@ -216,7 +241,7 @@ function SectionTable({ rows, sectionKey }: { rows: ProductRow[]; sectionKey: ke
       </div>
 
       <div className="overflow-x-auto rounded border border-gray-200 dark:border-gray-700">
-        <table className="w-full text-xs border-collapse min-w-[700px]">
+        <table className="w-full border-collapse min-w-[700px]" style={{ fontSize: `${fontSize}px` }}>
           <thead>
             <tr>
               <Th col="title"      label="Title" />

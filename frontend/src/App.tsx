@@ -18,6 +18,7 @@ import ReportJobPage from './components/ReportJobPage';
 import { supabase } from './lib/supabase';
 import DefaultRedirect from './auth/DefaultRedirect';
 import { useState, useEffect } from 'react';
+import ReportExclusionsPage from './reports/exclusions/ReportExclusionsPage';
 
 const App = () => {
   // 1. Logic for the ticking clock
@@ -155,6 +156,15 @@ const App = () => {
                         element={
                           <ProtectedRoute requiredRoles={['admin', 'editor']}>
                             <ReportJobPage />
+                          </ProtectedRoute>
+                        }
+                      />
+
+                      <Route
+                        path="/reports/exclusions"
+                        element={
+                          <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                            <ReportExclusionsPage />
                           </ProtectedRoute>
                         }
                       />
