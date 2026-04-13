@@ -72,6 +72,20 @@ Products on this list are filtered out of the daily sales report automatically. 
 
 ---
 
+## Out of Print sales
+
+A product appears in Out of Print when its title begins with `OP:` — this prefix is the single source of truth for Out of Print classification. Inventory state is ignored entirely: whether the product has positive inventory, zero inventory, negative inventory, or no inventory tracking at all, it will always appear here rather than in any other section.
+
+Two types of OP sales are captured:
+
+**Pre-created products** — titles published in Shopify with the `OP:` prefix and a real product record. These have ISBNs, vendor information, and tracked inventory. They appear in Out of Print regardless of their inventory level at the time of the report.
+
+**Custom line items** — titles created on the fly at the POS or inside a draft order invoice when staff manually type the title during a transaction. These have no Shopify product record, no ISBN, and no inventory tracking. They are identified purely by the `OP:` prefix in whatever title was entered at the time of sale.
+
+Both types appear together in the Out of Print section, sorted alphabetically with leading articles ignored.
+
+---
+
 ## Recent runs
 
 Each report card shows the last three runs. Click any run to see the job detail page: the exact window covered, delivery method, and — for dashboard-delivery runs — the full results with sortable tables, search, and PDF/CSV download.
