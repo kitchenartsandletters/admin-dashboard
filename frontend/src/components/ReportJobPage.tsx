@@ -25,6 +25,7 @@ interface Sections {
   backorders:  ProductRow[];
   out_of_stock: ProductRow[];
   preorders:   ProductRow[];
+  op_sales:    ProductRow[];
 }
 
 interface RowCounts {
@@ -32,6 +33,7 @@ interface RowCounts {
   backorders:  number;
   out_of_stock: number;
   preorders:   number;
+  op_sales:    number;
 }
 
 interface JobResult {
@@ -98,9 +100,10 @@ const SECTION_META: Record<keyof Sections, { label: string; emptyMsg: string }> 
   backorders:  { label: 'Backorders',    emptyMsg: 'No backorders.' },
   out_of_stock:{ label: 'Out of stock',  emptyMsg: 'No out-of-stock products.' },
   preorders:   { label: 'Preorders',     emptyMsg: 'No preorders.' },
+  op_sales:    { label: 'Out of Print',  emptyMsg: 'No out-of-print sales.' },
 };
 
-const SECTION_ORDER: (keyof Sections)[] = ['main', 'backorders', 'out_of_stock', 'preorders'];
+const SECTION_ORDER: (keyof Sections)[] = ['main', 'backorders', 'out_of_stock', 'preorders', 'op_sales'];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -324,6 +327,7 @@ function downloadCSV(sections: Sections, windowStart: string, windowEnd: string,
   writeSection('BACKORDERS', sections.backorders);
   writeSection('OUT OF STOCK', sections.out_of_stock);
   writeSection('PREORDER SALES', sections.preorders);
+  writeSection('OUT OF PRINT', sections.op_sales);
 
   const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
   const url  = URL.createObjectURL(blob);
@@ -393,6 +397,7 @@ function downloadPDF(sections: Sections, windowStart: string, windowEnd: string,
         ['backorders',   'Backorders'],
         ['out_of_stock', 'Out of Stock'],
         ['preorders',    'Preorders'],
+        ['op_sales',     'Out of Print'],
       ];
 
       let cursorY = HEADER_H;
@@ -717,7 +722,7 @@ export default function ReportJobPage() {
           <p className="text-sm font-medium text-green-800 dark:text-green-300">
             Report delivered successfully
           </p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             {Object.entries(result.row_counts ?? {}).map(([key, count]) => (
               <div key={key} className="bg-white dark:bg-gray-900 rounded border border-green-100 dark:border-green-900 p-3 text-center">
                 <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{count}</p>
@@ -741,7 +746,7 @@ export default function ReportJobPage() {
         <div className="space-y-4">
 
           {/* Summary row counts */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             {SECTION_ORDER.map(key => {
               const count = result.row_counts?.[key] ?? 0;
               const isActive = activeSection === key;

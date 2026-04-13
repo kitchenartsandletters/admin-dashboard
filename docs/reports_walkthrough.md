@@ -2,6 +2,8 @@
 
 I've added a Reports section to the admin dashboard. Here's a quick walkthrough of what it does, how the automation works, and what you can control from the dashboard.
 
+This admin area is only open to admin (me) and editors (you). It is not open to users (everyone else).
+
 ---
 
 ## What's in Reports
@@ -10,21 +12,25 @@ You'll see three report cards:
 
 **Daily Sales Report** — our core operational report. Sales grouped by product, organized into four sections: main sales, backorders, out-of-stock, and preorders. Delivered as CSV + PDF by email. This one runs automatically every business day.
 
-**Weekly Maintenance Report** — inventory hygiene checks: products with negative inventory and no unfulfilled orders, products published to the online store but not in any collection, and out-of-stock products with unfulfilled orders. Runs automatically on Mondays.
+**Weekly Maintenance Report** — inventory hygiene checks: products with negative inventory and no unfulfilled orders, products published to the online store but not in any collection, and out-of-stock products with unfulfilled orders. Runs automatically on Fridays.
 
-**LOP Unfulfilled Orders** — all unfulfilled and partially fulfilled shipping orders since the most recent order tagged LOP. This one is on-demand only — no automatic schedule.
+**NOTE:** This is scheduled for deprecation and will be replaced by Weekly Unfulfilled Line Items (Age / Order Date Companion Report) -- on demand availability as well as a weekly automated run.
+
+**LOP Unfulfilled Orders** — all unfulfilled and partially fulfilled shipping orders since the most recent order tagged LOP. This one is on-demand only; no automatic schedule.
+
+**FUTURE FEATURES:** A suite of maintenance reports that will help to dislodge stranded orders, flag and notify of inventory issues, and beyond.
 
 ---
 
 ## What "automated" means
 
-The daily sales report runs every morning at 10:00 AM ET on business days. It arrives in your inbox automatically — you don't need to do anything. The same goes for the weekly maintenance report on Mondays.
+The daily sales report runs every morning at 10:00 AM ET on business days. It arrives in your inbox automatically; you don't need to do anything. The same goes for the weekly maintenance report on Fridays.
 
 The reporting window for the daily report is always:
 - **Start:** 10:00 AM ET on the last open business day
 - **End:** 9:59 AM ET today (the day the report runs)
 
-So a Monday report automatically covers Saturday and Sunday sales too. If we were closed Friday for a holiday, Monday's report covers Friday through Monday morning.
+So a Monday report automatically covers Saturday and Sunday sales too. If we were closed Friday for a holiday, Saturday's report covers Thursday and Friday. If we're closed on a Saturday and Sunday, Monday's report covers Friday through Sunday.
 
 ---
 
@@ -57,7 +63,7 @@ When running on demand you can choose:
 
 **Format** — PDF, CSV, or both. If you choose "View in dashboard," format selection disappears since you're viewing the data directly.
 
-**Delivery** — Email (sent to the configured recipients) or "View in dashboard" (the results open in the browser right away, with sortable tables and download buttons for PDF and CSV).
+**Delivery** — Email (sent to the configured recipients, currently letters@, op@, matt@, gil@) or "View in dashboard" (the results open in the browser right away, with sortable tables and download buttons for PDF and CSV).
 
 **Recipients** — when delivering by email, you can override the default recipient list by typing comma-separated addresses in the recipients field. Leave it blank to use the default list.
 
@@ -83,9 +89,9 @@ There's a cutoff — you can't edit the window within one hour of the scheduled 
 
 ## Report exclusions
 
-Under Reports → Exclusions in the sidebar, you'll find a list of products that are excluded from the daily sales report by default. These are internal products (like gift certificates and subscription items) that we don't want appearing in operational sales data.
+Under Reports → Exclusions in the sidebar, you'll find a list of products that are excluded from the daily sales report by default. These are internal products (like gift certificates and cookbook club items) that we don't want appearing in operational sales data.
 
-When running a report on demand, there's an "Include excluded products" checkbox in the run options panel. Checking it bypasses the exclusions list for that run only — useful if you're auditing sales data and need to see everything.
+When running a report on demand, there's an "Include excluded products" checkbox in the run options panel. Checking it bypasses the exclusions list for that run only; useful if you're auditing sales data and need to see everything.
 
 Admins and editors can add or remove products from the exclusions list at any time. Adding a product requires its Shopify product ID — the system will automatically look up the title from Shopify.
 
@@ -97,4 +103,4 @@ Each report card shows the three most recent runs with their status (success, fa
 
 ---
 
-Let me know if you have questions.
+Have fun exploring and let me know if issues arrive. Ideas and feedback are always welcome.
