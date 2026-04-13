@@ -26,6 +26,7 @@ interface ScheduleOverride {
   end_date:       string;
   label:          string | null;
   scheduled_date: string;
+  used_at:        string | null;
 }
 
 interface Props {
@@ -87,13 +88,30 @@ function getNextScheduledDate(report: ReportDefinition): Date | null {
   return null;
 }
 
-function getDefaultWindow(scheduledDate: Date): { start: string; end: string } {
-  const dStr  = toISO(scheduledDate);
+interface ReportWindow {
+  start:        string;  // YYYY-MM-DD (date boundary for date pickers)
+  end:          string;  // YYYY-MM-DD
+  displayStart: string;  // human-readable with time
+  displayEnd:   string;
+}
+
+function getDefaultWindow(scheduledDate: Date): ReportWindow {
+  const dStr     = toISO(scheduledDate);
+  const startISO = findLastOpen(dStr);
+  // end date boundary is yesterday (for date pickers)
   const yesterday = new Date(scheduledDate);
   yesterday.setDate(scheduledDate.getDate() - 1);
+  const endISO = toISO(yesterday);
+
+  // Display: window runs 10:00 AM ET on start date → 9:59 AM ET on run date
+  const fmtWithTime = (iso: string, time: string) =>
+    `${parseLocal(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${time} ET`;
+
   return {
-    start: findLastOpen(dStr),
-    end:   toISO(yesterday),
+    start:        startISO,
+    end:          endISO,
+    displayStart: fmtWithTime(startISO, '10:00 AM'),
+    displayEnd:   fmtWithTime(dStr, '9:59 AM'),  // run date, not yesterday
   };
 }
 
@@ -312,7 +330,7 @@ export default function ReportCard({ report, onRun }: Props) {
   }
 
   const activeOverrideWindow = existingOverride
-    ? { start: existingOverride.start_date, end: existingOverride.end_date }
+    ? { start: existingOverride.start_date, end: existingOverride.end_date, displayStart: null, displayEnd: null }
     : defaultWindow;
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -344,11 +362,11 @@ export default function ReportCard({ report, onRun }: Props) {
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 {existingOverride ? (
                   <span className="text-amber-600 dark:text-amber-400 font-medium">
-                    ✎ Overridden: {fmtDate(existingOverride.start_date)} → {fmtDate(existingOverride.end_date)}
+                    ✎ Overridden: {fmtDate(existingOverride.start_date)} 10:00 AM ET → {fmtDate(existingOverride.end_date)} 9:59 AM ET
                     {existingOverride.label && ` · ${existingOverride.label}`}
                   </span>
                 ) : activeOverrideWindow ? (
-                  <>Window: {fmtDate(activeOverrideWindow.start)} → {fmtDate(activeOverrideWindow.end)}</>
+                  <>Window: {(activeOverrideWindow as any).displayStart ?? fmtDate(activeOverrideWindow.start)} → {(activeOverrideWindow as any).displayEnd ?? fmtDate(activeOverrideWindow.end)}</>
                 ) : null}
               </p>
             </div>
