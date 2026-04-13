@@ -93,10 +93,45 @@ function findLastOpen(dStr: DateString, holidays: Set<DateString>, specials: Set
   return toISO(d);
 }
 
-function getReportingWindow(dStr: DateString, holidays: Set<DateString>, specials: Set<DateString>) {
-  const d = parseLocal(dStr);
-  const yesterday = new Date(d); yesterday.setDate(d.getDate() - 1);
-  return { start: findLastOpen(dStr, holidays, specials), end: toISO(yesterday) };
+interface ReportWindowInfo {
+  runDate:      DateString;   // date the report runs (next business day)
+  windowStart:  DateString;   // start of coverage window (date only)
+  windowEnd:    DateString;   // end of coverage window = run date (date only)
+  displayStart: string;       // "Apr 13, 2026 10:00 AM ET"
+  displayEnd:   string;       // "Apr 14, 2026 9:59 AM ET"
+}
+
+function fmtWithTime(dStr: DateString, time: string): string {
+  return `${fmtDisplay(dStr)} ${time} ET`;
+}
+
+function findNextRunDate(fromDStr: DateString, holidays: Set<DateString>, specials: Set<DateString>): DateString {
+  // Walk forward from the day AFTER fromDStr to find the next business day
+  const d = parseLocal(fromDStr);
+  d.setDate(d.getDate() + 1);
+  while (!isBusinessDay(toISO(d), holidays, specials)) d.setDate(d.getDate() + 1);
+  return toISO(d);
+}
+
+function getReportWindowInfo(
+  clickedDStr: DateString,
+  holidays: Set<DateString>,
+  specials: Set<DateString>
+): ReportWindowInfo {
+  // If the clicked day is open, the next report runs the FOLLOWING business day
+  // If the clicked day is closed, same — next business day after it
+  const runDate     = findNextRunDate(clickedDStr, holidays, specials);
+  const windowStart = findLastOpen(runDate, holidays, specials);
+  // Window end = run date (report captures up to 9:59 AM ET on run date)
+  const windowEnd   = runDate;
+
+  return {
+    runDate,
+    windowStart,
+    windowEnd,
+    displayStart: fmtWithTime(windowStart, '10:00 AM'),
+    displayEnd:   fmtWithTime(windowEnd,   '9:59 AM'),
+  };
 }
 
 function dayKind(
@@ -210,10 +245,7 @@ function EditPanel({
     )
   ) ?? null;
 
-  const { start, end } = getReportingWindow(
-    (() => { const next = new Date(d); next.setDate(d.getDate() + 1); return toISO(next); })(),
-    holidays, specials
-  );
+  const windowInfo = getReportWindowInfo(dStr, holidays, specials);
 
   const kindBadge: Record<DayKind, string> = {
     'open':         'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300',
@@ -275,16 +307,29 @@ function EditPanel({
       </div>
 
       {/* Reporting window preview */}
-      <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-        <p className="text-gray-400 dark:text-gray-500">
-          {isBusinessDay(dStr, holidays, specials)
-            ? 'If today were this date, the next report would cover:'
-            : 'Store closed — next report after this day would cover:'}
-        </p>
-        <span className="inline-block px-3 py-1 rounded border border-gray-200 dark:border-gray-600
-          bg-white dark:bg-gray-900 text-xs text-gray-800 dark:text-gray-200 font-medium">
-          {start === end ? fmtDisplay(start) : `${fmtDisplay(start)} → ${fmtDisplay(end)}`}
-        </span>
+      <div className="text-xs space-y-2">
+        <div className="space-y-0.5">
+          <p className="text-gray-400 dark:text-gray-500">
+            {isBusinessDay(dStr, holidays, specials)
+              ? 'Next scheduled report:'
+              : 'Store closed — next scheduled report:'}
+          </p>
+          <span className="inline-block px-3 py-1 rounded border border-gray-200 dark:border-gray-600
+            bg-white dark:bg-gray-900 text-xs text-gray-800 dark:text-gray-200 font-medium">
+            {parseLocal(windowInfo.runDate).toLocaleDateString('en-US', {
+              weekday: 'long', month: 'short', day: 'numeric', year: 'numeric'
+            })}, 10:00 AM ET
+          </span>
+        </div>
+        <div className="space-y-0.5">
+          <p className="text-gray-400 dark:text-gray-500">Report will cover:</p>
+          <span className="inline-block px-3 py-1 rounded border border-gray-200 dark:border-gray-600
+            bg-white dark:bg-gray-900 text-xs text-gray-800 dark:text-gray-200 font-medium">
+            {windowInfo.windowStart === windowInfo.windowEnd
+              ? `${windowInfo.displayStart} → ${windowInfo.displayEnd}`
+              : `${windowInfo.displayStart} → ${windowInfo.displayEnd}`}
+          </span>
+        </div>
       </div>
 
       {/* Admin edit controls */}
