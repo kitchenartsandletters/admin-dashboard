@@ -72,9 +72,10 @@ export default function RightSidebar({ title, onClose, row, renderRowContent, do
         <div className="flex items-center justify-between p-3 border-b dark:border-gray-700">
           <h3 className="font-semibold text-lg">
             {docsFilePath
-              ? docsFilePath.includes('blacklist') ? 'Blacklist Manager Guide'
-              : 'Help Docs'
-              : 'Damaged Details'}
+            ? docsFilePath.includes('blacklist') ? 'Blacklist Manager Guide'
+            : docsFilePath.includes('reports')   ? 'Reports Help'
+            : 'Help Docs'
+            : 'Damaged Details'}
           </h3>
           <button
             onClick={() => {

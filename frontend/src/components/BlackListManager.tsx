@@ -94,7 +94,7 @@ const BlacklistManager = () => {
   const [removing, setRemoving] = useState<string | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<BlacklistEntry | null>(null);
   const [docsFilePath, setDocsFilePath] = useState<string | null>(null);
-  const removeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const removeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
   const fetchBlacklist = async () => {
@@ -234,7 +234,7 @@ const BlacklistManager = () => {
           className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
           onClick={() => setDocsFilePath("/docs/blacklist-manager.md")}
         >
-          View Documentation
+          View Help Guide
         </button>
       </div>
 
