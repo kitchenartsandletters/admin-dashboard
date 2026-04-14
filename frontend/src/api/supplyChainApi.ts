@@ -12,25 +12,25 @@ import type {
   SupplierContactCreate,
   SupplierProduct,
   SupplierDetail,
-} from '../src/supply-chain/suppliers/supplierTypes'
+} from '../supply-chain/suppliers/supplierTypes'
 
 import type {
   PurchaseOrder,
   PurchaseOrderDetail,
   POLineCreate,
-} from '../src/supply-chain/purchase-orders/purchaseOrderTypes'
+} from '../supply-chain/purchase-orders/purchaseOrderTypes'
 
 import type {
   ReceiveRequest,
   ReceiveResult,
   Receipt,
-} from '../src/supply-chain/receiving/receivingTypes'
+} from '../supply-chain/receiving/receivingTypes'
 
 import type {
   InventoryTransfer,
   TransferDetail,
   TransferResult,
-} from '../src/supply-chain/transfers/transferTypes'
+} from '../supply-chain/transfers/transferTypes'
 
 // ---------------------------------------------------------------------------
 // Config

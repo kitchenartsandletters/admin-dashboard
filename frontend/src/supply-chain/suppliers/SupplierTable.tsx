@@ -1,7 +1,7 @@
 // SupplierTable.tsx
 import React from 'react'
 import { SupplierParty, SUPPLIER_ROLE_LABELS, SupplierRole } from './supplierTypes'
-import { SortConfig, SortIcon, nextSortDirection } from '../../../utils/tableUtils'
+import { SortConfig, SortIcon, nextSortDirection } from '../../utils/tableUtils'
 
 interface Props {
   suppliers: SupplierParty[]

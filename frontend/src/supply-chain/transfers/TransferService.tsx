@@ -1,8 +1,8 @@
 // TransferService.tsx
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { InventoryTransfer, TransferDetail, TRANSFER_STATUS_LABELS, TRANSFER_STATUS_COLORS, TransferStatus } from './transferTypes'
-import { fetchTransfers, fetchTransferDetail } from '../../../api/supplyChainApi'
-import { formatDate, SortConfig, SortIcon, nextSortDirection } from '../../../utils/tableUtils'
+import { fetchTransfers, fetchTransferDetail } from '../../api/supplyChainApi'
+import { formatDate, SortConfig, SortIcon, nextSortDirection } from '../../utils/tableUtils'
 
 // ---------------------------------------------------------------------------
 // Transfer detail sidebar (inline — same pattern as other sidebars)

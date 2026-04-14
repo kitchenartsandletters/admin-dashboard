@@ -1,7 +1,7 @@
 // POTable.tsx
 import React from 'react'
 import { PurchaseOrder, PO_STATUS_LABELS, PO_STATUS_COLORS } from './purchaseOrderTypes'
-import { formatDate, SortConfig, SortIcon, nextSortDirection } from '../../../utils/tableUtils'
+import { formatDate, SortConfig, SortIcon, nextSortDirection } from '../../utils/tableUtils'
 
 interface Props {
   orders: PurchaseOrder[]

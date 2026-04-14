@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { PurchaseOrderDetail, PO_STATUS_LABELS, PO_STATUS_COLORS, PO_LINE_STATUS_COLORS } from './purchaseOrderTypes'
 import { formatDate } from '../../utils/tableUtils'
-import { submitPurchaseOrder, confirmPurchaseOrder, cancelPurchaseOrder } from '../../../api/supplyChainApi'
+import { submitPurchaseOrder, confirmPurchaseOrder, cancelPurchaseOrder } from '../../api/supplyChainApi'
 
 interface Props {
   detail: PurchaseOrderDetail | null

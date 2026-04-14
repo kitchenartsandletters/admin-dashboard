@@ -5,8 +5,8 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import SupplierTable from './SupplierTable'
 import SupplierDetailSidebar from './SupplierDetailSidebar'
 import { SupplierParty, SupplierDetail, SupplierRole, SUPPLIER_ROLE_LABELS } from './supplierTypes'
-import { fetchSuppliers, fetchSupplierDetail } from '../../../api/supplyChainApi'
-import { SortConfig, sortTitle, nextSortDirection } from '../../../utils/tableUtils'
+import { fetchSuppliers, fetchSupplierDetail } from '../../api/supplyChainApi'
+import { SortConfig, sortTitle, nextSortDirection } from '../../utils/tableUtils'
 
 type RoleFilter = SupplierRole | 'all' | 'draft'
 

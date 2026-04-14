@@ -6,8 +6,8 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { WizardLine, ReceiveResult } from './receivingTypes'
 import { PurchaseOrderDetail } from '../purchase-orders/purchaseOrderTypes'
-import { fetchPurchaseOrderDetail, receiveOrder } from '../../../api/supplyChainApi'
-import { formatDate } from '../../../utils/tableUtils'
+import { fetchPurchaseOrderDetail, receiveOrder } from '../../api/supplyChainApi'
+import { formatDate } from '../../utils/tableUtils'
 
 type Phase = 'idle' | 'review' | 'confirming' | 'result'
 
