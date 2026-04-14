@@ -64,7 +64,7 @@ function currentWeekLabel(): string {
           label="This Week's Releases"
           value={metrics.releases_this_week}
           sub={metrics.releases_this_week > 0
-            ? `pub dates ${currentWeekLabel}`
+            ? `pub dates ${currentWeekLabel()}`
             : "no releases this week"
           }
         />
