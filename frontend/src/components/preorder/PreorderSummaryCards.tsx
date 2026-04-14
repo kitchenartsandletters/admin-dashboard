@@ -44,12 +44,30 @@ const PreorderSummaryCards: React.FC<{
     )
   }
 
+function currentWeekLabel(): string {
+  const today = new Date()
+  const dow = today.getDay()
+  const sunday = new Date(today)
+  sunday.setDate(today.getDate() - dow)
+  const saturday = new Date(sunday)
+  saturday.setDate(sunday.getDate() + 6)
+  const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  return `${fmt(sunday)} – ${fmt(saturday)}`
+}
+
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <MetricCard label="Active Preorders" value={metrics.active_preorders} />
         <MetricCard label="Early Stock" value={metrics.early_arrivals} />
-        <MetricCard label="Releasing This Week" value={metrics.releases_this_week} />
+        <MetricCard
+          label="This Week's Releases"
+          value={metrics.releases_this_week}
+          sub={metrics.releases_this_week > 0
+            ? `pub dates ${currentWeekLabel}`
+            : "no releases this week"
+          }
+        />
         <MetricCard
           label="Live Presales"
           value={metrics.total_live_presold_units}
