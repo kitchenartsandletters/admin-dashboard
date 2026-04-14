@@ -22,6 +22,17 @@ const navItems = [
   },
   { label: 'Preorders', path: '/preorders', roles: ['admin', 'editor'] },
   { label: 'Campaigns', path: '/campaigns', roles: ['admin', 'editor'] },
+  {
+    label: 'Supply Chain',
+    path: '/suppliers',
+    roles: ['admin'],
+    children: [
+      { label: 'Suppliers',       path: '/suppliers',       roles: ['admin'] },
+      { label: 'Purchase Orders', path: '/purchase-orders', roles: ['admin'] },
+      { label: 'Receiving',       path: '/receiving',       roles: ['admin'] },
+      { label: 'Transfers',       path: '/transfers',       roles: ['admin'] },
+    ],
+  },
   { label: 'System Status', path: '/status', roles: ['admin'] },
   {
     label: 'Reports',

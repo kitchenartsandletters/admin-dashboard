@@ -15,6 +15,10 @@ import PreorderService from './services/preorder/PreorderService';
 import CampaignDashboard from './services/campaigns/CampaignService';
 import BusinessCalendarPage from './components/BusinessCalendarPage';
 import ReportJobPage from './components/ReportJobPage';
+import SupplierService from './supply-chain/suppliers/SupplierService'
+import POService from './supply-chain/purchase-orders/POService'
+import ReceivingWizard from './supply-chain/receiving/ReceivingWizard'
+import TransferService from './supply-chain/transfers/TransferService'
 import { supabase } from './lib/supabase';
 import DefaultRedirect from './auth/DefaultRedirect';
 import { useState, useEffect } from 'react';
@@ -180,11 +184,44 @@ const App = () => {
                       <Route
                         path="/campaigns"
                         element={
-                          <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <ProtectedRoute requiredRoles={['admin']}>
                             <CampaignDashboard />
                           </ProtectedRoute>
                         }
                       />
+
+                      <Route
+                         path="/suppliers"
+                         element={
+                           <ProtectedRoute requiredRoles={['admin']}>
+                             <SupplierService />
+                           </ProtectedRoute>
+                         }
+                       />
+                       <Route
+                         path="/purchase-orders"
+                         element={
+                           <ProtectedRoute requiredRoles={['admin']}>
+                             <POService />
+                           </ProtectedRoute>
+                         }
+                       />
+                       <Route
+                         path="/receiving"
+                         element={
+                           <ProtectedRoute requiredRoles={['admin']}>
+                             <ReceivingWizard />
+                           </ProtectedRoute>
+                         }
+                       />
+                       <Route
+                         path="/transfers"
+                         element={
+                           <ProtectedRoute requiredRoles={['admin']}>
+                             <TransferService />
+                           </ProtectedRoute>
+                         }
+                       />
 
                       <Route
                         path="/status"
