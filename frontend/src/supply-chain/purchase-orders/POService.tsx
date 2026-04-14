@@ -5,7 +5,7 @@ import POTable from './POTable'
 import PODetailSidebar from './PODetailSidebar'
 import { PurchaseOrder, PurchaseOrderDetail, POStatus } from './purchaseOrderTypes'
 import { fetchPurchaseOrders, fetchPurchaseOrderDetail } from '../../../api/supplyChainApi'
-import { SortConfig, nextSortDirection } from '../../../utils/tableUtils'
+import { SortConfig, nextSortDirection } from '../../utils/tableUtils'
 
 const STATUS_FILTERS: { key: POStatus | 'all' | 'open'; label: string }[] = [
   { key: 'all',       label: 'All' },
