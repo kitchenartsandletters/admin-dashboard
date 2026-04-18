@@ -1,9 +1,10 @@
 // SupplierService.tsx
 // Supplier index page. Follows the PreorderService shell pattern:
-// filter bar → table → right-side detail sidebar.
+// filter bar → table → right-side detail sidebar + form modal.
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import SupplierTable from './SupplierTable'
 import SupplierDetailSidebar from './SupplierDetailSidebar'
+import SupplierForm from './SupplierForm'
 import { SupplierParty, SupplierDetail, SupplierRole, SUPPLIER_ROLE_LABELS } from './supplierTypes'
 import { fetchSuppliers, fetchSupplierDetail } from '../../api/supplyChainApi'
 import { SortConfig, sortTitle, nextSortDirection } from '../../utils/tableUtils'
@@ -42,18 +43,10 @@ function TableSkeleton() {
                 <div className="h-3 w-40 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-1.5" />
                 <div className="h-2 w-24 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
               </td>
-              <td className="px-4 py-3">
-                <div className="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse" />
-              </td>
-              <td className="px-4 py-3">
-                <div className="h-3 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-              </td>
-              <td className="px-4 py-3">
-                <div className="h-3 w-10 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-              </td>
-              <td className="px-4 py-3">
-                <div className="h-4 w-12 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse" />
-              </td>
+              <td className="px-4 py-3"><div className="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse" /></td>
+              <td className="px-4 py-3"><div className="h-3 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" /></td>
+              <td className="px-4 py-3"><div className="h-3 w-10 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" /></td>
+              <td className="px-4 py-3"><div className="h-4 w-12 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse" /></td>
             </tr>
           ))}
         </tbody>
@@ -70,15 +63,14 @@ export default function SupplierService() {
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
   const [sortConfig, setSortConfig] = useState<SortConfig<SupplierParty> | null>({
-    key: 'name',
-    direction: 'asc',
+    key: 'name', direction: 'asc',
   })
 
   const [selectedParty, setSelectedParty] = useState<SupplierParty | null>(null)
   const [detail, setDetail] = useState<SupplierDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [formMode, setFormMode] = useState<'create' | 'edit' | null>(null)
 
-  // Load all suppliers (active + inactive to support draft review workflow)
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -94,12 +86,8 @@ export default function SupplierService() {
 
   useEffect(() => { load() }, [load])
 
-  // Load detail when a row is selected
   useEffect(() => {
-    if (!selectedParty) {
-      setDetail(null)
-      return
-    }
+    if (!selectedParty) { setDetail(null); return }
     setDetailLoading(true)
     fetchSupplierDetail(selectedParty.id)
       .then(setDetail)
@@ -107,16 +95,13 @@ export default function SupplierService() {
       .finally(() => setDetailLoading(false))
   }, [selectedParty])
 
-  // Filter + sort
   const filtered = useMemo(() => {
     let list = allSuppliers
-
     if (roleFilter === 'draft') {
       list = list.filter(p => !p.is_active)
     } else if (roleFilter !== 'all') {
       list = list.filter(p => p.roles.includes(roleFilter as SupplierRole))
     }
-
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter(p =>
@@ -125,40 +110,43 @@ export default function SupplierService() {
         p.roles.some(r => SUPPLIER_ROLE_LABELS[r].toLowerCase().includes(q))
       )
     }
-
     if (sortConfig) {
       list = [...list].sort((a, b) => {
         const ak = sortConfig.key
         let av = a[ak] as unknown
         let bv = b[ak] as unknown
-        if (ak === 'name') {
-          av = sortTitle(a.name)
-          bv = sortTitle(b.name)
-        }
+        if (ak === 'name') { av = sortTitle(a.name); bv = sortTitle(b.name) }
         if (av == null) return 1
         if (bv == null) return -1
         const cmp = av < bv ? -1 : av > bv ? 1 : 0
         return sortConfig.direction === 'asc' ? cmp : -cmp
       })
     }
-
     return list
   }, [allSuppliers, roleFilter, search, sortConfig])
 
   const handleSort = (key: keyof SupplierParty) => {
-    setSortConfig(prev => ({
-      key,
-      direction: nextSortDirection(prev, key),
-    }))
+    setSortConfig(prev => ({ key, direction: nextSortDirection(prev, key) }))
   }
 
-  // Summary counts
+  const handleFormSaved = async (partyId: string) => {
+    await load()
+    try {
+      const refreshed = await fetchSupplierDetail(partyId)
+      setDetail(refreshed)
+      setSelectedParty(refreshed.party)
+    } catch {
+      // detail refresh is best-effort
+    }
+    setFormMode(null)
+  }
+
   const activeCount = allSuppliers.filter(p => p.is_active).length
   const draftCount  = allSuppliers.filter(p => !p.is_active).length
 
   return (
     <div className="space-y-4">
-      {/* Page header */}
+      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Suppliers</h1>
@@ -166,9 +154,14 @@ export default function SupplierService() {
             {loading ? 'Loading…' : `${activeCount} active · ${draftCount} drafts`}
           </p>
         </div>
+        <button
+          onClick={() => { setSelectedParty(null); setFormMode('create') }}
+          className="px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors active:scale-[0.98]"
+        >
+          + New supplier
+        </button>
       </div>
 
-      {/* Error */}
       {error && (
         <div className="px-4 py-3 rounded-md bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">
           {error}
@@ -201,17 +194,13 @@ export default function SupplierService() {
         </div>
       </div>
 
-      {/* Result count */}
       {!loading && (
         <p className="text-xs text-gray-400 dark:text-gray-600">
           {filtered.length} supplier{filtered.length !== 1 ? 's' : ''}
         </p>
       )}
 
-      {/* Table */}
-      {loading ? (
-        <TableSkeleton />
-      ) : (
+      {loading ? <TableSkeleton /> : (
         <SupplierTable
           suppliers={filtered}
           sortConfig={sortConfig}
@@ -221,15 +210,30 @@ export default function SupplierService() {
         />
       )}
 
-      {/* Detail sidebar */}
       <SupplierDetailSidebar
         detail={detailLoading ? null : detail}
         onClose={() => setSelectedParty(null)}
-        onEdit={() => {
-          // Phase 2: open SupplierForm for editing
-          console.log('Edit supplier:', selectedParty?.id)
-        }}
+        onEdit={() => setFormMode('edit')}
       />
+
+      {formMode === 'create' && (
+        <SupplierForm
+          mode="create"
+          onClose={() => setFormMode(null)}
+          onSaved={handleFormSaved}
+        />
+      )}
+
+      {formMode === 'edit' && detail && (
+        <SupplierForm
+          mode="edit"
+          party={detail.party}
+          primaryAccount={detail.accounts.find(a => a.is_primary) ?? detail.accounts[0]}
+          primaryContact={detail.contacts.find(c => c.is_primary) ?? detail.contacts[0]}
+          onClose={() => setFormMode(null)}
+          onSaved={handleFormSaved}
+        />
+      )}
     </div>
   )
 }
