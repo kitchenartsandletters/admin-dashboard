@@ -428,3 +428,35 @@ export async function fetchInventoryEvents(opts: {
 export async function fetchFlaggedSnapshots(): Promise<unknown[]> {
   return sc('/api/reconciliation/snapshots?flagged_only=true')
 }
+
+// ===========================================================================
+// SUPPLIER SYNC
+// ===========================================================================
+
+export interface SupplierSyncResult {
+  run_at: string
+  shopify_product_count: number
+  new_parties_created: number
+  new_products_created: number
+  stale_products_deactivated: number
+  unrecognized_vendors: string[]
+  unrecognized_count: number
+  duration_seconds: number
+  error_message: string | null
+}
+
+export async function triggerSupplierSync(): Promise<SupplierSyncResult> {
+  return sc('/api/suppliers/sync', { method: 'POST' })
+}
+
+export async function fetchSupplierSyncLog(limit = 10): Promise<SupplierSyncResult[]> {
+  return sc(`/api/suppliers/sync/log?limit=${limit}`)
+}
+
+export async function fetchUnrecognizedVendors(): Promise<{
+  run_at: string | null
+  unrecognized_vendors: string[]
+  unrecognized_count: number
+}> {
+  return sc('/api/suppliers/sync/unrecognized')
+}
