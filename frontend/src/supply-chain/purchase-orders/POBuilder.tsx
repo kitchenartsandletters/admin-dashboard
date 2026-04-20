@@ -111,7 +111,7 @@ function SupplierAccountPicker({
 
   useEffect(() => {
     if (search.length < 2) { setResults([]); return }
-    fetchSuppliers({ search, activeOnly: true })
+    fetchSuppliers({ search, activeOnly: false })
       .then(r => setResults(r.slice(0, 8)))
       .catch(() => {})
   }, [search])
