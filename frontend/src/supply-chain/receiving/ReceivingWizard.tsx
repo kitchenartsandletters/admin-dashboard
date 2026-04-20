@@ -13,7 +13,7 @@ type Phase = 'idle' | 'review' | 'confirming' | 'result'
 
 // Default main store location — staff can override if receiving at satellite
 // In a future phase this will be a proper dropdown populated from Shopify locations API
-const DEFAULT_LOCATION_ID = 'gid://shopify/Location/1'
+const DEFAULT_LOCATION_ID = 'gid://shopify/Location/40052293765'
 
 function LineRow({
   line,

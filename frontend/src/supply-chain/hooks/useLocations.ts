@@ -11,7 +11,7 @@
 // GID as a fallback so the UI never shows undefined.
 
 import { useEffect, useState, useCallback } from 'react'
-import { fetchLocations, syncLocations, Location } from '../api/supplyChainApi'
+import { fetchLocations, syncLocations, Location } from '../../api/supplyChainApi'
 
 // Module-level cache — survives component unmounts
 let _cache: Location[] | null = null

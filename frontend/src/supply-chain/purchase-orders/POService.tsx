@@ -3,6 +3,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import POTable from './POTable'
 import PODetailSidebar from './PODetailSidebar'
+import POBuilder from './POBuilder'
 import { PurchaseOrder, PurchaseOrderDetail, POStatus } from './purchaseOrderTypes'
 import { fetchPurchaseOrders, fetchPurchaseOrderDetail } from '../../api/supplyChainApi'
 import { SortConfig, nextSortDirection } from '../../utils/tableUtils'
@@ -60,6 +61,8 @@ export default function POService() {
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null)
   const [detail, setDetail] = useState<PurchaseOrderDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+
+  const [showBuilder, setShowBuilder] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -126,6 +129,12 @@ export default function POService() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Purchase Orders</h1>
+          <button
+            onClick={() => setShowBuilder(true)}
+            className="px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
+          >
+            + New PO
+          </button>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
             {loading ? 'Loading…' : `${orders.length} total orders`}
           </p>
@@ -186,6 +195,18 @@ export default function POService() {
         onReceive={poId => navigate(`/receiving?po=${poId}`)}
         onRefresh={load}
       />
+
+      {showBuilder && (
+        <POBuilder
+          onClose={() => setShowBuilder(false)}
+          onCreated={async (poId) => {
+            setShowBuilder(false)
+            await load()
+            const detail = await fetchPurchaseOrderDetail(poId)
+            setSelectedOrder(detail.order)
+          }}
+        />
+      )}
     </div>
   )
 }

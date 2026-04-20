@@ -491,3 +491,42 @@ export async function fetchLocations(): Promise<Location[]> {
 export async function syncLocations(): Promise<LocationSyncResult> {
   return sc('/api/locations/sync', { method: 'POST' })
 }
+
+// ===========================================================================
+// ADDITIONS FOR POBuilder — append to supplyChainApi.ts
+// ===========================================================================
+
+// Variant search — used by POBuilder line item search
+export interface VariantSearchResult {
+  inventory_item_id: string
+  variant_id: string
+  title: string
+  isbn: string
+  vendor: string
+}
+
+export async function searchVariants(query: string): Promise<VariantSearchResult[]> {
+  return sc(`/api/suppliers/products/search${qs({ q: query, limit: 15 })}`)
+}
+
+// Create a PO line
+export async function createPOLine(
+  poId: string,
+  body: {
+    inventory_item_id: string
+    variant_id: string
+    quantity_ordered: number
+    unit_cost?: number
+    notes?: string
+  }
+): Promise<unknown> {
+  return sc(`/api/purchase-orders/${poId}/lines`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+// Submit a draft PO
+export async function submitPO(poId: string): Promise<unknown> {
+  return sc(`/api/purchase-orders/${poId}/submit`, { method: 'POST' })
+}
