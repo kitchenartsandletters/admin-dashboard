@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { fetchSystemStatuses, ServiceStatus, EndpointStatus } from '../components/SystemStatusService';
+import LocationsPanel from '../supply-chain/locations/LocationsPanel';
 
 const statusColor = (status: string) => {
   switch (status) {

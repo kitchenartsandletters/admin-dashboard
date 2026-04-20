@@ -460,3 +460,34 @@ export async function fetchUnrecognizedVendors(): Promise<{
 }> {
   return sc('/api/suppliers/sync/unrecognized')
 }
+
+// ===========================================================================
+// LOCATIONS
+// ===========================================================================
+
+export interface Location {
+  id: string             // Shopify GID: gid://shopify/Location/...
+  name: string           // "Kitchen Arts & Letters", "FiDi Satellite"
+  address: string | null
+  is_active: boolean
+  is_fulfillment: boolean
+  is_seasonal: boolean
+  active_from: string | null
+  active_until: string | null
+  shopify_synced_at: string | null
+}
+
+export interface LocationSyncResult {
+  synced: number
+  created: number
+  updated: number
+  deactivated: number
+}
+
+export async function fetchLocations(): Promise<Location[]> {
+  return sc('/api/locations')
+}
+
+export async function syncLocations(): Promise<LocationSyncResult> {
+  return sc('/api/locations/sync', { method: 'POST' })
+}
