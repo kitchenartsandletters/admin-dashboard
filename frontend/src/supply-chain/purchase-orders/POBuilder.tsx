@@ -25,9 +25,9 @@ import {
   createPurchaseOrder,
   createPOLine,
   searchVariants,
-} from '../api/supplyChainApi'
-import { SupplierParty, SupplierAccount } from './suppliers/supplierTypes'
-import { AdHocSource } from './purchase-orders/purchaseOrderTypes'
+} from '../../api/supplyChainApi'
+import { SupplierParty, SupplierAccount } from '../suppliers/supplierTypes'
+import { AdHocSource } from './purchaseOrderTypes'
 
 // ---------------------------------------------------------------------------
 // Types
