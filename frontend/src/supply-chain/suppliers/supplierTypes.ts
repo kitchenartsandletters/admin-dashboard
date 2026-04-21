@@ -71,6 +71,7 @@ export interface SupplierParty {
   is_returnable: boolean | null
   discount_pct: number | null
   is_active: boolean
+  shopify_vendor_codes: string[] | null
   created_at: string
   updated_at: string
 }
