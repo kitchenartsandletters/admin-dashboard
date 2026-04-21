@@ -1,14 +1,5 @@
 // SupplierDetailSidebar.tsx
-// Right sidebar for supplier detail view.
-// Shows party identity, accounts, contacts, imprints/children.
-//
-// New in this version:
-//   - "New PO" button in header — opens POBuilder pre-loaded with this supplier
-//   - "Link imprint" action in the Imprints section — assigns parent_id on a child party
-//   - Relationship type badge on each child (IMPRINT vs DISTRIBUTION CLIENT)
-//   - Vendor codes chip display on the identity section
-
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   SupplierDetail, SupplierParty,
   SUPPLIER_ROLE_LABELS, ORDERING_METHOD_LABELS, CONTACT_ROLE_LABELS,
@@ -17,14 +8,17 @@ import { fetchSuppliers, updateSupplier } from '../../api/supplyChainApi'
 
 interface Props {
   detail: SupplierDetail | null
+  canGoBack: boolean
+  onBack: () => void
   onClose: () => void
   onEdit: () => void
-  onNewPO: () => void           // opens POBuilder pre-loaded with this supplier
-  onChildClick?: (party: SupplierParty) => void  // navigate to child in the table
+  onNewPO: () => void
+  onChildClick?: (party: SupplierParty) => void
+  onImprintLinked?: () => void
 }
 
 // ---------------------------------------------------------------------------
-// Shared primitives
+// Primitives
 // ---------------------------------------------------------------------------
 
 const DetailItem = ({
@@ -58,7 +52,6 @@ const SectionHeader = ({
   )
 }
 
-// Extracts relationship type from the notes field prefix set by imprint_seeder
 function getRelationshipType(notes: string | null | undefined): 'imprint' | 'distribution_client' | null {
   if (!notes) return null
   if (notes.startsWith('[IMPRINT]')) return 'imprint'
@@ -82,7 +75,7 @@ function RelTypeBadge({ notes }: { notes: string | null | undefined }) {
 }
 
 // ---------------------------------------------------------------------------
-// Link imprint inline widget
+// Link imprint widget
 // ---------------------------------------------------------------------------
 
 function LinkImprintWidget({
@@ -102,7 +95,11 @@ function LinkImprintWidget({
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+        setQuery('')
+        setResults([])
+      }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -187,66 +184,90 @@ function LinkImprintWidget({
 // ---------------------------------------------------------------------------
 
 const SupplierDetailSidebar: React.FC<Props> = ({
-  detail, onClose, onEdit, onNewPO, onChildClick,
+  detail, canGoBack, onBack, onClose, onEdit, onNewPO, onChildClick, onImprintLinked,
 }) => {
+  // The sidebar stays mounted as long as detail is non-null.
+  // Slide-in/out is controlled by isVisible.
+  // When detail changes (child navigation), content updates in place — no unmount.
   const [isVisible, setIsVisible] = useState(false)
   const [shouldRender, setShouldRender] = useState(false)
-  const [refreshKey, setRefreshKey] = useState(0)
   const contentRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (detail) {
       setShouldRender(true)
-      setTimeout(() => {
-        setIsVisible(true)
-        contentRef.current?.scrollTo(0, 0)
-      }, 10)
+      // Small delay to allow shouldRender to paint before animating in
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setIsVisible(true))
+      })
+      // Scroll to top when navigating to a new party
+      contentRef.current?.scrollTo(0, 0)
     } else {
       setIsVisible(false)
       const t = setTimeout(() => setShouldRender(false), 300)
       return () => clearTimeout(t)
     }
-  }, [detail])
+  }, [detail?.party.id])  // only animate on party change, not on every detail refresh
+
+  // Scroll to top when navigating (separate effect so animation above doesn't re-trigger)
+  useEffect(() => {
+    if (detail) {
+      contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [detail?.party.id])
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isVisible) handleClose()
+      if (e.key === 'Escape' && isVisible) onClose()
+      if (e.key === 'ArrowLeft' && isVisible && canGoBack) onBack()
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [isVisible])
-
-  const handleClose = () => {
-    setIsVisible(false)
-    setTimeout(onClose, 300)
-  }
+  }, [isVisible, canGoBack, onClose, onBack])
 
   if (!shouldRender || !detail) return null
 
   const { party, accounts, contacts, products, children } = detail
-  const primaryAccount = accounts.find(a => a.is_primary) ?? accounts[0]
+  const primaryAccount = accounts.find(a => a.is_primary && a.is_active)
+    ?? accounts.find(a => a.is_primary)
+    ?? accounts[0]
   const primaryContact = contacts.find(c => c.is_primary) ?? contacts[0]
   const existingChildIds = new Set(children.map(c => c.id))
 
-  // Determine if this party can create POs (has an active primary account)
   const canCreatePO = !!primaryAccount && primaryAccount.is_active && party.is_active
 
   return (
     <>
+      {/* Backdrop — fixed inset-0, no gap */}
       <div
         className={`fixed inset-0 bg-black/30 backdrop-blur-sm z-40 transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`}
-        onClick={handleClose}
+        onClick={onClose}
       />
+
+      {/* Panel */}
       <div
-        className={`fixed top-0 right-0 h-full w-full sm:w-[28rem] bg-white dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800 shadow-2xl z-50 transition-transform duration-300 transform ${isVisible ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed top-0 right-0 h-full w-full sm:w-[28rem] bg-white dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800 shadow-2xl z-50 flex flex-col transition-transform duration-300 ${isVisible ? 'translate-x-0' : 'translate-x-full'}`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50">
-          <div className="min-w-0">
-            <h3 className="font-bold text-lg text-gray-900 dark:text-white leading-tight truncate">
+        <div className="flex items-center gap-2 p-4 border-b dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 shrink-0">
+
+          {/* Back button */}
+          {canGoBack && (
+            <button
+              onClick={onBack}
+              title="Back (←)"
+              className="flex items-center justify-center w-7 h-7 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors shrink-0"
+            >
+              ‹
+            </button>
+          )}
+
+          {/* Title block */}
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold text-base text-gray-900 dark:text-white leading-tight truncate">
               {party.name}
             </h3>
-            <div className="flex flex-wrap gap-1 mt-1">
+            <div className="flex flex-wrap gap-1 mt-0.5">
               {party.roles.map(r => (
                 <span key={r} className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
                   {SUPPLIER_ROLE_LABELS[r]}
@@ -257,7 +278,9 @@ const SupplierDetailSidebar: React.FC<Props> = ({
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0 ml-2">
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 shrink-0">
             {canCreatePO && (
               <button
                 onClick={onNewPO}
@@ -273,7 +296,7 @@ const SupplierDetailSidebar: React.FC<Props> = ({
               Edit
             </button>
             <button
-              onClick={handleClose}
+              onClick={onClose}
               className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:underline"
             >
               Close
@@ -281,10 +304,10 @@ const SupplierDetailSidebar: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Content */}
+        {/* Scrollable content */}
         <div
           ref={contentRef}
-          className="p-5 text-sm space-y-8 overflow-y-auto h-[calc(100%-4.5rem)] pb-10"
+          className="flex-1 overflow-y-auto p-5 space-y-8 pb-10 text-sm"
         >
           {/* Identity */}
           <section>
@@ -349,7 +372,9 @@ const SupplierDetailSidebar: React.FC<Props> = ({
               {party.notes && (
                 <div className="flex flex-col py-1">
                   <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold">Notes</span>
-                  <p className="text-gray-700 dark:text-gray-300 mt-0.5 text-sm leading-relaxed whitespace-pre-line">{party.notes}</p>
+                  <p className="text-gray-700 dark:text-gray-300 mt-0.5 text-sm leading-relaxed whitespace-pre-line">
+                    {party.notes}
+                  </p>
                 </div>
               )}
             </div>
@@ -394,10 +419,7 @@ const SupplierDetailSidebar: React.FC<Props> = ({
               <SectionHeader label={`All Accounts (${accounts.length})`} color="gray" />
               <div className="space-y-2">
                 {accounts.map(acc => (
-                  <div
-                    key={acc.id}
-                    className="rounded-md border dark:border-gray-800 px-3 py-2 bg-gray-50/50 dark:bg-gray-900/50"
-                  >
+                  <div key={acc.id} className="rounded-md border dark:border-gray-800 px-3 py-2 bg-gray-50/50 dark:bg-gray-900/50">
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-gray-900 dark:text-gray-100 text-xs">{acc.label}</span>
                       {acc.is_primary && (
@@ -405,10 +427,10 @@ const SupplierDetailSidebar: React.FC<Props> = ({
                       )}
                     </div>
                     {acc.account_number && (
-                      <p className="text-[11px] font-mono text-gray-500 dark:text-gray-500 mt-0.5">{acc.account_number}</p>
+                      <p className="text-[11px] font-mono text-gray-500 mt-0.5">{acc.account_number}</p>
                     )}
                     {!acc.is_active && (
-                      <p className="text-[10px] text-gray-400 dark:text-gray-600 italic mt-0.5">Inactive</p>
+                      <p className="text-[10px] text-gray-400 italic mt-0.5">Inactive</p>
                     )}
                   </div>
                 ))}
@@ -446,40 +468,44 @@ const SupplierDetailSidebar: React.FC<Props> = ({
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-semibold">Primary</span>
                       )}
                     </div>
-                    {c.email && <p className="text-[11px] text-gray-500 dark:text-gray-500 mt-0.5">{c.email}</p>}
-                    {c.phone && <p className="text-[11px] text-gray-500 dark:text-gray-500">{c.phone}</p>}
+                    {c.email && <p className="text-[11px] text-gray-500 mt-0.5">{c.email}</p>}
+                    {c.phone && <p className="text-[11px] text-gray-500">{c.phone}</p>}
                   </div>
                 ))}
               </div>
             </section>
           )}
 
-          {/* Imprints / subsidiaries */}
+          {/* Imprints & clients */}
           <section>
-            <SectionHeader label={`Imprints & Clients${children.length > 0 ? ` (${children.length})` : ''}`} color="amber" />
+            <SectionHeader
+              label={`Imprints & Clients${children.length > 0 ? ` (${children.length})` : ''}`}
+              color="amber"
+            />
 
             {children.length === 0 ? (
               <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
                 No imprints or distribution clients linked yet.
               </p>
             ) : (
-              <div className="space-y-0.5 mb-2">
+              <div className="space-y-0 mb-2">
                 {children.map(c => (
                   <div
                     key={c.id}
-                    className="flex items-center justify-between py-1.5 border-b dark:border-gray-800 last:border-0 group"
+                    className="flex items-center justify-between py-1.5 border-b dark:border-gray-800 last:border-0"
                   >
                     <button
                       type="button"
                       onClick={() => onChildClick?.(c)}
-                      className="text-sm text-gray-800 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 text-left truncate"
+                      className="text-sm text-gray-800 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 text-left truncate flex items-center gap-1"
                     >
+                      <span className="text-gray-300 dark:text-gray-600 text-xs">›</span>
                       {c.name}
                     </button>
                     <div className="flex items-center gap-1.5 shrink-0 ml-2">
                       <RelTypeBadge notes={c.notes} />
                       {!c.is_active && (
-                        <span className="text-[10px] text-gray-400 dark:text-gray-600 italic">draft</span>
+                        <span className="text-[10px] text-gray-400 italic">draft</span>
                       )}
                     </div>
                   </div>
@@ -490,12 +516,7 @@ const SupplierDetailSidebar: React.FC<Props> = ({
             <LinkImprintWidget
               parentId={party.id}
               existingChildIds={existingChildIds}
-              onLinked={() => {
-                // Signal parent to reload detail
-                onEdit()  // triggers the form which we won't open — see SupplierService
-                // Better: bubble up a refresh signal
-                setRefreshKey(k => k + 1)
-              }}
+              onLinked={() => onImprintLinked?.()}
             />
           </section>
 

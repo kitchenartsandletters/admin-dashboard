@@ -1,12 +1,4 @@
 // SupplierService.tsx
-// Supplier index page.
-//
-// Changes in this version:
-//   - Role filter persists to localStorage (survives page refresh)
-//   - "New PO" button in detail sidebar opens POBuilder pre-loaded with supplier
-//   - Clicking a child imprint in the sidebar navigates to that party in the table
-//   - onLinked refresh: sidebar triggers a detail reload without closing
-
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import SupplierTable from './SupplierTable'
 import SupplierDetailSidebar from './SupplierDetailSidebar'
@@ -16,10 +8,11 @@ import { SupplierParty, SupplierDetail, SupplierRole, SUPPLIER_ROLE_LABELS } fro
 import { fetchSuppliers, fetchSupplierDetail } from '../../api/supplyChainApi'
 import { SortConfig, sortTitle, nextSortDirection } from '../../utils/tableUtils'
 
-type RoleFilter = SupplierRole | 'all' | 'draft'
+type RoleFilter = SupplierRole | 'all' | 'active' | 'draft'
 
 const ROLE_FILTERS: { key: RoleFilter; label: string }[] = [
   { key: 'all',         label: 'All' },
+  { key: 'active',      label: 'Active' },
   { key: 'draft',       label: 'Drafts' },
   { key: 'distributor', label: 'Distributors' },
   { key: 'wholesaler',  label: 'Wholesalers' },
@@ -39,7 +32,7 @@ function getInitialFilter(): RoleFilter {
       return stored as RoleFilter
     }
   } catch {}
-  return 'all'
+  return 'active'   // default to Active on first load
 }
 
 function TableSkeleton() {
@@ -85,13 +78,16 @@ export default function SupplierService() {
     key: 'name', direction: 'asc',
   })
 
-  const [selectedParty, setSelectedParty] = useState<SupplierParty | null>(null)
+  // Navigation stack — each entry is a party.
+  // Stack depth > 1 means we've drilled into a child.
+  const [partyStack, setPartyStack] = useState<SupplierParty[]>([])
+  const selectedParty = partyStack[partyStack.length - 1] ?? null
+
   const [detail, setDetail] = useState<SupplierDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [formMode, setFormMode] = useState<'create' | 'edit' | null>(null)
   const [showPOBuilder, setShowPOBuilder] = useState(false)
 
-  // Persist filter selection
   const handleSetRoleFilter = (f: RoleFilter) => {
     setRoleFilter(f)
     try { localStorage.setItem(FILTER_STORAGE_KEY, f) } catch {}
@@ -112,31 +108,38 @@ export default function SupplierService() {
 
   useEffect(() => { load() }, [load])
 
-  const loadDetail = useCallback(async (partyId: string) => {
-    setDetailLoading(true)
-    try {
-      const d = await fetchSupplierDetail(partyId)
-      setDetail(d)
-      setSelectedParty(d.party)
-    } catch {
-      setDetail(null)
-    } finally {
-      setDetailLoading(false)
-    }
-  }, [])
-
+  // Load detail whenever the top of the stack changes
   useEffect(() => {
-    if (!selectedParty) { setDetail(null); return }
-    loadDetail(selectedParty.id)
+    if (!selectedParty) {
+      setDetail(null)
+      return
+    }
+    setDetailLoading(true)
+    fetchSupplierDetail(selectedParty.id)
+      .then(d => {
+        setDetail(d)
+        // Keep the stack's party in sync with fresh data
+        setPartyStack(prev => {
+          const next = [...prev]
+          next[next.length - 1] = d.party
+          return next
+        })
+      })
+      .catch(() => setDetail(null))
+      .finally(() => setDetailLoading(false))
   }, [selectedParty?.id])
 
   const filtered = useMemo(() => {
     let list = allSuppliers
-    if (roleFilter === 'draft') {
+
+    if (roleFilter === 'active') {
+      list = list.filter(p => p.is_active)
+    } else if (roleFilter === 'draft') {
       list = list.filter(p => !p.is_active)
     } else if (roleFilter !== 'all') {
       list = list.filter(p => p.roles.includes(roleFilter as SupplierRole))
     }
+
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter(p =>
@@ -145,6 +148,7 @@ export default function SupplierService() {
         p.roles.some(r => SUPPLIER_ROLE_LABELS[r].toLowerCase().includes(q))
       )
     }
+
     if (sortConfig) {
       list = [...list].sort((a, b) => {
         const ak = sortConfig.key
@@ -164,112 +168,141 @@ export default function SupplierService() {
     setSortConfig(prev => ({ key, direction: nextSortDirection(prev, key) }))
   }
 
+  // Table row click — reset stack to just this party
+  const handleRowClick = (party: SupplierParty) => {
+    if (selectedParty?.id === party.id) {
+      setPartyStack([])  // deselect
+    } else {
+      setPartyStack([party])  // fresh stack
+    }
+  }
+
+  // Child click in sidebar — push onto stack (sidebar stays open)
+  const handleChildClick = useCallback((child: SupplierParty) => {
+    setPartyStack(prev => [...prev, child])
+  }, [])
+
+  // Back — pop the stack (sidebar stays open, parent detail loads)
+  const handleBack = useCallback(() => {
+    setPartyStack(prev => prev.slice(0, -1))
+  }, [])
+
+  // Close sidebar — clear stack entirely
+  const handleClose = useCallback(() => {
+    setPartyStack([])
+  }, [])
+
+  // After form saves: reload list and refresh top of stack
   const handleFormSaved = async (partyId: string) => {
     await load()
     try {
       const refreshed = await fetchSupplierDetail(partyId)
       setDetail(refreshed)
-      setSelectedParty(refreshed.party)
+      setPartyStack(prev => {
+        if (prev.length === 0) return [refreshed.party]
+        const next = [...prev]
+        next[next.length - 1] = refreshed.party
+        return next
+      })
     } catch {}
     setFormMode(null)
   }
 
-  // When a child imprint is clicked in the sidebar, navigate to that party
-  const handleChildClick = useCallback((child: SupplierParty) => {
-    setSelectedParty(child)
-  }, [])
-
-  // New PO from sidebar — opens POBuilder pre-loaded with this supplier's detail
-  const handleNewPOFromSidebar = useCallback(() => {
-    setShowPOBuilder(true)
-  }, [])
-
-  // After imprint link: reload detail without closing
+  // After imprint linked — reload current detail in place
   const handleImprintLinked = useCallback(async () => {
-    if (selectedParty) {
-      await loadDetail(selectedParty.id)
-    }
-  }, [selectedParty, loadDetail])
+    if (!selectedParty) return
+    setDetailLoading(true)
+    try {
+      const refreshed = await fetchSupplierDetail(selectedParty.id)
+      setDetail(refreshed)
+    } catch {}
+    finally { setDetailLoading(false) }
+  }, [selectedParty])
 
   const activeCount = allSuppliers.filter(p => p.is_active).length
   const draftCount  = allSuppliers.filter(p => !p.is_active).length
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Suppliers</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            {loading ? 'Loading…' : `${activeCount} active · ${draftCount} drafts`}
+    <>
+      <div className="space-y-4">
+        {/* Header */}
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Suppliers</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+              {loading ? 'Loading…' : `${activeCount} active · ${draftCount} drafts`}
+            </p>
+          </div>
+          <button
+            onClick={() => { setPartyStack([]); setFormMode('create') }}
+            className="px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors active:scale-[0.98]"
+          >
+            + New supplier
+          </button>
+        </div>
+
+        {error && (
+          <div className="px-4 py-3 rounded-md bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">
+            {error}
+          </div>
+        )}
+
+        {/* Filter bar */}
+        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+          <input
+            type="text"
+            placeholder="Search by name, role…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="px-3 py-2 border rounded text-sm bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none flex-1"
+          />
+          <div className="flex gap-1 flex-wrap">
+            {ROLE_FILTERS.map(f => (
+              <button
+                key={f.key}
+                onClick={() => handleSetRoleFilter(f.key)}
+                className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors whitespace-nowrap
+                  ${roleFilter === f.key
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'
+                  }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {!loading && (
+          <p className="text-xs text-gray-400 dark:text-gray-600">
+            {filtered.length} supplier{filtered.length !== 1 ? 's' : ''}
           </p>
-        </div>
-        <button
-          onClick={() => { setSelectedParty(null); setFormMode('create') }}
-          className="px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors active:scale-[0.98]"
-        >
-          + New supplier
-        </button>
+        )}
+
+        {loading ? <TableSkeleton /> : (
+          <SupplierTable
+            suppliers={filtered}
+            sortConfig={sortConfig}
+            onSort={handleSort}
+            onRowClick={handleRowClick}
+            selectedId={selectedParty?.id ?? null}
+          />
+        )}
       </div>
 
-      {error && (
-        <div className="px-4 py-3 rounded-md bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">
-          {error}
-        </div>
-      )}
-
-      {/* Filter bar */}
-      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-        <input
-          type="text"
-          placeholder="Search by name, role…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="px-3 py-2 border rounded text-sm bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none flex-1"
-        />
-        <div className="flex gap-1 flex-wrap">
-          {ROLE_FILTERS.map(f => (
-            <button
-              key={f.key}
-              onClick={() => handleSetRoleFilter(f.key)}
-              className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors whitespace-nowrap
-                ${roleFilter === f.key
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'
-                }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {!loading && (
-        <p className="text-xs text-gray-400 dark:text-gray-600">
-          {filtered.length} supplier{filtered.length !== 1 ? 's' : ''}
-        </p>
-      )}
-
-      {loading ? <TableSkeleton /> : (
-        <SupplierTable
-          suppliers={filtered}
-          sortConfig={sortConfig}
-          onSort={handleSort}
-          onRowClick={party => setSelectedParty(prev => prev?.id === party.id ? null : party)}
-          selectedId={selectedParty?.id ?? null}
-        />
-      )}
-
-      {/* Detail sidebar */}
+      {/* Sidebar, form, and PO builder are OUTSIDE the space-y-4 div
+          so they render as true fixed overlays with no layout interference */}
       <SupplierDetailSidebar
         detail={detailLoading ? null : detail}
-        onClose={() => setSelectedParty(null)}
+        canGoBack={partyStack.length > 1}
+        onBack={handleBack}
+        onClose={handleClose}
         onEdit={() => setFormMode('edit')}
-        onNewPO={handleNewPOFromSidebar}
+        onNewPO={() => setShowPOBuilder(true)}
         onChildClick={handleChildClick}
+        onImprintLinked={handleImprintLinked}
       />
 
-      {/* Supplier form modal */}
       {formMode === 'create' && (
         <SupplierForm
           mode="create"
@@ -277,6 +310,7 @@ export default function SupplierService() {
           onSaved={handleFormSaved}
         />
       )}
+
       {formMode === 'edit' && detail && (
         <SupplierForm
           mode="edit"
@@ -288,16 +322,13 @@ export default function SupplierService() {
         />
       )}
 
-      {/* PO Builder — pre-loaded with selected supplier */}
       {showPOBuilder && detail && (
         <POBuilder
           initialSupplier={detail}
           onClose={() => setShowPOBuilder(false)}
-          onCreated={async (poId) => {
-            setShowPOBuilder(false)
-          }}
+          onCreated={async () => { setShowPOBuilder(false) }}
         />
       )}
-    </div>
+    </>
   )
 }
