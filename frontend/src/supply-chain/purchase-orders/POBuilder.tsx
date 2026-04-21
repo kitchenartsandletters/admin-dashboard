@@ -398,7 +398,7 @@ interface Props {
 
 export default function POBuilder({ onClose, onCreated, initialSupplier }: Props) {
   const [isVisible, setIsVisible] = useState(false)
-  const [step, setStep] = useState<1 | 2 | 3>(initialSupplier ? 2 : 1)
+  const [step, setStep] = useState<1 | 2 | 3>(1)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -443,6 +443,17 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
       setDestinationLocationId(hq.id)
     }
   }, [locations])
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()   // prevents sidebar from also closing
+        handleClose()
+      }
+    }
+    window.addEventListener('keydown', handleEsc, true)  // capture phase
+    return () => window.removeEventListener('keydown', handleEsc, true)
+  }, [])
 
   const handleClose = () => {
     setIsVisible(false)

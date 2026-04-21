@@ -28,11 +28,9 @@ const FILTER_STORAGE_KEY = 'sc_supplier_role_filter'
 function getInitialFilter(): RoleFilter {
   try {
     const stored = localStorage.getItem(FILTER_STORAGE_KEY)
-    if (stored && ROLE_FILTERS.some(f => f.key === stored)) {
-      return stored as RoleFilter
-    }
+    if (stored && ROLE_FILTERS.some(f => f.key === stored)) return stored as RoleFilter
   } catch {}
-  return 'active'   // default to Active on first load
+  return 'active'
 }
 
 function TableSkeleton() {
@@ -40,16 +38,14 @@ function TableSkeleton() {
     <div className="overflow-x-auto border rounded-md dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
       <table className="min-w-full border-collapse text-sm">
         <thead className="bg-gray-50 dark:bg-gray-800">
-          <tr>
-            {['w-48', 'w-32', 'w-24', 'w-16', 'w-16'].map((w, i) => (
-              <th key={i} className="px-4 py-3 border-b dark:border-gray-700">
-                <div className={`h-3 ${w} bg-gray-200 dark:bg-gray-700 rounded animate-pulse`} />
-              </th>
-            ))}
-          </tr>
+          <tr>{['w-48','w-32','w-24','w-16','w-16'].map((w,i) => (
+            <th key={i} className="px-4 py-3 border-b dark:border-gray-700">
+              <div className={`h-3 ${w} bg-gray-200 dark:bg-gray-700 rounded animate-pulse`} />
+            </th>
+          ))}</tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-          {Array.from({ length: 10 }).map((_, i) => (
+          {Array.from({length:10}).map((_,i) => (
             <tr key={i}>
               <td className="px-4 py-3">
                 <div className="h-3 w-40 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-1.5" />
@@ -78,14 +74,16 @@ export default function SupplierService() {
     key: 'name', direction: 'asc',
   })
 
-  // Navigation stack — each entry is a party.
-  // Stack depth > 1 means we've drilled into a child.
+  // Navigation stack
   const [partyStack, setPartyStack] = useState<SupplierParty[]>([])
   const selectedParty = partyStack[partyStack.length - 1] ?? null
 
   const [detail, setDetail] = useState<SupplierDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [formMode, setFormMode] = useState<'create' | 'edit' | null>(null)
+
+  // showPOBuilder is explicitly set to false when sidebar closes
+  // and is NEVER set by row clicks — only by the "+ New PO" button in the sidebar header
   const [showPOBuilder, setShowPOBuilder] = useState(false)
 
   const handleSetRoleFilter = (f: RoleFilter) => {
@@ -108,17 +106,12 @@ export default function SupplierService() {
 
   useEffect(() => { load() }, [load])
 
-  // Load detail whenever the top of the stack changes
   useEffect(() => {
-    if (!selectedParty) {
-      setDetail(null)
-      return
-    }
+    if (!selectedParty) { setDetail(null); return }
     setDetailLoading(true)
     fetchSupplierDetail(selectedParty.id)
       .then(d => {
         setDetail(d)
-        // Keep the stack's party in sync with fresh data
         setPartyStack(prev => {
           const next = [...prev]
           next[next.length - 1] = d.party
@@ -131,7 +124,6 @@ export default function SupplierService() {
 
   const filtered = useMemo(() => {
     let list = allSuppliers
-
     if (roleFilter === 'active') {
       list = list.filter(p => p.is_active)
     } else if (roleFilter === 'draft') {
@@ -139,7 +131,6 @@ export default function SupplierService() {
     } else if (roleFilter !== 'all') {
       list = list.filter(p => p.roles.includes(roleFilter as SupplierRole))
     }
-
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter(p =>
@@ -148,7 +139,6 @@ export default function SupplierService() {
         p.roles.some(r => SUPPLIER_ROLE_LABELS[r].toLowerCase().includes(q))
       )
     }
-
     if (sortConfig) {
       list = [...list].sort((a, b) => {
         const ak = sortConfig.key
@@ -168,31 +158,30 @@ export default function SupplierService() {
     setSortConfig(prev => ({ key, direction: nextSortDirection(prev, key) }))
   }
 
-  // Table row click — reset stack to just this party
+  // Row click — reset stack, never open POBuilder
   const handleRowClick = (party: SupplierParty) => {
     if (selectedParty?.id === party.id) {
-      setPartyStack([])  // deselect
+      setPartyStack([])
     } else {
-      setPartyStack([party])  // fresh stack
+      setPartyStack([party])
+      // showPOBuilder intentionally NOT set here
     }
   }
 
-  // Child click in sidebar — push onto stack (sidebar stays open)
   const handleChildClick = useCallback((child: SupplierParty) => {
     setPartyStack(prev => [...prev, child])
   }, [])
 
-  // Back — pop the stack (sidebar stays open, parent detail loads)
   const handleBack = useCallback(() => {
     setPartyStack(prev => prev.slice(0, -1))
   }, [])
 
-  // Close sidebar — clear stack entirely
+  // Close sidebar — clear stack and close PO builder if open
   const handleClose = useCallback(() => {
+    setShowPOBuilder(false)
     setPartyStack([])
   }, [])
 
-  // After form saves: reload list and refresh top of stack
   const handleFormSaved = async (partyId: string) => {
     await load()
     try {
@@ -208,7 +197,6 @@ export default function SupplierService() {
     setFormMode(null)
   }
 
-  // After imprint linked — reload current detail in place
   const handleImprintLinked = useCallback(async () => {
     if (!selectedParty) return
     setDetailLoading(true)
@@ -225,7 +213,6 @@ export default function SupplierService() {
   return (
     <>
       <div className="space-y-4">
-        {/* Header */}
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Suppliers</h1>
@@ -247,7 +234,6 @@ export default function SupplierService() {
           </div>
         )}
 
-        {/* Filter bar */}
         <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
           <input
             type="text"
@@ -290,8 +276,7 @@ export default function SupplierService() {
         )}
       </div>
 
-      {/* Sidebar, form, and PO builder are OUTSIDE the space-y-4 div
-          so they render as true fixed overlays with no layout interference */}
+      {/* Sidebar, form, and PO builder outside space-y-4 */}
       <SupplierDetailSidebar
         detail={detailLoading ? null : detail}
         canGoBack={partyStack.length > 1}
@@ -322,6 +307,13 @@ export default function SupplierService() {
         />
       )}
 
+      {/* POBuilder:
+          - Only opens via "+ New PO" in sidebar, never from row clicks
+          - initialSupplier pre-fills Step 1 supplier field but stays on Step 1
+            so staff can still set order date, expected arrival, notes, drop-ship flag
+          - ESC inside the modal closes the modal only (modal handles its own ESC)
+          - After modal closes, sidebar remains open
+      */}
       {showPOBuilder && detail && (
         <POBuilder
           initialSupplier={detail}
