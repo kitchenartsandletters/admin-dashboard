@@ -1,10 +1,17 @@
 // SupplierService.tsx
-// Supplier index page. Follows the PreorderService shell pattern:
-// filter bar → table → right-side detail sidebar + form modal.
+// Supplier index page.
+//
+// Changes in this version:
+//   - Role filter persists to localStorage (survives page refresh)
+//   - "New PO" button in detail sidebar opens POBuilder pre-loaded with supplier
+//   - Clicking a child imprint in the sidebar navigates to that party in the table
+//   - onLinked refresh: sidebar triggers a detail reload without closing
+
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import SupplierTable from './SupplierTable'
 import SupplierDetailSidebar from './SupplierDetailSidebar'
 import SupplierForm from './SupplierForm'
+import POBuilder from '../purchase-orders/POBuilder'
 import { SupplierParty, SupplierDetail, SupplierRole, SUPPLIER_ROLE_LABELS } from './supplierTypes'
 import { fetchSuppliers, fetchSupplierDetail } from '../../api/supplyChainApi'
 import { SortConfig, sortTitle, nextSortDirection } from '../../utils/tableUtils'
@@ -22,6 +29,18 @@ const ROLE_FILTERS: { key: RoleFilter; label: string }[] = [
   { key: 'author',      label: 'Authors' },
   { key: 'restaurant',  label: 'Restaurants' },
 ]
+
+const FILTER_STORAGE_KEY = 'sc_supplier_role_filter'
+
+function getInitialFilter(): RoleFilter {
+  try {
+    const stored = localStorage.getItem(FILTER_STORAGE_KEY)
+    if (stored && ROLE_FILTERS.some(f => f.key === stored)) {
+      return stored as RoleFilter
+    }
+  } catch {}
+  return 'all'
+}
 
 function TableSkeleton() {
   return (
@@ -61,7 +80,7 @@ export default function SupplierService() {
   const [error, setError] = useState<string | null>(null)
 
   const [search, setSearch] = useState('')
-  const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>(getInitialFilter)
   const [sortConfig, setSortConfig] = useState<SortConfig<SupplierParty> | null>({
     key: 'name', direction: 'asc',
   })
@@ -70,6 +89,13 @@ export default function SupplierService() {
   const [detail, setDetail] = useState<SupplierDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [formMode, setFormMode] = useState<'create' | 'edit' | null>(null)
+  const [showPOBuilder, setShowPOBuilder] = useState(false)
+
+  // Persist filter selection
+  const handleSetRoleFilter = (f: RoleFilter) => {
+    setRoleFilter(f)
+    try { localStorage.setItem(FILTER_STORAGE_KEY, f) } catch {}
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -86,14 +112,23 @@ export default function SupplierService() {
 
   useEffect(() => { load() }, [load])
 
+  const loadDetail = useCallback(async (partyId: string) => {
+    setDetailLoading(true)
+    try {
+      const d = await fetchSupplierDetail(partyId)
+      setDetail(d)
+      setSelectedParty(d.party)
+    } catch {
+      setDetail(null)
+    } finally {
+      setDetailLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (!selectedParty) { setDetail(null); return }
-    setDetailLoading(true)
-    fetchSupplierDetail(selectedParty.id)
-      .then(setDetail)
-      .catch(() => setDetail(null))
-      .finally(() => setDetailLoading(false))
-  }, [selectedParty])
+    loadDetail(selectedParty.id)
+  }, [selectedParty?.id])
 
   const filtered = useMemo(() => {
     let list = allSuppliers
@@ -135,11 +170,26 @@ export default function SupplierService() {
       const refreshed = await fetchSupplierDetail(partyId)
       setDetail(refreshed)
       setSelectedParty(refreshed.party)
-    } catch {
-      // detail refresh is best-effort
-    }
+    } catch {}
     setFormMode(null)
   }
+
+  // When a child imprint is clicked in the sidebar, navigate to that party
+  const handleChildClick = useCallback((child: SupplierParty) => {
+    setSelectedParty(child)
+  }, [])
+
+  // New PO from sidebar — opens POBuilder pre-loaded with this supplier's detail
+  const handleNewPOFromSidebar = useCallback(() => {
+    setShowPOBuilder(true)
+  }, [])
+
+  // After imprint link: reload detail without closing
+  const handleImprintLinked = useCallback(async () => {
+    if (selectedParty) {
+      await loadDetail(selectedParty.id)
+    }
+  }, [selectedParty, loadDetail])
 
   const activeCount = allSuppliers.filter(p => p.is_active).length
   const draftCount  = allSuppliers.filter(p => !p.is_active).length
@@ -181,7 +231,7 @@ export default function SupplierService() {
           {ROLE_FILTERS.map(f => (
             <button
               key={f.key}
-              onClick={() => setRoleFilter(f.key)}
+              onClick={() => handleSetRoleFilter(f.key)}
               className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors whitespace-nowrap
                 ${roleFilter === f.key
                   ? 'bg-blue-600 text-white border-blue-600'
@@ -210,12 +260,16 @@ export default function SupplierService() {
         />
       )}
 
+      {/* Detail sidebar */}
       <SupplierDetailSidebar
         detail={detailLoading ? null : detail}
         onClose={() => setSelectedParty(null)}
         onEdit={() => setFormMode('edit')}
+        onNewPO={handleNewPOFromSidebar}
+        onChildClick={handleChildClick}
       />
 
+      {/* Supplier form modal */}
       {formMode === 'create' && (
         <SupplierForm
           mode="create"
@@ -223,7 +277,6 @@ export default function SupplierService() {
           onSaved={handleFormSaved}
         />
       )}
-
       {formMode === 'edit' && detail && (
         <SupplierForm
           mode="edit"
@@ -232,6 +285,17 @@ export default function SupplierService() {
           primaryContact={detail.contacts.find(c => c.is_primary) ?? detail.contacts[0]}
           onClose={() => setFormMode(null)}
           onSaved={handleFormSaved}
+        />
+      )}
+
+      {/* PO Builder — pre-loaded with selected supplier */}
+      {showPOBuilder && detail && (
+        <POBuilder
+          initialSupplier={detail}
+          onClose={() => setShowPOBuilder(false)}
+          onCreated={async (poId) => {
+            setShowPOBuilder(false)
+          }}
         />
       )}
     </div>
