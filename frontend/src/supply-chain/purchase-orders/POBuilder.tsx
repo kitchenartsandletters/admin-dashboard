@@ -25,9 +25,10 @@ import {
   createPurchaseOrder,
   createPOLine,
   searchVariants,
-} from '../../api/supplyChainApi'
-import { SupplierParty, SupplierAccount } from '../suppliers/supplierTypes'
-import { AdHocSource } from './purchaseOrderTypes'
+} from '../api/supplyChainApi'
+import { SupplierParty, SupplierAccount } from './suppliers/supplierTypes'
+import type { SupplierDetail } from './suppliers/supplierTypes'
+import { AdHocSource } from './purchase-orders/purchaseOrderTypes'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -111,7 +112,7 @@ function SupplierAccountPicker({
 
   useEffect(() => {
     if (search.length < 2) { setResults([]); return }
-    fetchSuppliers({ search, activeOnly: false })
+    fetchSuppliers({ search, activeOnly: true })
       .then(r => setResults(r.slice(0, 8)))
       .catch(() => {})
   }, [search])
@@ -390,13 +391,14 @@ function StepBar({ step }: { step: 1 | 2 | 3 }) {
 // ---------------------------------------------------------------------------
 
 interface Props {
+  initialSupplier?: SupplierDetail  // pre-loads supplier when opened from sidebar
   onClose: () => void
   onCreated: (poId: string) => void
 }
 
-export default function POBuilder({ onClose, onCreated }: Props) {
+export default function POBuilder({ onClose, onCreated, initialSupplier }: Props) {
   const [isVisible, setIsVisible] = useState(false)
-  const [step, setStep] = useState<1 | 2 | 3>(1)
+  const [step, setStep] = useState<1 | 2 | 3>(initialSupplier ? 2 : 1)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -404,10 +406,18 @@ export default function POBuilder({ onClose, onCreated }: Props) {
   const { locations, locationName } = useLocations()
 
   // Header fields
+  // Pre-load supplier from initialSupplier prop
+  const getInitialSelection = () => {
+    if (!initialSupplier) return null
+    const primary = initialSupplier.accounts.find(a => a.is_primary) ?? initialSupplier.accounts[0]
+    if (!primary) return null
+    return { party: initialSupplier.party, account: primary }
+  }
+
   const [supplierSelection, setSupplierSelection] = useState<{
     party: SupplierParty
     account: SupplierAccount
-  } | null>(null)
+  } | null>(getInitialSelection)
   const [destinationLocationId, setDestinationLocationId] = useState('')
   const [orderedAt, setOrderedAt] = useState('')
   const [expectedAt, setExpectedAt] = useState('')
