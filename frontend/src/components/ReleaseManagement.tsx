@@ -53,7 +53,7 @@ type FilterMode = 'active' | 'all' | 'needs_cleanup' | 'historical';
 // Config
 // ──────────────────────────────────────────────
 
-const PREORDER_SERVICE_URL = import.meta.env.VITE_PREORDER_SERVICE_URL;
+const PREORDER_SERVICE_URL = import.meta.env.VITE_PREORDER_BASE_URL;
 const ADMIN_TOKEN = import.meta.env.VITE_PREORDER_ADMIN_TOKEN;
 const STORAGE_KEY_SORT = 'release-mgmt-sort';
 const STORAGE_KEY_FILTER = 'release-mgmt-filter';
@@ -101,7 +101,7 @@ function classificationBadge(classification: string) {
     case 'active_preorder':
       return { label: 'Active', cls: 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300' };
     case 'early_stock_arrival':
-      return { label: 'Early Stock', cls: 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300' };
+      return { label: 'Early Stock', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300' };
     case 'historical_preorder':
       return { label: 'Historical', cls: 'bg-gray-100 text-gray-600 dark:bg-gray-700/50 dark:text-gray-400' };
     default:
