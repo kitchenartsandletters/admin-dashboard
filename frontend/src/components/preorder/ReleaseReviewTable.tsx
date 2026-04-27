@@ -72,7 +72,7 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
       / (7 * 24 * 60 * 60 * 1000)
     )
   )
-  const showReturnButton = weeksFromCurrent > 1
+  const showReturnButton = weeksFromCurrent > 0
 
   const reportableForWeek = useMemo(() =>
     reportable.filter((r) => r.report_week_start === toISODate(week.start)),
