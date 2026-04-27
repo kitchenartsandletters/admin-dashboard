@@ -23,6 +23,7 @@ import { supabase } from './lib/supabase';
 import DefaultRedirect from './auth/DefaultRedirect';
 import { useState, useEffect } from 'react';
 import ReportExclusionsPage from './reports/exclusions/ReportExclusionsPage';
+import ReleaseManagement from './components/ReleaseManagement';
 
 const App = () => {
   // 1. Logic for the ticking clock
@@ -181,6 +182,13 @@ const App = () => {
                           </ProtectedRoute>
                         }
                       />
+
+                      <Route path="/preorders/release" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <ReleaseManagement />
+                        </ProtectedRoute>
+                      } />
+
                       <Route
                         path="/campaigns"
                         element={

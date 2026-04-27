@@ -2,6 +2,8 @@
 
 interface ImportMetaEnv {
   readonly VITE_ADMIN_TOKEN: string
+  readonly VITE_PREORDER_SERVICE_URL: string
+  readonly VITE_PREORDER_ADMIN_TOKEN: string
 }
 
 interface ImportMeta {
