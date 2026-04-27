@@ -397,7 +397,7 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
                   disabled={selectedIds.size === 0 || generating || !weekIsClosed}
                   className="px-4 py-2 text-xs font-bold bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed rounded transition-all"
                 >
-                  {generating ? "Generating…" : "Generate Test Report"}
+                  {generating ? "Generating…" : "Generate NYT Report"}
                 </button>
                 <button
                   onClick={handleMarkReported}
