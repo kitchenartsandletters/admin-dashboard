@@ -15,6 +15,7 @@ import {
   fetchPreorderMetrics,
   fetchUpcomingReleases,
   fetchReportablePreorders,
+  fetchLateArrivals,
 } from "../../../api/preorderApi"
 
 type ViewMode = "overview" | "historical" | "release-review"
@@ -217,6 +218,7 @@ function PreorderService() {
             no_arrival_count: 0,
           }}
           loading={loading}
+          onFetchLateArrivals={fetchLateArrivals}
         />
 
         {/* Classification filter strip — overview only */}

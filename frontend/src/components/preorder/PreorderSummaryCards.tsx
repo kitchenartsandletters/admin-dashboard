@@ -1,6 +1,13 @@
 // PreorderSummaryCards.tsx
-import React from "react"
+import React, {useState} from "react"
 import { PreorderSummaryMetrics } from "../../types/preorderTypes"
+import { formatDate } from "../../utils/tableUtils"
+
+interface PreorderSummaryCardsProps {
+  metrics: PreorderSummaryMetrics
+  loading?: boolean
+  onFetchLateArrivals: () => Promise<any[]>
+}
 
 const MetricCard = ({ label, value, sub }: {
   label: string
@@ -27,10 +34,11 @@ const MetricCardSkeleton = () => (
   </div>
 )
 
-const PreorderSummaryCards: React.FC<{
-  metrics: PreorderSummaryMetrics
-  loading?: boolean
-}> = ({ metrics, loading = false }) => {
+const PreorderSummaryCards: React.FC<PreorderSummaryCardsProps> = ({
+  metrics,
+  loading = false,
+  onFetchLateArrivals,
+}) => {
   if (loading) {
     return (
       <div className="space-y-3">
@@ -53,6 +61,27 @@ function currentWeekLabel(): string {
   saturday.setDate(sunday.getDate() + 6)
   const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
   return `${fmt(sunday)} – ${fmt(saturday)}`
+}
+
+  const [lateArrivals, setLateArrivals] = useState<any[]>([])
+  const [showLateArrivals, setShowLateArrivals] = useState(false)
+  const [loadingLate, setLoadingLate] = useState(false)
+
+  const handleLateArrivalsClick = async () => {
+  if (showLateArrivals) {
+    setShowLateArrivals(false)
+    return
+  }
+  setLoadingLate(true)
+  try {
+    const data = await onFetchLateArrivals()
+    setLateArrivals(data)
+    setShowLateArrivals(true)
+  } catch (err) {
+    console.error("Failed to fetch late arrivals", err)
+  } finally {
+    setLoadingLate(false)
+  }
 }
 
   return (
@@ -92,15 +121,38 @@ function currentWeekLabel(): string {
             </div>
           )}
           {metrics.late_arrivals_unresolved > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
+          <div className="flex flex-col gap-1 px-3 py-2 rounded border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
+            <div
+              className="flex items-center gap-2 cursor-pointer"
+              onClick={handleLateArrivalsClick}
+            >
               <span className="text-amber-600 dark:text-amber-400 text-sm font-bold">
                 {metrics.late_arrivals_unresolved}
               </span>
-              <span className="text-xs text-amber-700 dark:text-amber-300">
-                {metrics.late_arrivals_unresolved === 1 ? "title" : "titles"} received inventory after pub date with open presale commitments
+              <span className="text-xs text-amber-700 dark:text-amber-300 flex-1">
+                {metrics.late_arrivals_unresolved === 1 ? "title" : "titles"} received
+                inventory after pub date with open presale commitments
+              </span>
+              <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                {loadingLate ? "…" : showLateArrivals ? "▲" : "▼"}
               </span>
             </div>
-          )}
+            {showLateArrivals && lateArrivals.length > 0 && (
+              <div className="mt-2 space-y-1 border-t border-amber-200 dark:border-amber-700 pt-2">
+                {lateArrivals.map((row) => (
+                  <div key={row.product_id} className="flex items-center justify-between text-xs">
+                    <span className="text-amber-800 dark:text-amber-200 font-medium truncate max-w-[200px]">
+                      {row.title}
+                    </span>
+                    <span className="text-amber-600 dark:text-amber-400 font-mono ml-2 shrink-0">
+                      pub {formatDate(row.pub_date)} · stock {formatDate(row.first_positive_inventory_at)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         </div>
       )}
     </div>

@@ -216,3 +216,11 @@ export async function generateReportPreview(
   }
   return res.blob()
 }
+
+export async function fetchLateArrivals(): Promise<any[]> {
+  const res = await fetch(`${PREORDER_BASE_URL}/admin/preorders/late-arrivals`, {
+    headers,
+  })
+  if (!res.ok) throw new Error(`Late arrivals fetch failed (${res.status})`)
+  return res.json()
+}
