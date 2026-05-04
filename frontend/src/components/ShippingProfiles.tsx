@@ -40,7 +40,7 @@ interface ReconcileReport {
 }
 
 // ──────────────────────────────────────────────
-// Config
+// Config & Constants
 // ──────────────────────────────────────────────
 
 const PREORDER_SERVICE_URL = import.meta.env.VITE_PREORDER_BASE_URL;
