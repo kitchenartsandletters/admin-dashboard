@@ -1,13 +1,69 @@
 // PreorderSummaryCards.tsx
-import React, {useState} from "react"
+import React, { useState } from "react"
 import { PreorderSummaryMetrics } from "../../types/preorderTypes"
 import { formatDate } from "../../utils/tableUtils"
+import ConfirmModal from "../ConfirmModal"
+
+// ──────────────────────────────────────────────
+// Types
+// ──────────────────────────────────────────────
+
+interface LateArrival {
+  product_id: number
+  title: string
+  isbn: string | null
+  pub_date: string
+  first_positive_inventory_at: string
+}
+
+interface NoArrivalTitle {
+  product_id: number
+  title: string
+  isbn: string | null
+  pub_date: string
+  classification: string
+}
 
 interface PreorderSummaryCardsProps {
   metrics: PreorderSummaryMetrics
   loading?: boolean
   onFetchLateArrivals: () => Promise<any[]>
+  onMetricsRefresh?: () => void
 }
+
+// ──────────────────────────────────────────────
+// Config
+// ──────────────────────────────────────────────
+
+const PREORDER_SERVICE_URL = import.meta.env.VITE_PREORDER_SERVICE_URL
+const ADMIN_TOKEN = import.meta.env.VITE_PREORDER_ADMIN_TOKEN
+
+const apiHeaders = () => ({
+  "Content-Type": "application/json",
+  "X-Admin-Token": ADMIN_TOKEN,
+})
+
+// ──────────────────────────────────────────────
+// Dismiss reasons
+// ──────────────────────────────────────────────
+
+const LATE_ARRIVAL_REASONS = [
+  "All presale orders fulfilled",
+  "Vendor contacted — resolution pending",
+  "Manual resolution — orders handled",
+  "Other",
+]
+
+const NO_ARRIVAL_REASONS = [
+  "Vendor contacted — shipment expected",
+  "Title cancelled by publisher",
+  "Orders refunded — no longer needed",
+  "Other",
+]
+
+// ──────────────────────────────────────────────
+// Sub-components
+// ──────────────────────────────────────────────
 
 const MetricCard = ({ label, value, sub }: {
   label: string
@@ -34,11 +90,52 @@ const MetricCardSkeleton = () => (
   </div>
 )
 
+function currentWeekLabel(): string {
+  const today = new Date()
+  const dow = today.getDay()
+  const sunday = new Date(today)
+  sunday.setDate(today.getDate() - dow)
+  const saturday = new Date(sunday)
+  saturday.setDate(sunday.getDate() + 6)
+  const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  return `${fmt(sunday)} – ${fmt(saturday)}`
+}
+
+function formatDateShort(dateStr: string): string {
+  const d = new Date(dateStr.includes("T") ? dateStr : dateStr + "T00:00:00")
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+}
+
+// ──────────────────────────────────────────────
+// Main component
+// ──────────────────────────────────────────────
+
 const PreorderSummaryCards: React.FC<PreorderSummaryCardsProps> = ({
   metrics,
   loading = false,
   onFetchLateArrivals,
+  onMetricsRefresh,
 }) => {
+  // Late arrivals
+  const [lateArrivals, setLateArrivals] = useState<LateArrival[]>([])
+  const [showLateArrivals, setShowLateArrivals] = useState(false)
+  const [loadingLate, setLoadingLate] = useState(false)
+
+  // No-arrival titles
+  const [noArrivals, setNoArrivals] = useState<NoArrivalTitle[]>([])
+  const [showNoArrivals, setShowNoArrivals] = useState(false)
+  const [loadingNoArrivals, setLoadingNoArrivals] = useState(false)
+
+  // Dismiss state
+  const [dismissing, setDismissing] = useState<Record<string, boolean>>({})
+  const [dismissModal, setDismissModal] = useState<{
+    open: boolean
+    productId: number
+    title: string
+    alertType: "late_arrival" | "no_arrival"
+    selectedReason: string
+  }>({ open: false, productId: 0, title: "", alertType: "late_arrival", selectedReason: "" })
+
   if (loading) {
     return (
       <div className="space-y-3">
@@ -52,40 +149,86 @@ const PreorderSummaryCards: React.FC<PreorderSummaryCardsProps> = ({
     )
   }
 
-function currentWeekLabel(): string {
-  const today = new Date()
-  const dow = today.getDay()
-  const sunday = new Date(today)
-  sunday.setDate(today.getDate() - dow)
-  const saturday = new Date(sunday)
-  saturday.setDate(sunday.getDate() + 6)
-  const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
-  return `${fmt(sunday)} – ${fmt(saturday)}`
-}
-
-  const [lateArrivals, setLateArrivals] = useState<any[]>([])
-  const [showLateArrivals, setShowLateArrivals] = useState(false)
-  const [loadingLate, setLoadingLate] = useState(false)
+  // ── Fetch handlers ──
 
   const handleLateArrivalsClick = async () => {
-  if (showLateArrivals) {
-    setShowLateArrivals(false)
-    return
+    if (showLateArrivals) {
+      setShowLateArrivals(false)
+      return
+    }
+    setLoadingLate(true)
+    try {
+      const data = await onFetchLateArrivals()
+      setLateArrivals(data)
+      setShowLateArrivals(true)
+    } catch (err) {
+      console.error("Failed to fetch late arrivals", err)
+    } finally {
+      setLoadingLate(false)
+    }
   }
-  setLoadingLate(true)
-  try {
-    const data = await onFetchLateArrivals()
-    setLateArrivals(data)
-    setShowLateArrivals(true)
-  } catch (err) {
-    console.error("Failed to fetch late arrivals", err)
-  } finally {
-    setLoadingLate(false)
+
+  const handleNoArrivalsClick = async () => {
+    if (showNoArrivals) {
+      setShowNoArrivals(false)
+      return
+    }
+    setLoadingNoArrivals(true)
+    try {
+      const res = await fetch(
+        `${PREORDER_SERVICE_URL}/admin/preorders/no-arrival-titles`,
+        { headers: apiHeaders() }
+      )
+      if (res.ok) {
+        const data: NoArrivalTitle[] = await res.json()
+        setNoArrivals(data)
+        setShowNoArrivals(true)
+      }
+    } catch (err) {
+      console.error("Failed to fetch no-arrival titles", err)
+    } finally {
+      setLoadingNoArrivals(false)
+    }
   }
-}
+
+  // ── Dismiss handler ──
+
+  const dismissAlert = async (
+    productId: number,
+    alertType: "late_arrival" | "no_arrival",
+    reason: string
+  ) => {
+    const key = `${alertType}-${productId}`
+    setDismissing((p) => ({ ...p, [key]: true }))
+    try {
+      const res = await fetch(
+        `${PREORDER_SERVICE_URL}/admin/preorders/alerts/dismiss/${productId}`,
+        {
+          method: "POST",
+          headers: apiHeaders(),
+          body: JSON.stringify({ alert_type: alertType, reason }),
+        }
+      )
+      if (res.ok) {
+        if (alertType === "late_arrival") {
+          setLateArrivals((prev) => prev.filter((a) => a.product_id !== productId))
+        } else {
+          setNoArrivals((prev) => prev.filter((a) => a.product_id !== productId))
+        }
+        onMetricsRefresh?.()
+      }
+    } catch (e) {
+      console.error(`Failed to dismiss alert for ${productId}:`, e)
+    } finally {
+      setDismissing((p) => ({ ...p, [key]: false }))
+    }
+  }
+
+  const reasons = dismissModal.alertType === "late_arrival" ? LATE_ARRIVAL_REASONS : NO_ARRIVAL_REASONS
 
   return (
     <div className="space-y-3">
+      {/* ── Metric Cards ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <MetricCard label="Active Preorders" value={metrics.active_preorders} />
         <MetricCard label="Early Stock" value={metrics.early_arrivals} />
@@ -108,53 +251,168 @@ function currentWeekLabel(): string {
         />
       </div>
 
+      {/* ── Alerts ── */}
       {(metrics.late_arrivals_unresolved > 0 || metrics.no_arrival_count > 0) && (
         <div className="flex flex-col gap-1.5">
+
+          {/* ── No-Arrival Alert ── */}
           {metrics.no_arrival_count > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
-              <span className="text-red-600 dark:text-red-400 text-sm font-bold">
-                {metrics.no_arrival_count}
-              </span>
-              <span className="text-xs text-red-700 dark:text-red-300">
-                {metrics.no_arrival_count === 1 ? "title" : "titles"} published with no inventory received — contact vendor
-              </span>
+            <div className="flex flex-col gap-1 px-3 py-2 rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
+              <div
+                className="flex items-center gap-2 cursor-pointer"
+                onClick={handleNoArrivalsClick}
+              >
+                <span className="text-red-600 dark:text-red-400 text-sm font-bold">
+                  {metrics.no_arrival_count}
+                </span>
+                <span className="text-xs text-red-700 dark:text-red-300 flex-1">
+                  {metrics.no_arrival_count === 1 ? "title" : "titles"} published with no inventory received — contact vendor
+                </span>
+                <span className="text-xs text-red-600 dark:text-red-400 font-medium">
+                  {loadingNoArrivals ? "…" : showNoArrivals ? "▲" : "▼"}
+                </span>
+              </div>
+
+              {showNoArrivals && noArrivals.length > 0 && (
+                <div className="mt-2 space-y-1.5 border-t border-red-200 dark:border-red-700 pt-2">
+                  {noArrivals.map((row) => {
+                    const key = `no_arrival-${row.product_id}`
+                    return (
+                      <div key={row.product_id} className="flex items-center justify-between text-xs gap-2">
+                        <div className="min-w-0 flex-1">
+                          <span className="text-red-800 dark:text-red-200 font-medium truncate block max-w-[260px]">
+                            {row.title}
+                          </span>
+                          <span className="text-red-500 dark:text-red-400 font-mono text-[10px]">
+                            pub {formatDateShort(row.pub_date)}
+                          </span>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setDismissModal({
+                              open: true,
+                              productId: row.product_id,
+                              title: row.title,
+                              alertType: "no_arrival",
+                              selectedReason: "",
+                            })
+                          }}
+                          disabled={!!dismissing[key]}
+                          className="px-2 py-0.5 text-[10px] rounded border border-red-300 dark:border-red-700 text-red-600 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 shrink-0"
+                        >
+                          {dismissing[key] ? "…" : "Resolve"}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {showNoArrivals && noArrivals.length === 0 && !loadingNoArrivals && (
+                <div className="mt-2 border-t border-red-200 dark:border-red-700 pt-2">
+                  <span className="text-xs text-red-400">All no-arrival alerts have been resolved.</span>
+                </div>
+              )}
             </div>
           )}
+
+          {/* ── Late Arrivals Alert ── */}
           {metrics.late_arrivals_unresolved > 0 && (
-          <div className="flex flex-col gap-1 px-3 py-2 rounded border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
-            <div
-              className="flex items-center gap-2 cursor-pointer"
-              onClick={handleLateArrivalsClick}
-            >
-              <span className="text-amber-600 dark:text-amber-400 text-sm font-bold">
-                {metrics.late_arrivals_unresolved}
-              </span>
-              <span className="text-xs text-amber-700 dark:text-amber-300 flex-1">
-                {metrics.late_arrivals_unresolved === 1 ? "title" : "titles"} received
-                inventory after pub date with open presale commitments
-              </span>
-              <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                {loadingLate ? "…" : showLateArrivals ? "▲" : "▼"}
-              </span>
-            </div>
-            {showLateArrivals && lateArrivals.length > 0 && (
-              <div className="mt-2 space-y-1 border-t border-amber-200 dark:border-amber-700 pt-2">
-                {lateArrivals.map((row) => (
-                  <div key={row.product_id} className="flex items-center justify-between text-xs">
-                    <span className="text-amber-800 dark:text-amber-200 font-medium truncate max-w-[200px]">
-                      {row.title}
-                    </span>
-                    <span className="text-amber-600 dark:text-amber-400 font-mono ml-2 shrink-0">
-                      pub {formatDate(row.pub_date)} · stock {formatDate(row.first_positive_inventory_at)}
-                    </span>
-                  </div>
-                ))}
+            <div className="flex flex-col gap-1 px-3 py-2 rounded border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
+              <div
+                className="flex items-center gap-2 cursor-pointer"
+                onClick={handleLateArrivalsClick}
+              >
+                <span className="text-amber-600 dark:text-amber-400 text-sm font-bold">
+                  {metrics.late_arrivals_unresolved}
+                </span>
+                <span className="text-xs text-amber-700 dark:text-amber-300 flex-1">
+                  {metrics.late_arrivals_unresolved === 1 ? "title" : "titles"} received
+                  inventory after pub date with open presale commitments
+                </span>
+                <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                  {loadingLate ? "…" : showLateArrivals ? "▲" : "▼"}
+                </span>
               </div>
-            )}
-          </div>
-        )}
+
+              {showLateArrivals && lateArrivals.length > 0 && (
+                <div className="mt-2 space-y-1.5 border-t border-amber-200 dark:border-amber-700 pt-2">
+                  {lateArrivals.map((row) => {
+                    const key = `late_arrival-${row.product_id}`
+                    return (
+                      <div key={row.product_id} className="flex items-center justify-between text-xs gap-2">
+                        <div className="min-w-0 flex-1">
+                          <span className="text-amber-800 dark:text-amber-200 font-medium truncate block max-w-[260px]">
+                            {row.title}
+                          </span>
+                          <span className="text-amber-600 dark:text-amber-400 font-mono text-[10px]">
+                            pub {formatDateShort(row.pub_date)} · stock {formatDateShort(row.first_positive_inventory_at)}
+                          </span>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setDismissModal({
+                              open: true,
+                              productId: row.product_id,
+                              title: row.title,
+                              alertType: "late_arrival",
+                              selectedReason: "",
+                            })
+                          }}
+                          disabled={!!dismissing[key]}
+                          className="px-2 py-0.5 text-[10px] rounded border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 shrink-0"
+                        >
+                          {dismissing[key] ? "…" : "Resolve"}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
+
+      {/* ── Dismiss Modal ── */}
+      <ConfirmModal
+        open={dismissModal.open}
+        onCancel={() => setDismissModal((p) => ({ ...p, open: false }))}
+        onConfirm={async () => {
+          if (!dismissModal.selectedReason) return
+          setDismissModal((p) => ({ ...p, open: false }))
+          await dismissAlert(dismissModal.productId, dismissModal.alertType, dismissModal.selectedReason)
+        }}
+        title={dismissModal.alertType === "late_arrival" ? "Resolve Late Arrival Alert" : "Resolve No-Arrival Alert"}
+        variant="primary"
+        confirmLabel="Resolve"
+      >
+        <p className="mb-3">
+          Resolving alert for <span className="font-medium">{dismissModal.title}</span>
+        </p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">Select a reason:</p>
+        <div className="space-y-2">
+          {reasons.map((reason) => (
+            <label key={reason}
+              className={`flex items-center gap-2 px-3 py-2 rounded border cursor-pointer text-sm transition-colors ${
+                dismissModal.selectedReason === reason
+                  ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-900 dark:text-blue-200"
+                  : "border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
+              }`}>
+              <input
+                type="radio"
+                name="dismiss-reason"
+                checked={dismissModal.selectedReason === reason}
+                onChange={() => setDismissModal((p) => ({ ...p, selectedReason: reason }))}
+                className="text-blue-600"
+              />
+              {reason}
+            </label>
+          ))}
+        </div>
+      </ConfirmModal>
     </div>
   )
 }
