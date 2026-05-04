@@ -43,7 +43,7 @@ interface ReconcileReport {
 // Config
 // ──────────────────────────────────────────────
 
-const PREORDER_SERVICE_URL = import.meta.env.VITE_PREORDER_SERVICE_URL;
+const PREORDER_SERVICE_URL = import.meta.env.VITE_PREORDER_BASE_URL;
 const ADMIN_TOKEN = import.meta.env.VITE_PREORDER_ADMIN_TOKEN;
 
 const apiHeaders = () => ({
