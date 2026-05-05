@@ -103,9 +103,12 @@ function emptyRow(): BookRow {
   };
 }
 
-function detectInputType(value: string): InputType {
-  // ISBN-10 or ISBN-13 (digits only, 10 or 13 chars)
-  return /^\d{10}(\d{3})?$/.test(value.trim()) ? 'isbn' : 'product_id';
+function detectInputType(_value: string): InputType {
+  // The backend resolves all formats via a cascade:
+  // barcode lookup → variant ID → product ID.
+  // The type field is kept for API compatibility but is no longer used
+  // for routing — always send 'isbn' to trigger the barcode lookup first.
+  return 'isbn';
 }
 
 /** Turn a Shopify handle into a readable display title for the preview table */
