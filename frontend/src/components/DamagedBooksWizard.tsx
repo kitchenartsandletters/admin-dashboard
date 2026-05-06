@@ -664,12 +664,20 @@ export default function DamagedBooksWizard() {
                       {/* Book group header */}
                       <tr className="bg-gray-50 dark:bg-gray-800/70 border-b border-t dark:border-gray-700">
                         <td colSpan={4} className="px-3 py-2">
-                          <div className="flex items-baseline gap-2">
+                          <div className="flex items-baseline gap-2 flex-wrap">
                             <span className="text-xs font-bold text-gray-800 dark:text-gray-100">
                               {displayTitleFromHandle(handle)}
                             </span>
-                            <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">
-                              {handle}
+                          </div>
+                          <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                            <span className="text-xs text-gray-400 dark:text-gray-500">
+                              <span className="font-medium text-gray-500 dark:text-gray-400">Canonical:</span>{' '}
+                              <span className="font-mono">{handle}</span>
+                            </span>
+                            <span className="text-xs text-gray-400 dark:text-gray-500">→</span>
+                            <span className="text-xs text-blue-500 dark:text-blue-400">
+                              <span className="font-medium">Creates:</span>{' '}
+                              <span className="font-mono">{handle}-damaged</span>
                             </span>
                           </div>
                         </td>
