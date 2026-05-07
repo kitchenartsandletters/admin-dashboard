@@ -92,6 +92,40 @@ export const DamagedBooksService = {
     return await res.json();
   },
 
+    async getCreationLog(limit: number = 200): Promise<{ data: any[]; meta: { count: number } }> {
+      const { json } = await get<{ data: any[]; meta: { count: number } }>(
+        '/admin/creation-log',
+        { limit }
+      );
+      return json;
+    },
+  
+    async getProductDetails(productId: string): Promise<{
+      product_id: string;
+      status: string;
+      published_at: string | null;
+      online_store_published: boolean;
+      channels: { name: string; is_published: boolean; publish_date: string | null }[];
+      category: { id: string; name: string; full_name: string } | null;
+      weight: number | null;
+      weight_unit: string | null;
+      variants: {
+        id: string;
+        title: string;
+        inventory_quantity: number;
+        weight: number | null;
+        weight_unit: string;
+      }[];
+    }> {
+      const rawId = String(productId).split('/').pop() ?? productId;
+      const res = await fetch(new URL(`/admin/product-details/${rawId}`, BASE), {
+        method: 'GET',
+        headers: { 'X-Admin-Token': ADMIN_API_TOKEN },
+      });
+      if (!res.ok) throw new Error(`product-details ${res.status}: ${await res.text()}`);
+      return res.json();
+    },
+
   async status(): Promise<{
     inspected: number;
     updated: number;
