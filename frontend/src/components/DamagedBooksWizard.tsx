@@ -33,10 +33,14 @@ type PreviewItem = {
   condition: 'light' | 'moderate' | 'heavy';
   title: string;
   price: string;
-  discount_pct: number;   // decimal — 0.15 = 15%
+  discount_pct: number;
   inventory_seed: number;
   sku: string;
   barcode: string;
+  // Enrichment fields — present when damaged product already exists
+  action: 'create' | 'update';
+  existing_qty: number;   // current stock for this condition (0 for fresh creates)
+  new_total: number;      // existing_qty + inventory_seed
 };
 
 /** Per-book result returned by /admin/bulk-create */
@@ -653,7 +657,12 @@ export default function DamagedBooksWizard() {
                 <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
                   <tr>
                     <th className="px-3 py-2.5 text-left font-semibold border-b dark:border-gray-700">Condition</th>
-                    <th className="px-3 py-2.5 text-center font-semibold border-b dark:border-gray-700">Qty</th>
+                    <th className="px-3 py-2.5 text-center font-semibold border-b dark:border-gray-700">
+                      Qty
+                      <span className="block text-gray-400 font-normal normal-case tracking-normal" style={{fontSize: '0.65rem'}}>
+                        current + adding = total
+                      </span>
+                    </th>
                     <th className="px-3 py-2.5 text-right font-semibold border-b dark:border-gray-700">Price</th>
                     <th className="px-3 py-2.5 text-right font-semibold border-b dark:border-gray-700">Off</th>
                   </tr>
@@ -662,21 +671,43 @@ export default function DamagedBooksWizard() {
                   {bookGroups.map(([handle, items]) => (
                     <React.Fragment key={handle}>
                       {/* Book group header */}
-                      <tr className="bg-gray-50 dark:bg-gray-800/70 border-b border-t dark:border-gray-700">
-                        <td colSpan={4} className="px-3 py-2">
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-xs font-bold text-gray-800 dark:text-gray-100">
-                              {displayTitleFromHandle(handle)}
-                            </span>
-                            <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">
-                              {handle}
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
+                      {(() => {
+                        const isUpdate = items.some(i => i.action === 'update');
+                        return (
+                          <tr className="bg-gray-50 dark:bg-gray-800/70 border-b border-t dark:border-gray-700">
+                            <td colSpan={4} className="px-3 py-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-bold text-gray-800 dark:text-gray-100">
+                                  {displayTitleFromHandle(handle)}
+                                </span>
+                                {isUpdate && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                    Adding to existing
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                                <span className="text-xs text-gray-400 dark:text-gray-500">
+                                  <span className="font-medium text-gray-500 dark:text-gray-400">Canonical:</span>{' '}
+                                  <span className="font-mono">{handle}</span>
+                                </span>
+                                <span className="text-xs text-gray-400 dark:text-gray-500">→</span>
+                                <span className="text-xs text-blue-500 dark:text-blue-400">
+                                  <span className="font-medium">{isUpdate ? 'Updates:' : 'Creates:'}</span>{' '}
+                                  <span className="font-mono">{handle}-damaged</span>
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })()}
                       {/* Condition rows */}
                       {items.map(item => {
                         const meta = CONDITION_META[item.condition];
+                        const isUpdate = item.action === 'update';
                         return (
                           <tr
                             key={`${handle}-${item.condition}`}
@@ -688,9 +719,19 @@ export default function DamagedBooksWizard() {
                               </span>
                             </td>
                             <td className="px-3 py-2.5 text-center">
-                              <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                                {item.inventory_seed}
-                              </span>
+                              {isUpdate ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-mono">
+                                  <span className="text-gray-400 dark:text-gray-500">{item.existing_qty}</span>
+                                  <span className="text-gray-300 dark:text-gray-600">+</span>
+                                  <span className="text-green-600 dark:text-green-400 font-semibold">{item.inventory_seed}</span>
+                                  <span className="text-gray-300 dark:text-gray-600">=</span>
+                                  <span className="text-gray-900 dark:text-white font-bold">{item.new_total}</span>
+                                </span>
+                              ) : (
+                                <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                                  {item.inventory_seed}
+                                </span>
+                              )}
                             </td>
                             <td className="px-3 py-2.5 text-right text-sm text-gray-700 dark:text-gray-300">
                               ${item.price}
