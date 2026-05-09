@@ -4,7 +4,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 
-const API_BASE  = import.meta.env.VITE_PREORDER_BASE_URL as string;
+const API_BASE = `${import.meta.env.VITE_PREORDER_BASE_URL}/admin/preorders`;
 const API_TOKEN = import.meta.env.VITE_PREORDER_ADMIN_TOKEN as string;
 
 const headers = {
