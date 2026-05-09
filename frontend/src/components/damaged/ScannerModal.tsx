@@ -13,19 +13,15 @@ type InventorySeed = {
 type ScannerModalProps = {
   isOpen: boolean;
   onClose: () => void;
-  /**
-   * Called when the user confirms a scan with quantities.
-   * Modal stays open and resumes scanning for the next book.
-   */
   onScan: (isbn: string, inventory: InventorySeed) => void;
 };
 
 type ScanState =
-  | 'scanning'    // live camera, continuous auto-detection running
-  | 'detected'    // barcode found, qty inputs shown
-  | 'added'       // confirmed — brief flash, then auto-resumes
-  | 'manual'      // BarcodeDetector unavailable — manual ISBN entry
-  | 'error';      // camera access denied
+  | 'scanning'   // live camera, RAF loop running
+  | 'detected'   // barcode found — qty inputs shown, RAF stopped
+  | 'added'      // confirmed — flash before auto-resume
+  | 'manual'     // BarcodeDetector unavailable
+  | 'error';     // camera denied
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -35,40 +31,18 @@ const CONDITIONS = ['light', 'moderate', 'heavy'] as const;
 type Condition = (typeof CONDITIONS)[number];
 
 const CONDITION_META: Record<Condition, { label: string; color: string; bgColor: string }> = {
-  light:    { label: 'Light',    color: 'text-amber-700 dark:text-amber-400',  bgColor: 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-700'   },
+  light:    { label: 'Light',    color: 'text-amber-700 dark:text-amber-400',   bgColor: 'bg-amber-50  dark:bg-amber-900/30  border-amber-200  dark:border-amber-700'  },
   moderate: { label: 'Moderate', color: 'text-orange-600 dark:text-orange-400', bgColor: 'bg-orange-50 dark:bg-orange-900/30 border-orange-200 dark:border-orange-700' },
-  heavy:    { label: 'Heavy',    color: 'text-red-600 dark:text-red-400',      bgColor: 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700'             },
+  heavy:    { label: 'Heavy',    color: 'text-red-600 dark:text-red-400',       bgColor: 'bg-red-50    dark:bg-red-900/30    border-red-200    dark:border-red-700'    },
 };
 
-const ADDED_RESUME_DELAY = 1800; // ms before camera auto-resumes
-const SCAN_INTERVAL_MS   =  400; // ms between detection attempts
+const ADDED_RESUME_DELAY = 1800;
+// Throttle: only run detection every N ms even though RAF fires every frame.
+const DETECT_THROTTLE_MS = 350;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
-
-async function detectOnFrame(canvas: HTMLCanvasElement): Promise<string | null> {
-  if (!('BarcodeDetector' in window)) return null;
-  try {
-    // @ts-ignore
-    const detector = new window.BarcodeDetector({
-      formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'itf', 'upc_a', 'upc_e'],
-    });
-    const bitmap = await createImageBitmap(canvas);
-    const results: { rawValue: string }[] = await detector.detect(bitmap);
-    bitmap.close();
-    return results.length > 0 ? results[0].rawValue : null;
-  } catch {
-    return null;
-  }
-}
-
-function playBeep() {
-  try {
-    new Audio('https://assets.mixkit.co/active_storage/sfx/766/766-preview.mp3')
-      .play().catch(() => {});
-  } catch { /* non-critical */ }
-}
 
 function emptyInventory(): InventorySeed {
   return { light: 0, moderate: 0, heavy: 0 };
@@ -79,31 +53,114 @@ function inventorySummary(inv: InventorySeed): string {
   return parts.length > 0 ? parts.join(' · ') : 'No copies';
 }
 
+function playBeep() {
+  try {
+    new Audio('https://assets.mixkit.co/active_storage/sfx/766/766-preview.mp3').play().catch(() => {});
+  } catch { /* non-critical */ }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ScannerModal({ isOpen, onClose, onScan }: ScannerModalProps) {
-  const videoRef  = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const videoRef    = useRef<HTMLVideoElement>(null);
+  const canvasRef   = useRef<HTMLCanvasElement>(null);
+  const streamRef   = useRef<MediaStream | null>(null);
 
-  const [scanState,     setScanState]     = useState<ScanState>('scanning');
-  const [detectedCode,  setDetectedCode]  = useState<string | null>(null);
+  // Single BarcodeDetector instance for the lifetime of the modal open session.
+  const detectorRef = useRef<any>(null);
+  // RAF handle — cancel this to stop the scan loop.
+  const rafRef      = useRef<number | null>(null);
+  // Last time we actually ran detection (throttle).
+  const lastDetectRef = useRef<number>(0);
+  // Ref-mirror of scanState so RAF callback never reads stale state.
+  const scanStateRef  = useRef<ScanState>('scanning');
+
+  const [scanState,     setScanStateRaw] = useState<ScanState>('scanning');
+  const [detectedCode,  setDetectedCode] = useState<string | null>(null);
   const [scanInventory, setScanInventory] = useState<InventorySeed>(emptyInventory());
   const [addedSnapshot, setAddedSnapshot] = useState<{ isbn: string; inv: InventorySeed } | null>(null);
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [manualIsbn,    setManualIsbn]    = useState('');
   const [hasBarcodeDetector] = useState(() => 'BarcodeDetector' in window);
 
-  // ── Camera lifecycle ──────────────────────────────────────────────────────
+  // Keep ref in sync so RAF callbacks never see stale state.
+  const setScanState = useCallback((s: ScanState) => {
+    scanStateRef.current = s;
+    setScanStateRaw(s);
+  }, []);
+
+  // ── RAF scan loop ──────────────────────────────────────────────────────────
+
+  const stopScanLoop = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  }, []);
+
+  const startScanLoop = useCallback(() => {
+    if (!detectorRef.current || !hasBarcodeDetector) return;
+
+    const tick = async (now: number) => {
+      // Bail if we've left 'scanning' state (read from ref, never stale)
+      if (scanStateRef.current !== 'scanning') return;
+
+      const video  = videoRef.current;
+      const canvas = canvasRef.current;
+
+      if (
+        video && canvas &&
+        !video.paused &&
+        video.readyState >= 2 &&
+        now - lastDetectRef.current >= DETECT_THROTTLE_MS
+      ) {
+        lastDetectRef.current = now;
+
+        canvas.width  = video.videoWidth  || 640;
+        canvas.height = video.videoHeight || 480;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(video, 0, 0);
+
+          try {
+            const bitmap  = await createImageBitmap(canvas);
+            const results = await detectorRef.current.detect(bitmap);
+            bitmap.close();
+
+            if (results.length > 0 && scanStateRef.current === 'scanning') {
+              const code = results[0].rawValue;
+              stopScanLoop();
+              video.pause();
+              setDetectedCode(code);
+              setScanInventory(emptyInventory());
+              setScanState('detected');
+              return; // do not schedule next RAF
+            }
+          } catch {
+            // Detection error on this frame — continue loop
+          }
+        }
+      }
+
+      // Schedule next frame
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+  }, [hasBarcodeDetector, stopScanLoop, setScanState]);
+
+  // ── Camera lifecycle ───────────────────────────────────────────────────────
 
   const stopCamera = useCallback(() => {
+    stopScanLoop();
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
+    detectorRef.current = null;
     setIsCameraReady(false);
-  }, []);
+  }, [stopScanLoop]);
 
   const startCamera = useCallback(async () => {
     try {
@@ -111,18 +168,49 @@ export default function ScannerModal({ isOpen, onClose, onScan }: ScannerModalPr
         video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
       });
       streamRef.current = stream;
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
+
+        // Create detector once per session
+        if (hasBarcodeDetector) {
+          try {
+            // @ts-ignore
+            detectorRef.current = new window.BarcodeDetector({
+              formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'itf', 'upc_a', 'upc_e'],
+            });
+          } catch {
+            detectorRef.current = null;
+          }
+        }
+
         setIsCameraReady(true);
-        setScanState(hasBarcodeDetector ? 'scanning' : 'manual');
+
+        if (hasBarcodeDetector && detectorRef.current) {
+          setScanState('scanning');
+        } else {
+          setScanState('manual');
+        }
       }
     } catch {
       setScanState('error');
     }
-  }, [hasBarcodeDetector]);
+  }, [hasBarcodeDetector, setScanState]);
 
-  // Open/close lifecycle
+  // Start the RAF loop once the camera is ready and we're in 'scanning' state
+  useEffect(() => {
+    if (scanState === 'scanning' && isCameraReady && detectorRef.current) {
+      lastDetectRef.current = 0;
+      startScanLoop();
+    }
+    return () => {
+      // Cleanup: stop loop when leaving scanning state
+      if (scanState !== 'scanning') stopScanLoop();
+    };
+  }, [scanState, isCameraReady, startScanLoop, stopScanLoop]);
+
+  // Open/close
   useEffect(() => {
     if (isOpen) {
       setScanState('scanning');
@@ -135,69 +223,29 @@ export default function ScannerModal({ isOpen, onClose, onScan }: ScannerModalPr
       stopCamera();
     }
     return () => stopCamera();
-  }, [isOpen, startCamera, stopCamera]);
-
-  // ── Continuous scan loop ──────────────────────────────────────────────────
-  // Runs while scanState === 'scanning' and camera is ready.
-  // Each iteration: draw frame → run BarcodeDetector → if found, freeze and
-  // transition to 'detected'. No manual trigger required.
-
-  useEffect(() => {
-    if (scanState !== 'scanning' || !isCameraReady || !hasBarcodeDetector) return;
-
-    let cancelled = false;
-
-    const run = async () => {
-      while (!cancelled) {
-        const video  = videoRef.current;
-        const canvas = canvasRef.current;
-
-        if (video && canvas && !video.paused && video.readyState >= 2) {
-          canvas.width  = video.videoWidth  || 640;
-          canvas.height = video.videoHeight || 480;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(video, 0, 0);
-            const code = await detectOnFrame(canvas);
-            if (code && !cancelled) {
-              video.pause();
-              setDetectedCode(code);
-              setScanInventory(emptyInventory());
-              setScanState('detected');
-              return; // stop loop — scanner resumes from 'added' → 'scanning' transition
-            }
-          }
-        }
-
-        // Pause between attempts so we don't hammer the detector
-        await new Promise<void>(r => setTimeout(r, SCAN_INTERVAL_MS));
-      }
-    };
-
-    run();
-    return () => { cancelled = true; };
-  }, [scanState, isCameraReady, hasBarcodeDetector]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   // Auto-resume after 'added' flash
   useEffect(() => {
     if (scanState !== 'added') return;
     const t = setTimeout(() => {
-      setScanState(hasBarcodeDetector ? 'scanning' : 'manual');
       setDetectedCode(null);
       setScanInventory(emptyInventory());
       setAddedSnapshot(null);
+      setScanState(hasBarcodeDetector && detectorRef.current ? 'scanning' : 'manual');
       videoRef.current?.play();
     }, ADDED_RESUME_DELAY);
     return () => clearTimeout(t);
-  }, [scanState, hasBarcodeDetector]);
+  }, [scanState, hasBarcodeDetector, setScanState]);
 
-  // ── Qty helper ────────────────────────────────────────────────────────────
+  // ── Qty helper ─────────────────────────────────────────────────────────────
 
   const updateQty = (cond: Condition, raw: string) => {
     setScanInventory(prev => ({ ...prev, [cond]: Math.max(0, parseInt(raw, 10) || 0) }));
   };
 
-  // ── Actions ───────────────────────────────────────────────────────────────
+  // ── Actions ────────────────────────────────────────────────────────────────
 
   const handleAddBook = useCallback((isbn: string, inv: InventorySeed) => {
     if (navigator.vibrate) navigator.vibrate(100);
@@ -205,7 +253,14 @@ export default function ScannerModal({ isOpen, onClose, onScan }: ScannerModalPr
     setAddedSnapshot({ isbn, inv: { ...inv } });
     onScan(isbn, { ...inv });
     setScanState('added');
-  }, [onScan]);
+  }, [onScan, setScanState]);
+
+  const handleRetry = useCallback(() => {
+    setDetectedCode(null);
+    setScanInventory(emptyInventory());
+    setScanState('scanning');
+    videoRef.current?.play();
+  }, [setScanState]);
 
   const handleManualAdd = useCallback(() => {
     const isbn = manualIsbn.trim();
@@ -222,17 +277,17 @@ export default function ScannerModal({ isOpen, onClose, onScan }: ScannerModalPr
     setAddedSnapshot(null);
     setManualIsbn('');
     onClose();
-  }, [stopCamera, onClose]);
+  }, [stopCamera, setScanState, onClose]);
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   if (!isOpen) return null;
 
-  const subtitleMap: Partial<Record<ScanState, string>> = {
-    scanning: 'Align the barcode with the frame',
+  const subtitle: Partial<Record<ScanState, string>> = {
+    scanning: 'Hold barcode steady — detection is automatic',
     detected: 'Set quantities, then add',
     added:    'Book added — resuming…',
-    manual:   'BarcodeDetector unavailable — enter ISBN manually',
+    manual:   'Enter ISBN manually',
     error:    'Camera unavailable',
   };
 
@@ -245,12 +300,12 @@ export default function ScannerModal({ isOpen, onClose, onScan }: ScannerModalPr
     >
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh] overflow-hidden">
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b dark:border-gray-700 flex-shrink-0">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Scan Barcode / ISBN</h3>
             <p className={`text-xs mt-0.5 truncate ${scanState === 'added' ? 'text-green-500 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'}`}>
-              {subtitleMap[scanState] ?? ''}
+              {subtitle[scanState] ?? ''}
             </p>
           </div>
           <button
@@ -264,32 +319,30 @@ export default function ScannerModal({ isOpen, onClose, onScan }: ScannerModalPr
           </button>
         </div>
 
-        {/* ── Camera viewport ── */}
+        {/* Camera viewport */}
         <div className="relative bg-black flex-shrink-0" style={{ aspectRatio: '4/3' }}>
           <video ref={videoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
           <canvas ref={canvasRef} className="hidden" />
 
-          {/* Scanning reticle with animated line */}
+          {/* Aim reticle */}
           {(scanState === 'scanning' || scanState === 'added') && isCameraReady && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="relative w-72 h-36">
-                {[
-                  'top-0 left-0 border-t-4 border-l-4 rounded-tl-md',
+                {['top-0 left-0 border-t-4 border-l-4 rounded-tl-md',
                   'top-0 right-0 border-t-4 border-r-4 rounded-tr-md',
                   'bottom-0 left-0 border-b-4 border-l-4 rounded-bl-md',
                   'bottom-0 right-0 border-b-4 border-r-4 rounded-br-md',
                 ].map((cls, i) => (
                   <div key={i} className={`absolute w-7 h-7 border-blue-400 ${cls}`} />
                 ))}
-                {/* Scan line — only animate while actively scanning */}
                 {scanState === 'scanning' && (
-                  <div className="absolute inset-x-0 h-0.5 bg-blue-400/70 top-1/2 animate-pulse" />
+                  <div className="absolute inset-x-0 h-0.5 bg-blue-400/60 top-1/2 animate-pulse" />
                 )}
               </div>
             </div>
           )}
 
-          {/* 'added' green flash */}
+          {/* Added flash */}
           {scanState === 'added' && (
             <div className="absolute inset-0 bg-green-500/20 flex items-center justify-center pointer-events-none">
               <span className="inline-flex items-center gap-2 bg-green-600 text-white text-sm font-semibold px-5 py-2.5 rounded-full shadow-xl">
@@ -301,15 +354,6 @@ export default function ScannerModal({ isOpen, onClose, onScan }: ScannerModalPr
             </div>
           )}
 
-          {/* Manual entry overlay */}
-          {scanState === 'manual' && isCameraReady && (
-            <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-3 p-6">
-              <p className="text-white text-xs text-center">
-                Auto-detection unavailable. Enter the ISBN below.
-              </p>
-            </div>
-          )}
-
           {/* Error overlay */}
           {scanState === 'error' && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/75 gap-3 p-6 text-center">
@@ -318,13 +362,11 @@ export default function ScannerModal({ isOpen, onClose, onScan }: ScannerModalPr
                   d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
               </svg>
               <p className="text-white text-sm font-medium">Camera access denied</p>
-              <p className="text-gray-400 text-xs leading-relaxed">
-                Grant camera permission in your browser settings, then reopen the scanner.
-              </p>
+              <p className="text-gray-400 text-xs leading-relaxed">Grant camera permission in your browser settings, then reopen.</p>
             </div>
           )}
 
-          {/* Camera loading */}
+          {/* Loading */}
           {!isCameraReady && scanState !== 'error' && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/60">
               <div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
@@ -332,17 +374,17 @@ export default function ScannerModal({ isOpen, onClose, onScan }: ScannerModalPr
           )}
         </div>
 
-        {/* ── Bottom panel ── */}
+        {/* Bottom panel */}
         <div className="px-5 py-4 space-y-3 overflow-y-auto">
 
-          {/* ── SCANNING — waiting for auto-detect, no button ── */}
+          {/* SCANNING */}
           {scanState === 'scanning' && (
             <p className="text-xs text-center text-gray-500 dark:text-gray-400">
               Hold the barcode steady within the frame. Detection is automatic.
             </p>
           )}
 
-          {/* ── DETECTED — qty inputs + Add Book ── */}
+          {/* DETECTED */}
           {scanState === 'detected' && detectedCode && (
             <>
               <div className="rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 px-3 py-2.5">
@@ -375,12 +417,7 @@ export default function ScannerModal({ isOpen, onClose, onScan }: ScannerModalPr
 
               <div className="flex gap-2 pt-1">
                 <button
-                  onClick={() => {
-                    setDetectedCode(null);
-                    setScanInventory(emptyInventory());
-                    setScanState('scanning');
-                    videoRef.current?.play();
-                  }}
+                  onClick={handleRetry}
                   className="flex-1 px-3 py-2.5 rounded-lg border text-sm font-medium text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                 >
                   Retry
@@ -398,7 +435,7 @@ export default function ScannerModal({ isOpen, onClose, onScan }: ScannerModalPr
             </>
           )}
 
-          {/* ── ADDED — confirmation flash ── */}
+          {/* ADDED */}
           {scanState === 'added' && addedSnapshot && (
             <div className="rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 p-4 text-center space-y-2">
               <div className="flex items-center justify-center gap-1.5 text-green-600 dark:text-green-400 font-semibold text-sm">
@@ -416,24 +453,22 @@ export default function ScannerModal({ isOpen, onClose, onScan }: ScannerModalPr
             </div>
           )}
 
-          {/* ── MANUAL — ISBN text input (no BarcodeDetector) ── */}
+          {/* MANUAL */}
           {scanState === 'manual' && (
             <>
               <div>
                 <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
                   ISBN or Product ID
                 </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={manualIsbn}
-                    onChange={e => setManualIsbn(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') handleManualAdd(); }}
-                    placeholder="e.g. 9780385340533"
-                    autoFocus
-                    className="flex-1 px-3 py-2 border rounded-lg text-sm dark:bg-gray-800 dark:text-white dark:border-gray-700 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm placeholder-gray-400"
-                  />
-                </div>
+                <input
+                  type="text"
+                  value={manualIsbn}
+                  onChange={e => setManualIsbn(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleManualAdd(); }}
+                  placeholder="e.g. 9780385340533"
+                  autoFocus
+                  className="w-full px-3 py-2 border rounded-lg text-sm dark:bg-gray-800 dark:text-white dark:border-gray-700 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm placeholder-gray-400"
+                />
               </div>
 
               <div>
@@ -472,7 +507,7 @@ export default function ScannerModal({ isOpen, onClose, onScan }: ScannerModalPr
             </>
           )}
 
-          {/* ── ERROR ── */}
+          {/* ERROR */}
           {scanState === 'error' && (
             <button
               onClick={handleClose}
