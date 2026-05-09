@@ -27,6 +27,7 @@ const navItems = [
     children: [
       { label: 'Release Management', path: '/preorders/release', roles: ['admin', 'editor'] },
       { label: 'Shipping Profiles', path: '/preorders/shipping', roles: ['admin', 'editor'] },
+      { label: 'Order Tagging', path: '/preorders/tagging', roles: ['admin', 'editor'] },
     ]
   },
   { label: 'Campaigns', path: '/campaigns', roles: ['admin', 'editor'] },

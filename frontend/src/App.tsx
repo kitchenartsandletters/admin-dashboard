@@ -23,8 +23,10 @@ import { supabase } from './lib/supabase';
 import DefaultRedirect from './auth/DefaultRedirect';
 import { useState, useEffect } from 'react';
 import ReportExclusionsPage from './reports/exclusions/ReportExclusionsPage';
-import ReleaseManagement from './components/ReleaseManagement';
-import ShippingProfiles from './components/ShippingProfiles';
+import ReleaseManagement from './components/preorder/ReleaseManagement';
+import ShippingProfiles from './components/preorder/ShippingProfiles';
+import TaggingService from './components/preorder/OrderTaggingPage';
+import OrderTaggingPage from './components/preorder/OrderTaggingPage';
 
 const App = () => {
   // 1. Logic for the ticking clock
@@ -193,6 +195,12 @@ const App = () => {
                       <Route path="/preorders/shipping" element={
                         <ProtectedRoute requiredRoles={['admin', 'editor']}>
                           <ShippingProfiles />
+                        </ProtectedRoute>
+                      } />
+
+                      <Route path="/preorders/tagging" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <OrderTaggingPage />
                         </ProtectedRoute>
                       } />
 
