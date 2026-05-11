@@ -25,15 +25,13 @@ import { useState, useEffect } from 'react';
 import ReportExclusionsPage from './reports/exclusions/ReportExclusionsPage';
 import ReleaseManagement from './components/preorder/ReleaseManagement';
 import ShippingProfiles from './components/preorder/ShippingProfiles';
-import TaggingService from './components/preorder/OrderTaggingPage';
 import OrderTaggingPage from './components/preorder/OrderTaggingPage';
+import EdelweissLookup from './components/tools/EdelweissLookup';
 
 const App = () => {
-  // 1. Logic for the ticking clock
   const [dateTime, setDateTime] = useState({ date: "", time: "" });
 
   useEffect(() => {
-    // Formatter for: Monday, December 29, 2025
     const dateOptions: Intl.DateTimeFormatOptions = {
       timeZone: 'America/New_York',
       weekday: 'long',
@@ -41,8 +39,6 @@ const App = () => {
       month: 'long',
       day: 'numeric',
     };
-
-    // Formatter for: 5:03:29 PM (hour: 'numeric' removes the leading zero)
     const timeOptions: Intl.DateTimeFormatOptions = {
       timeZone: 'America/New_York',
       hour: 'numeric',
@@ -50,18 +46,12 @@ const App = () => {
       second: '2-digit',
       hour12: true,
     };
-
     const dateFormatter = new Intl.DateTimeFormat('en-US', dateOptions);
     const timeFormatter = new Intl.DateTimeFormat('en-US', timeOptions);
-
     const updateDateTime = () => {
       const now = new Date();
-      setDateTime({
-        date: dateFormatter.format(now),
-        time: timeFormatter.format(now),
-      });
+      setDateTime({ date: dateFormatter.format(now), time: timeFormatter.format(now) });
     };
-
     updateDateTime();
     const timer = setInterval(updateDateTime, 1000);
     return () => clearInterval(timer);
@@ -71,20 +61,14 @@ const App = () => {
     <AuthProvider>
       <Router>
         <Routes>
-          {/* Public login route */}
           <Route path="/login" element={<LoginPage />} />
-
-          {/* Protected application */}
           <Route
             path="/*"
             element={
               <ProtectedRoute>
                 <SidebarLayout dateTime={dateTime}>
-                  {/* Global header (shown across all pages) */}
-                  {/* ADDED: hidden md:block to hide this large header on mobile */}
                   <div className="bg-white dark:bg-gray-900 hidden md:block">
                     <header className="flex items-center justify-between px-4 py-4 border-b dark:border-gray-800">
-                      {/* Two-line Header */}
                       <div className="flex flex-col">
                         <span className="text-xs md:text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           {dateTime.date || "Loading..."}
@@ -102,177 +86,116 @@ const App = () => {
                     </header>
                   </div>
 
-                  {/* Routed content */}
                   <div className="pt-4">
                     <Routes>
-                      <Route
-                        path="/requests"
-                        element={
-                          <ProtectedRoute requiredRoles={['admin', 'editor']}>
-                            <RequestService />
-                          </ProtectedRoute>
-                        }
-                      />
-
-                      <Route
-                        path="/blacklist"
-                        element={
-                          <ProtectedRoute requiredRoles={['admin', 'editor']}>
-                            <BlacklistManager />
-                          </ProtectedRoute>
-                        }
-                      />
-
-                      <Route
-                        path="/damaged"
-                        element={
-                          <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
-                            <DamagedBooksTable />
-                          </ProtectedRoute>
-                        }
-                      />
-
-                      <Route
-                        path="/damaged/bulk-create"
-                        element={
-                          <ProtectedRoute requiredRoles={['admin']}>
-                            <DamagedBooksWizard />
-                          </ProtectedRoute>
-                        }
-                      />
-
-                      <Route
-                        path="/reports"
-                        element={
-                          <ProtectedRoute requiredRoles={['admin', 'editor']}>
-                            <ReportsPage />
-                          </ProtectedRoute>
-                        }
-                      />
-
-                      <Route
-                        path="/reports/calendar"
-                        element={
-                          <ProtectedRoute requiredRoles={['admin', 'editor']}>
-                            <BusinessCalendarPage />
-                          </ProtectedRoute>
-                        }
-                      />
-
-                      <Route
-                        path="/reports/jobs/:jobId"
-                        element={
-                          <ProtectedRoute requiredRoles={['admin', 'editor']}>
-                            <ReportJobPage />
-                          </ProtectedRoute>
-                        }
-                      />
-
-                      <Route
-                        path="/reports/exclusions"
-                        element={
-                          <ProtectedRoute requiredRoles={['admin', 'editor']}>
-                            <ReportExclusionsPage />
-                          </ProtectedRoute>
-                        }
-                      />
-
-                      <Route
-                        path="/preorders"
-                        element={
-                          <ProtectedRoute requiredRoles={['admin', 'editor']}>
-                            <PreorderService />
-                          </ProtectedRoute>
-                        }
-                      />
-
+                      <Route path="/requests" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <RequestService />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/blacklist" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <BlacklistManager />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/damaged" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
+                          <DamagedBooksTable />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/damaged/bulk-create" element={
+                        <ProtectedRoute requiredRoles={['admin']}>
+                          <DamagedBooksWizard />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/reports" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <ReportsPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/reports/calendar" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <BusinessCalendarPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/reports/jobs/:jobId" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <ReportJobPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/reports/exclusions" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <ReportExclusionsPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/preorders" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <PreorderService />
+                        </ProtectedRoute>
+                      } />
                       <Route path="/preorders/release" element={
                         <ProtectedRoute requiredRoles={['admin', 'editor']}>
                           <ReleaseManagement />
                         </ProtectedRoute>
                       } />
-
                       <Route path="/preorders/shipping" element={
                         <ProtectedRoute requiredRoles={['admin', 'editor']}>
                           <ShippingProfiles />
                         </ProtectedRoute>
                       } />
-
                       <Route path="/preorders/tagging" element={
                         <ProtectedRoute requiredRoles={['admin', 'editor']}>
                           <OrderTaggingPage />
                         </ProtectedRoute>
                       } />
+                      <Route path="/campaigns" element={
+                        <ProtectedRoute requiredRoles={['admin']}>
+                          <CampaignDashboard />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/suppliers" element={
+                        <ProtectedRoute requiredRoles={['admin']}>
+                          <SupplierService />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/purchase-orders" element={
+                        <ProtectedRoute requiredRoles={['admin']}>
+                          <POService />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/receiving" element={
+                        <ProtectedRoute requiredRoles={['admin']}>
+                          <ReceivingWizard />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/transfers" element={
+                        <ProtectedRoute requiredRoles={['admin']}>
+                          <TransferService />
+                        </ProtectedRoute>
+                      } />
 
-                      <Route
-                        path="/campaigns"
-                        element={
-                          <ProtectedRoute requiredRoles={['admin']}>
-                            <CampaignDashboard />
-                          </ProtectedRoute>
-                        }
-                      />
+                      {/* ── Tools ── */}
+                      <Route path="/tools/edelweiss-lookup" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <EdelweissLookup />
+                        </ProtectedRoute>
+                      } />
 
-                      <Route
-                         path="/suppliers"
-                         element={
-                           <ProtectedRoute requiredRoles={['admin']}>
-                             <SupplierService />
-                           </ProtectedRoute>
-                         }
-                       />
-                       <Route
-                         path="/purchase-orders"
-                         element={
-                           <ProtectedRoute requiredRoles={['admin']}>
-                             <POService />
-                           </ProtectedRoute>
-                         }
-                       />
-                       <Route
-                         path="/receiving"
-                         element={
-                           <ProtectedRoute requiredRoles={['admin']}>
-                             <ReceivingWizard />
-                           </ProtectedRoute>
-                         }
-                       />
-                       <Route
-                         path="/transfers"
-                         element={
-                           <ProtectedRoute requiredRoles={['admin']}>
-                             <TransferService />
-                           </ProtectedRoute>
-                         }
-                       />
-
-                      <Route
-                        path="/status"
-                        element={
-                          <ProtectedRoute requiredRoles={['admin']}>
-                            <SystemStatusDashboard />
-                          </ProtectedRoute>
-                        }
-                      />
-
-                      <Route
-                        path="/welcome"
-                        element={
-                          <ProtectedRoute>
-                            <WelcomePage />
-                          </ProtectedRoute>
-                        }
-                      />
-
-                      <Route
-                        path="/account"
-                        element={
-                          <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
-                            <AccountPage />
-                          </ProtectedRoute>
-                        }
-                      />
-
+                      <Route path="/status" element={
+                        <ProtectedRoute requiredRoles={['admin']}>
+                          <SystemStatusDashboard />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/welcome" element={
+                        <ProtectedRoute>
+                          <WelcomePage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/account" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
+                          <AccountPage />
+                        </ProtectedRoute>
+                      } />
                       <Route path="*" element={<DefaultRedirect />} />
                     </Routes>
                   </div>

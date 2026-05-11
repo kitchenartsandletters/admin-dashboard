@@ -17,7 +17,7 @@ const navItems = [
     path: '/damaged',
     roles: ['admin', 'editor', 'user'],
     children: [
-        { label: 'Bulk Create', path: '/damaged/bulk-create', roles: ['admin'] },
+      { label: 'Bulk Create', path: '/damaged/bulk-create', roles: ['admin'] },
     ]
   },
   { 
@@ -42,14 +42,22 @@ const navItems = [
       { label: 'Transfers',       path: '/transfers',       roles: ['admin'] },
     ],
   },
+  {
+    label: 'Tools',
+    path: '/tools',
+    roles: ['admin', 'editor'],
+    children: [
+      { label: 'Edelweiss Lookup', path: '/tools/edelweiss-lookup', roles: ['admin', 'editor'] },
+    ],
+  },
   { label: 'System Status', path: '/status', roles: ['admin'] },
   {
     label: 'Reports',
     path: '/reports',
     roles: ['admin', 'editor', 'user'],
     children: [
-        { label: 'Business Calendar', path: '/reports/calendar', roles: ['admin', 'editor'] },
-        { label: 'Exclusions', path: '/reports/exclusions', roles: ['admin', 'editor'] }
+      { label: 'Business Calendar', path: '/reports/calendar', roles: ['admin', 'editor'] },
+      { label: 'Exclusions', path: '/reports/exclusions', roles: ['admin', 'editor'] }
     ]
   },
   { label: 'Account', path: '/account', roles: ['admin', 'editor', 'user'] },
@@ -128,26 +136,25 @@ const SidebarLayout = ({ children, dateTime }: SidebarLayoutProps) => {
             return (
               <div key={item.path} className="flex flex-col">
                 <div className="flex items-center">
-                    {/* UPDATED: Always close sidebar on click, regardless of children */}
-                    <Link
-                        to={item.path}
-                        onClick={closeSidebar}
-                        className={`flex-1 px-3 py-2 rounded transition-all hover:bg-gray-100 dark:hover:bg-gray-700
-                            ${isActive ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
+                  <Link
+                    to={item.path}
+                    onClick={closeSidebar}
+                    className={`flex-1 px-3 py-2 rounded transition-all hover:bg-gray-100 dark:hover:bg-gray-700
+                      ${isActive ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
+                  >
+                    {item.label}
+                  </Link>
+                  {hasChildren && (
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleMenu(item.path);
+                      }}
+                      className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                     >
-                        {item.label}
-                    </Link>
-                    {hasChildren && (
-                        <button 
-                            onClick={(e) => {
-                                e.stopPropagation(); // Prevent affecting the link click
-                                toggleMenu(item.path);
-                            }}
-                            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                        >
-                            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                        </button>
-                    )}
+                      {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    </button>
+                  )}
                 </div>
 
                 {hasChildren && isExpanded && (
@@ -176,13 +183,11 @@ const SidebarLayout = ({ children, dateTime }: SidebarLayoutProps) => {
       
       {/* Content Area */}
       <div className="flex-1 flex flex-col min-w-0 h-full relative">
-        {/* Mobile Header - Updated to include Time */}
+        {/* Mobile Header */}
         <header className="flex items-center justify-between px-4 py-3 border-b dark:border-gray-800 md:hidden shrink-0">
           <button onClick={toggleSidebar} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">
             <Menu />
           </button>
-          
-          {/* Relocated Mobile Time */}
           {dateTime && (
             <span className="font-mono text-sm font-bold text-gray-900 dark:text-white tabular-nums">
               {dateTime.time}

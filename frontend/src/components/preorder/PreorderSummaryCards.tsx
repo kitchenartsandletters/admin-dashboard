@@ -24,6 +24,18 @@ interface NoArrivalTitle {
   classification: string
 }
 
+interface PubDateDiscrepancy {
+  id: number
+  product_id: number
+  isbn13: string
+  title: string
+  shopify_pub_date: string
+  edelweiss_pub_date: string
+  delta_days: number       // positive = slipped, negative = moved earlier
+  detected_at: string
+  status: "open" | "resolved" | "dismissed"
+}
+
 interface PreorderSummaryCardsProps {
   metrics: PreorderSummaryMetrics
   loading?: boolean
@@ -36,11 +48,18 @@ interface PreorderSummaryCardsProps {
 // ──────────────────────────────────────────────
 
 const PREORDER_SERVICE_URL = import.meta.env.VITE_PREORDER_BASE_URL
-const ADMIN_TOKEN = import.meta.env.VITE_PREORDER_ADMIN_TOKEN
+const EDELWEISS_SERVICE_URL = import.meta.env.VITE_EDELWEISS_SERVICE_URL
+const PREORDER_TOKEN = import.meta.env.VITE_PREORDER_ADMIN_TOKEN
+const EDELWEISS_KEY  = import.meta.env.VITE_EDELWEISS_ADMIN_KEY
 
-const apiHeaders = () => ({
+const preorderHeaders = () => ({
   "Content-Type": "application/json",
-  "X-Admin-Token": ADMIN_TOKEN,
+  "X-Admin-Token": PREORDER_TOKEN,
+})
+
+const edelweissHeaders = () => ({
+  "Content-Type": "application/json",
+  "x-admin-key": EDELWEISS_KEY,
 })
 
 // ──────────────────────────────────────────────
@@ -58,6 +77,13 @@ const NO_ARRIVAL_REASONS = [
   "Vendor contacted — shipment expected",
   "Title cancelled by publisher",
   "Orders refunded — no longer needed",
+  "Other",
+]
+
+const PUBDATE_DISMISS_REASONS = [
+  "Pub date updated in Shopify",
+  "Publisher confirmed original date stands",
+  "Title cancelled — no action needed",
   "Other",
 ]
 
@@ -106,6 +132,11 @@ function formatDateShort(dateStr: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
 }
 
+function deltaBadge(days: number): string {
+  if (days > 0) return `+${days}d later`
+  return `${days}d earlier`
+}
+
 // ──────────────────────────────────────────────
 // Main component
 // ──────────────────────────────────────────────
@@ -126,13 +157,18 @@ const PreorderSummaryCards: React.FC<PreorderSummaryCardsProps> = ({
   const [showNoArrivals, setShowNoArrivals] = useState(false)
   const [loadingNoArrivals, setLoadingNoArrivals] = useState(false)
 
+  // Pub date discrepancies
+  const [discrepancies, setDiscrepancies] = useState<PubDateDiscrepancy[]>([])
+  const [showDiscrepancies, setShowDiscrepancies] = useState(false)
+  const [loadingDiscrepancies, setLoadingDiscrepancies] = useState(false)
+
   // Dismiss state
   const [dismissing, setDismissing] = useState<Record<string, boolean>>({})
   const [dismissModal, setDismissModal] = useState<{
     open: boolean
     productId: number
     title: string
-    alertType: "late_arrival" | "no_arrival"
+    alertType: "late_arrival" | "no_arrival" | "pubdate"
     selectedReason: string
   }>({ open: false, productId: 0, title: "", alertType: "late_arrival", selectedReason: "" })
 
@@ -152,10 +188,7 @@ const PreorderSummaryCards: React.FC<PreorderSummaryCardsProps> = ({
   // ── Fetch handlers ──
 
   const handleLateArrivalsClick = async () => {
-    if (showLateArrivals) {
-      setShowLateArrivals(false)
-      return
-    }
+    if (showLateArrivals) { setShowLateArrivals(false); return }
     setLoadingLate(true)
     try {
       const data = await onFetchLateArrivals()
@@ -169,19 +202,15 @@ const PreorderSummaryCards: React.FC<PreorderSummaryCardsProps> = ({
   }
 
   const handleNoArrivalsClick = async () => {
-    if (showNoArrivals) {
-      setShowNoArrivals(false)
-      return
-    }
+    if (showNoArrivals) { setShowNoArrivals(false); return }
     setLoadingNoArrivals(true)
     try {
       const res = await fetch(
         `${PREORDER_SERVICE_URL}/admin/preorders/no-arrival-titles`,
-        { headers: apiHeaders() }
+        { headers: preorderHeaders() }
       )
       if (res.ok) {
-        const data: NoArrivalTitle[] = await res.json()
-        setNoArrivals(data)
+        setNoArrivals(await res.json())
         setShowNoArrivals(true)
       }
     } catch (err) {
@@ -191,7 +220,27 @@ const PreorderSummaryCards: React.FC<PreorderSummaryCardsProps> = ({
     }
   }
 
-  // ── Dismiss handler ──
+  const handleDiscrepanciesClick = async () => {
+    if (showDiscrepancies) { setShowDiscrepancies(false); return }
+    setLoadingDiscrepancies(true)
+    try {
+      const res = await fetch(
+        `${EDELWEISS_SERVICE_URL}/discrepancies`,
+        { headers: edelweissHeaders() }
+      )
+      if (res.ok) {
+        const data = await res.json()
+        setDiscrepancies(data.discrepancies ?? [])
+        setShowDiscrepancies(true)
+      }
+    } catch (err) {
+      console.error("Failed to fetch pub date discrepancies", err)
+    } finally {
+      setLoadingDiscrepancies(false)
+    }
+  }
+
+  // ── Dismiss handlers ──
 
   const dismissAlert = async (
     productId: number,
@@ -199,32 +248,62 @@ const PreorderSummaryCards: React.FC<PreorderSummaryCardsProps> = ({
     reason: string
   ) => {
     const key = `${alertType}-${productId}`
-    setDismissing((p) => ({ ...p, [key]: true }))
+    setDismissing(p => ({ ...p, [key]: true }))
     try {
       const res = await fetch(
         `${PREORDER_SERVICE_URL}/admin/preorders/alerts/dismiss/${productId}`,
         {
           method: "POST",
-          headers: apiHeaders(),
+          headers: preorderHeaders(),
           body: JSON.stringify({ alert_type: alertType, reason }),
         }
       )
       if (res.ok) {
         if (alertType === "late_arrival") {
-          setLateArrivals((prev) => prev.filter((a) => a.product_id !== productId))
+          setLateArrivals(prev => prev.filter(a => a.product_id !== productId))
         } else {
-          setNoArrivals((prev) => prev.filter((a) => a.product_id !== productId))
+          setNoArrivals(prev => prev.filter(a => a.product_id !== productId))
         }
         onMetricsRefresh?.()
       }
     } catch (e) {
       console.error(`Failed to dismiss alert for ${productId}:`, e)
     } finally {
-      setDismissing((p) => ({ ...p, [key]: false }))
+      setDismissing(p => ({ ...p, [key]: false }))
     }
   }
 
-  const reasons = dismissModal.alertType === "late_arrival" ? LATE_ARRIVAL_REASONS : NO_ARRIVAL_REASONS
+  const dismissDiscrepancy = async (productId: number, reason: string) => {
+    const key = `pubdate-${productId}`
+    setDismissing(p => ({ ...p, [key]: true }))
+    try {
+      const res = await fetch(
+        `${EDELWEISS_SERVICE_URL}/discrepancies/${productId}/resolve`,
+        {
+          method: "POST",
+          headers: edelweissHeaders(),
+          body: JSON.stringify({ resolved_by: reason }),
+        }
+      )
+      if (res.ok) {
+        setDiscrepancies(prev => prev.filter(d => d.product_id !== productId))
+      }
+    } catch (e) {
+      console.error(`Failed to resolve discrepancy for ${productId}:`, e)
+    } finally {
+      setDismissing(p => ({ ...p, [key]: false }))
+    }
+  }
+
+  const reasons = dismissModal.alertType === "late_arrival"
+    ? LATE_ARRIVAL_REASONS
+    : dismissModal.alertType === "no_arrival"
+    ? NO_ARRIVAL_REASONS
+    : PUBDATE_DISMISS_REASONS
+
+  // Count open discrepancies for the alert pill
+  // We fetch lazily, so we show a static badge if discrepancies have been loaded
+  const openDiscrepancyCount = discrepancies.length
 
   return (
     <div className="space-y-3">
@@ -252,140 +331,218 @@ const PreorderSummaryCards: React.FC<PreorderSummaryCardsProps> = ({
       </div>
 
       {/* ── Alerts ── */}
-      {(metrics.late_arrivals_unresolved > 0 || metrics.no_arrival_count > 0) && (
-        <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-1.5">
 
-          {/* ── No-Arrival Alert ── */}
-          {metrics.no_arrival_count > 0 && (
-            <div className="flex flex-col gap-1 px-3 py-2 rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
-              <div
-                className="flex items-center gap-2 cursor-pointer"
-                onClick={handleNoArrivalsClick}
-              >
-                <span className="text-red-600 dark:text-red-400 text-sm font-bold">
-                  {metrics.no_arrival_count}
-                </span>
-                <span className="text-xs text-red-700 dark:text-red-300 flex-1">
-                  {metrics.no_arrival_count === 1 ? "title" : "titles"} published with no inventory received — contact vendor
-                </span>
-                <span className="text-xs text-red-600 dark:text-red-400 font-medium">
-                  {loadingNoArrivals ? "…" : showNoArrivals ? "▲" : "▼"}
-                </span>
-              </div>
+        {/* ── Pub Date Discrepancies (from edelweiss-service) ── */}
+        <div className="flex flex-col gap-1 px-3 py-2 rounded border border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/20">
+          <div
+            className="flex items-center gap-2 cursor-pointer"
+            onClick={handleDiscrepanciesClick}
+          >
+            <span className="text-orange-600 dark:text-orange-400 text-sm font-bold">
+              {showDiscrepancies ? openDiscrepancyCount : "—"}
+            </span>
+            <span className="text-xs text-orange-700 dark:text-orange-300 flex-1">
+              Edelweiss pub date mismatches
+              {!showDiscrepancies && " — click to check"}
+            </span>
+            <span className="text-xs text-orange-600 dark:text-orange-400 font-medium">
+              {loadingDiscrepancies ? "…" : showDiscrepancies ? "▲" : "▼"}
+            </span>
+          </div>
 
-              {showNoArrivals && noArrivals.length > 0 && (
-                <div className="mt-2 space-y-1.5 border-t border-red-200 dark:border-red-700 pt-2">
-                  {noArrivals.map((row) => {
-                    const key = `no_arrival-${row.product_id}`
-                    return (
-                      <div key={row.product_id} className="flex items-center justify-between text-xs gap-2">
-                        <div className="min-w-0 flex-1">
-                          <span className="text-red-800 dark:text-red-200 font-medium truncate block max-w-[260px]">
-                            {row.title}
-                          </span>
-                          <span className="text-red-500 dark:text-red-400 font-mono text-[10px]">
-                            pub {formatDateShort(row.pub_date)}
-                          </span>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setDismissModal({
-                              open: true,
-                              productId: row.product_id,
-                              title: row.title,
-                              alertType: "no_arrival",
-                              selectedReason: "",
-                            })
-                          }}
-                          disabled={!!dismissing[key]}
-                          className="px-2 py-0.5 text-[10px] rounded border border-red-300 dark:border-red-700 text-red-600 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 shrink-0"
-                        >
-                          {dismissing[key] ? "…" : "Resolve"}
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-
-              {showNoArrivals && noArrivals.length === 0 && !loadingNoArrivals && (
-                <div className="mt-2 border-t border-red-200 dark:border-red-700 pt-2">
-                  <span className="text-xs text-red-400">All no-arrival alerts have been resolved.</span>
-                </div>
-              )}
+          {showDiscrepancies && discrepancies.length > 0 && (
+            <div className="mt-2 space-y-1.5 border-t border-orange-200 dark:border-orange-700 pt-2">
+              {discrepancies.map(row => {
+                const key = `pubdate-${row.product_id}`
+                const slipped = row.delta_days > 0
+                return (
+                  <div key={row.product_id} className="flex items-center justify-between text-xs gap-2">
+                    <div className="min-w-0 flex-1">
+                      <span className="text-orange-800 dark:text-orange-200 font-medium truncate block max-w-[220px]">
+                        {row.title}
+                      </span>
+                      <span className="text-orange-600 dark:text-orange-400 font-mono text-[10px]">
+                        Shopify: {formatDateShort(row.shopify_pub_date)}
+                        {" → "}
+                        Edelweiss: {formatDateShort(row.edelweiss_pub_date)}
+                        {" "}
+                        <span className={slipped
+                          ? "text-red-600 dark:text-red-400 font-semibold"
+                          : "text-blue-600 dark:text-blue-400 font-semibold"
+                        }>
+                          ({deltaBadge(row.delta_days)})
+                        </span>
+                      </span>
+                    </div>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation()
+                        setDismissModal({
+                          open: true,
+                          productId: row.product_id,
+                          title: row.title,
+                          alertType: "pubdate",
+                          selectedReason: "",
+                        })
+                      }}
+                      disabled={!!dismissing[key]}
+                      className="px-2 py-0.5 text-[10px] rounded border border-orange-300 dark:border-orange-700
+                                 text-orange-600 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900/40 shrink-0"
+                    >
+                      {dismissing[key] ? "…" : "Resolve"}
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           )}
 
-          {/* ── Late Arrivals Alert ── */}
-          {metrics.late_arrivals_unresolved > 0 && (
-            <div className="flex flex-col gap-1 px-3 py-2 rounded border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
-              <div
-                className="flex items-center gap-2 cursor-pointer"
-                onClick={handleLateArrivalsClick}
-              >
-                <span className="text-amber-600 dark:text-amber-400 text-sm font-bold">
-                  {metrics.late_arrivals_unresolved}
-                </span>
-                <span className="text-xs text-amber-700 dark:text-amber-300 flex-1">
-                  {metrics.late_arrivals_unresolved === 1 ? "title" : "titles"} received
-                  inventory after pub date with open presale commitments
-                </span>
-                <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                  {loadingLate ? "…" : showLateArrivals ? "▲" : "▼"}
-                </span>
-              </div>
-
-              {showLateArrivals && lateArrivals.length > 0 && (
-                <div className="mt-2 space-y-1.5 border-t border-amber-200 dark:border-amber-700 pt-2">
-                  {lateArrivals.map((row) => {
-                    const key = `late_arrival-${row.product_id}`
-                    return (
-                      <div key={row.product_id} className="flex items-center justify-between text-xs gap-2">
-                        <div className="min-w-0 flex-1">
-                          <span className="text-amber-800 dark:text-amber-200 font-medium truncate block max-w-[260px]">
-                            {row.title}
-                          </span>
-                          <span className="text-amber-600 dark:text-amber-400 font-mono text-[10px]">
-                            pub {formatDateShort(row.pub_date)} · stock {formatDateShort(row.first_positive_inventory_at)}
-                          </span>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setDismissModal({
-                              open: true,
-                              productId: row.product_id,
-                              title: row.title,
-                              alertType: "late_arrival",
-                              selectedReason: "",
-                            })
-                          }}
-                          disabled={!!dismissing[key]}
-                          className="px-2 py-0.5 text-[10px] rounded border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 shrink-0"
-                        >
-                          {dismissing[key] ? "…" : "Resolve"}
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+          {showDiscrepancies && discrepancies.length === 0 && !loadingDiscrepancies && (
+            <div className="mt-2 border-t border-orange-200 dark:border-orange-700 pt-2">
+              <span className="text-xs text-orange-400">All pub dates match Edelweiss.</span>
             </div>
           )}
         </div>
-      )}
+
+        {/* ── No-Arrival Alert ── */}
+        {metrics.no_arrival_count > 0 && (
+          <div className="flex flex-col gap-1 px-3 py-2 rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
+            <div
+              className="flex items-center gap-2 cursor-pointer"
+              onClick={handleNoArrivalsClick}
+            >
+              <span className="text-red-600 dark:text-red-400 text-sm font-bold">
+                {metrics.no_arrival_count}
+              </span>
+              <span className="text-xs text-red-700 dark:text-red-300 flex-1">
+                {metrics.no_arrival_count === 1 ? "title" : "titles"} published with no inventory received — contact vendor
+              </span>
+              <span className="text-xs text-red-600 dark:text-red-400 font-medium">
+                {loadingNoArrivals ? "…" : showNoArrivals ? "▲" : "▼"}
+              </span>
+            </div>
+
+            {showNoArrivals && noArrivals.length > 0 && (
+              <div className="mt-2 space-y-1.5 border-t border-red-200 dark:border-red-700 pt-2">
+                {noArrivals.map(row => {
+                  const key = `no_arrival-${row.product_id}`
+                  return (
+                    <div key={row.product_id} className="flex items-center justify-between text-xs gap-2">
+                      <div className="min-w-0 flex-1">
+                        <span className="text-red-800 dark:text-red-200 font-medium truncate block max-w-[260px]">
+                          {row.title}
+                        </span>
+                        <span className="text-red-500 dark:text-red-400 font-mono text-[10px]">
+                          pub {formatDateShort(row.pub_date)}
+                        </span>
+                      </div>
+                      <button
+                        onClick={e => {
+                          e.stopPropagation()
+                          setDismissModal({
+                            open: true,
+                            productId: row.product_id,
+                            title: row.title,
+                            alertType: "no_arrival",
+                            selectedReason: "",
+                          })
+                        }}
+                        disabled={!!dismissing[key]}
+                        className="px-2 py-0.5 text-[10px] rounded border border-red-300 dark:border-red-700 text-red-600 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 shrink-0"
+                      >
+                        {dismissing[key] ? "…" : "Resolve"}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {showNoArrivals && noArrivals.length === 0 && !loadingNoArrivals && (
+              <div className="mt-2 border-t border-red-200 dark:border-red-700 pt-2">
+                <span className="text-xs text-red-400">All no-arrival alerts have been resolved.</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Late Arrivals Alert ── */}
+        {metrics.late_arrivals_unresolved > 0 && (
+          <div className="flex flex-col gap-1 px-3 py-2 rounded border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
+            <div
+              className="flex items-center gap-2 cursor-pointer"
+              onClick={handleLateArrivalsClick}
+            >
+              <span className="text-amber-600 dark:text-amber-400 text-sm font-bold">
+                {metrics.late_arrivals_unresolved}
+              </span>
+              <span className="text-xs text-amber-700 dark:text-amber-300 flex-1">
+                {metrics.late_arrivals_unresolved === 1 ? "title" : "titles"} received
+                inventory after pub date with open presale commitments
+              </span>
+              <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                {loadingLate ? "…" : showLateArrivals ? "▲" : "▼"}
+              </span>
+            </div>
+
+            {showLateArrivals && lateArrivals.length > 0 && (
+              <div className="mt-2 space-y-1.5 border-t border-amber-200 dark:border-amber-700 pt-2">
+                {lateArrivals.map(row => {
+                  const key = `late_arrival-${row.product_id}`
+                  return (
+                    <div key={row.product_id} className="flex items-center justify-between text-xs gap-2">
+                      <div className="min-w-0 flex-1">
+                        <span className="text-amber-800 dark:text-amber-200 font-medium truncate block max-w-[260px]">
+                          {row.title}
+                        </span>
+                        <span className="text-amber-600 dark:text-amber-400 font-mono text-[10px]">
+                          pub {formatDateShort(row.pub_date)} · stock {formatDateShort(row.first_positive_inventory_at)}
+                        </span>
+                      </div>
+                      <button
+                        onClick={e => {
+                          e.stopPropagation()
+                          setDismissModal({
+                            open: true,
+                            productId: row.product_id,
+                            title: row.title,
+                            alertType: "late_arrival",
+                            selectedReason: "",
+                          })
+                        }}
+                        disabled={!!dismissing[key]}
+                        className="px-2 py-0.5 text-[10px] rounded border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 shrink-0"
+                      >
+                        {dismissing[key] ? "…" : "Resolve"}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* ── Dismiss Modal ── */}
       <ConfirmModal
         open={dismissModal.open}
-        onCancel={() => setDismissModal((p) => ({ ...p, open: false }))}
+        onCancel={() => setDismissModal(p => ({ ...p, open: false }))}
         onConfirm={async () => {
           if (!dismissModal.selectedReason) return
-          setDismissModal((p) => ({ ...p, open: false }))
-          await dismissAlert(dismissModal.productId, dismissModal.alertType, dismissModal.selectedReason)
+          setDismissModal(p => ({ ...p, open: false }))
+          if (dismissModal.alertType === "pubdate") {
+            await dismissDiscrepancy(dismissModal.productId, dismissModal.selectedReason)
+          } else {
+            await dismissAlert(dismissModal.productId, dismissModal.alertType as "late_arrival" | "no_arrival", dismissModal.selectedReason)
+          }
         }}
-        title={dismissModal.alertType === "late_arrival" ? "Resolve Late Arrival Alert" : "Resolve No-Arrival Alert"}
+        title={
+          dismissModal.alertType === "late_arrival" ? "Resolve Late Arrival Alert"
+          : dismissModal.alertType === "no_arrival" ? "Resolve No-Arrival Alert"
+          : "Resolve Pub Date Mismatch"
+        }
         variant="primary"
         confirmLabel="Resolve"
       >
@@ -394,18 +551,20 @@ const PreorderSummaryCards: React.FC<PreorderSummaryCardsProps> = ({
         </p>
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">Select a reason:</p>
         <div className="space-y-2">
-          {reasons.map((reason) => (
-            <label key={reason}
+          {reasons.map(reason => (
+            <label
+              key={reason}
               className={`flex items-center gap-2 px-3 py-2 rounded border cursor-pointer text-sm transition-colors ${
                 dismissModal.selectedReason === reason
                   ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-900 dark:text-blue-200"
                   : "border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
-              }`}>
+              }`}
+            >
               <input
                 type="radio"
                 name="dismiss-reason"
                 checked={dismissModal.selectedReason === reason}
-                onChange={() => setDismissModal((p) => ({ ...p, selectedReason: reason }))}
+                onChange={() => setDismissModal(p => ({ ...p, selectedReason: reason }))}
                 className="text-blue-600"
               />
               {reason}
