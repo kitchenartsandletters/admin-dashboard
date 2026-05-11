@@ -1,6 +1,5 @@
 // src/pages/preorders/OrderTaggingPage.tsx
 // Route: /preorders/tagging
-// Add to sidebar under Preorders alongside Release Management + Shipping Profiles
 
 import { useEffect, useState, useCallback } from "react";
 
@@ -53,16 +52,16 @@ function duration(start: string, end: string | null) {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  success: "text-green-700 bg-green-50 border-green-200",
-  partial: "text-yellow-700 bg-yellow-50 border-yellow-200",
-  error:   "text-red-700   bg-red-50   border-red-200",
-  running: "text-blue-700  bg-blue-50  border-blue-200",
+  success: "text-green-700 bg-green-50 border-green-200 dark:text-green-400 dark:bg-green-900/30 dark:border-green-800",
+  partial: "text-yellow-700 bg-yellow-50 border-yellow-200 dark:text-yellow-400 dark:bg-yellow-900/30 dark:border-yellow-800",
+  error:   "text-red-700 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-900/30 dark:border-red-800",
+  running: "text-blue-700 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-900/30 dark:border-blue-800",
 };
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${STATUS_COLORS[status] ?? "text-gray-600 bg-gray-50 border-gray-200"}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${STATUS_COLORS[status] ?? "text-gray-600 bg-gray-50 border-gray-200 dark:text-gray-400 dark:bg-gray-800 dark:border-gray-700"}`}>
       {status}
     </span>
   );
@@ -70,10 +69,10 @@ function StatusBadge({ status }: { status: string }) {
 
 function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4">
-      <p className="text-xs text-gray-500 uppercase tracking-wide font-medium mb-1">{label}</p>
-      <p className="text-2xl font-semibold text-gray-900">{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+      <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide font-medium mb-1">{label}</p>
+      <p className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{value}</p>
+      {sub && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{sub}</p>}
     </div>
   );
 }
@@ -98,29 +97,29 @@ function RunOrdersDrawer({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-end">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/20" onClick={onClose} />
+      <div className="absolute inset-0 backdrop-blur-sm bg-black/40" onClick={onClose} />
 
       {/* Drawer */}
-      <div className="relative z-10 w-full max-w-lg h-full bg-white shadow-xl flex flex-col">
+      <div className="relative z-10 w-full max-w-lg h-full bg-white dark:bg-gray-900 shadow-xl flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
           <div>
-            <p className="text-sm font-medium text-gray-900">Run details</p>
-            <p className="text-xs text-gray-400 mt-0.5">{fmt(run.started_at)}</p>
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Run details</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{fmt(run.started_at)}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl font-light">✕</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl font-light">✕</button>
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-3 gap-px bg-gray-100 border-b border-gray-200">
+        <div className="grid grid-cols-3 gap-px bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
           {[
             ["Fetched",  run.orders_fetched],
             ["Tagged",   run.orders_tagged],
             ["Skipped",  run.orders_skipped],
           ].map(([label, val]) => (
-            <div key={label as string} className="bg-white px-4 py-3 text-center">
-              <p className="text-xs text-gray-500">{label}</p>
-              <p className="text-lg font-semibold text-gray-900">{val}</p>
+            <div key={label as string} className="bg-white dark:bg-gray-800 px-4 py-3 text-center">
+              <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
+              <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{val}</p>
             </div>
           ))}
         </div>
@@ -128,12 +127,12 @@ function RunOrdersDrawer({
         {/* Errors (if any) */}
         {run.errors.length > 0 && (
           <div className="px-5 pt-4">
-            <p className="text-xs font-medium text-red-600 uppercase tracking-wide mb-2">
+            <p className="text-xs font-medium text-red-600 dark:text-red-400 uppercase tracking-wide mb-2">
               {run.errors.length} error{run.errors.length !== 1 ? "s" : ""}
             </p>
             <div className="space-y-1 max-h-32 overflow-y-auto">
               {run.errors.map((e, i) => (
-                <div key={i} className="text-xs bg-red-50 border border-red-100 rounded px-3 py-2 text-red-700">
+                <div key={i} className="text-xs bg-red-50 dark:bg-red-900/30 border border-red-100 dark:border-red-800 rounded px-3 py-2 text-red-700 dark:text-red-400">
                   {e.order_name && <span className="font-medium">{e.order_name}: </span>}
                   {e.error}
                 </div>
@@ -144,24 +143,24 @@ function RunOrdersDrawer({
 
         {/* Orders list */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
             Orders tagged this run
           </p>
           {loading ? (
-            <p className="text-sm text-gray-400">Loading…</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500">Loading…</p>
           ) : orders.length === 0 ? (
-            <p className="text-sm text-gray-400">No orders tagged this run.</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500">No orders tagged this run.</p>
           ) : (
             <div className="space-y-2">
               {orders.map(o => (
-                <div key={o.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                <div key={o.id} className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
                   <div>
-                    <p className="text-sm font-medium text-gray-900">{o.order_name}</p>
-                    <p className="text-xs text-gray-400">{fmt(o.processed_at)}</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{o.order_name}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">{fmt(o.processed_at)}</p>
                   </div>
                   <div className="flex gap-1">
                     {o.tags_applied.map(tag => (
-                      <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 font-medium">
+                      <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800 font-medium">
                         {tag}
                       </span>
                     ))}
@@ -212,7 +211,7 @@ export default function OrderTaggingPage() {
   // ── Render ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64 text-gray-400 text-sm">
+      <div className="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500 text-sm">
         Loading tagger data…
       </div>
     );
@@ -221,8 +220,8 @@ export default function OrderTaggingPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3">
-        <p className="text-sm text-red-600">{error}</p>
-        <button onClick={load} className="text-xs text-gray-500 underline">Retry</button>
+        <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+        <button onClick={load} className="text-xs text-gray-500 dark:text-gray-400 underline">Retry</button>
       </div>
     );
   }
@@ -234,14 +233,14 @@ export default function OrderTaggingPage() {
       {/* Page header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Order Tagging</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Order Tagging</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
             Automations › Order Tagging
           </p>
         </div>
         <button
           onClick={load}
-          className="text-xs text-gray-500 border border-gray-200 rounded px-3 py-1.5 hover:bg-gray-50"
+          className="text-xs text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800"
         >
           Refresh
         </button>
@@ -282,17 +281,17 @@ export default function OrderTaggingPage() {
       )}
 
       {/* Run history table */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-100">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Run history</p>
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Run history</p>
         </div>
 
         {runs.length === 0 ? (
-          <p className="text-sm text-gray-400 px-4 py-8 text-center">No runs recorded yet.</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 px-4 py-8 text-center">No runs recorded yet.</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-xs text-gray-400 border-b border-gray-100">
+              <tr className="text-xs text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-gray-700">
                 <th className="text-left px-4 py-2 font-medium">Started</th>
                 <th className="text-left px-4 py-2 font-medium">Status</th>
                 <th className="text-right px-4 py-2 font-medium">Fetched</th>
@@ -306,20 +305,20 @@ export default function OrderTaggingPage() {
                 <tr
                   key={run.id}
                   onClick={() => setSelected(run)}
-                  className="border-b border-gray-50 last:border-0 hover:bg-gray-50 cursor-pointer"
+                  className="border-b border-gray-50 dark:border-gray-700 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer even:bg-gray-50 dark:even:bg-gray-800"
                 >
-                  <td className="px-4 py-2.5 text-gray-700">{fmt(run.started_at)}</td>
+                  <td className="px-4 py-2.5 text-gray-700 dark:text-gray-300">{fmt(run.started_at)}</td>
                   <td className="px-4 py-2.5"><StatusBadge status={run.status} /></td>
-                  <td className="px-4 py-2.5 text-right text-gray-600">{run.orders_fetched}</td>
-                  <td className="px-4 py-2.5 text-right font-medium text-gray-900">{run.orders_tagged}</td>
+                  <td className="px-4 py-2.5 text-right text-gray-600 dark:text-gray-400">{run.orders_fetched}</td>
+                  <td className="px-4 py-2.5 text-right font-medium text-gray-900 dark:text-gray-100">{run.orders_tagged}</td>
                   <td className="px-4 py-2.5 text-right">
                     {run.errors.length > 0 ? (
-                      <span className="text-red-600 font-medium">{run.errors.length}</span>
+                      <span className="text-red-600 dark:text-red-400 font-medium">{run.errors.length}</span>
                     ) : (
-                      <span className="text-gray-300">—</span>
+                      <span className="text-gray-300 dark:text-gray-600">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-right text-gray-400 text-xs">
+                  <td className="px-4 py-2.5 text-right text-gray-400 dark:text-gray-500 text-xs">
                     {duration(run.started_at, run.completed_at)}
                   </td>
                 </tr>
