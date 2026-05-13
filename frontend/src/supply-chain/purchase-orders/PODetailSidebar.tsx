@@ -15,8 +15,7 @@ import {
   PO_STATUS_LABELS, PO_STATUS_COLORS, AD_HOC_SOURCE_LABELS,
 } from './purchaseOrderTypes'
 import {
-  fetchPurchaseOrderDetail, fetchPOReceipts,
-  updatePurchaseOrderStatus,
+  fetchReceiptsForPO,
 } from '../../api/supplyChainApi'
 import { useLocations } from '../hooks/useLocations'
 
@@ -91,7 +90,7 @@ function ReceiptSection({ poId }: { poId: string }) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchPOReceipts(poId)
+    fetchReceiptsForPO(poId)
       .then(setReceipts)
       .catch(() => setReceipts([]))
       .finally(() => setLoading(false))
@@ -146,9 +145,9 @@ function ReceiptLines({ receiptId }: { receiptId: string }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    import('../../api/supplyChainApi').then(({ fetchReceiptLines }) => {
-      fetchReceiptLines(receiptId)
-        .then(setLines)
+    import('../../api/supplyChainApi').then(({ fetchReceipt }) => {
+      fetchReceipt(receiptId)
+        .then(result => setLines(result.lines as ReceiptLine[]))
         .catch(() => setLines([]))
         .finally(() => setLoading(false))
     })

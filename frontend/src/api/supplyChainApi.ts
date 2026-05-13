@@ -17,7 +17,7 @@ import type {
 import type {
   PurchaseOrder,
   PurchaseOrderDetail,
-  POLineCreate,
+  PurchaseOrderLine,
 } from '../supply-chain/purchase-orders/purchaseOrderTypes'
 
 import type {
@@ -293,7 +293,7 @@ export async function confirmPurchaseOrder(poId: string): Promise<PurchaseOrder>
   return sc(`/api/purchase-orders/${poId}/confirm`, { method: 'POST' })
 }
 
-export async function addPOLine(poId: string, body: Omit<POLineCreate, 'purchase_order_id'>): Promise<void> {
+export async function addPOLine(poId: string, body: Omit<PurchaseOrderLine, 'id' | 'purchase_order_id' | 'quantity_received' | 'quantity_backordered' | 'quantity_cancelled' | 'status' | 'created_at'>): Promise<void> {
   return sc(`/api/purchase-orders/${poId}/lines`, {
     method: 'POST',
     body: JSON.stringify({ ...body, purchase_order_id: poId }),
