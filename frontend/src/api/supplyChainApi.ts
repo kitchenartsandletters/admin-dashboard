@@ -588,3 +588,25 @@ export async function fetchReceiptLines(receiptId: string): Promise<{ receipt: R
 // Corrected endpoint paths:
 // fetchPOReceipts → GET /api/receiving/po/{poId}
 // fetchReceiptLines → GET /api/receiving/{receiptId}  (returns receipt + lines together)
+
+// PO lookup result — includes match_type from the backend resolver
+export interface POLookupResult extends PurchaseOrder {
+  match_type: 'exact' | 'fuzzy'
+}
+
+// Look up POs from a packing slip PO number or supplier name
+export async function lookupPurchaseOrders(opts: {
+  poNumber?: string
+  supplierName?: string
+}): Promise<POLookupResult[]> {
+  return sc(`/api/purchase-orders/lookup${qs({
+    po_number:     opts.poNumber,
+    supplier_name: opts.supplierName,
+  })}`)
+}
+
+// Search Shopify catalog by ISBN barcode — used to resolve packing slip lines
+// Returns existing supplier_products records if found
+export async function lookupProductByISBN(isbn: string): Promise<VariantSearchResult[]> {
+  return sc(`/api/suppliers/products/search${qs({ q: isbn, limit: 5 })}`)
+}

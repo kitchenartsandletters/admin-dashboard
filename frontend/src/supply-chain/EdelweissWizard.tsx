@@ -15,7 +15,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react'
 import { fetchSuppliers } from '../api/supplyChainApi'
-import { SupplierParty } from '../supply-chain/suppliers/supplierTypes'
+import { SupplierParty } from './suppliers/supplierTypes'
 
 // ---------------------------------------------------------------------------
 // Constants (from spec)

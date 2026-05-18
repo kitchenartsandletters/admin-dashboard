@@ -28,6 +28,7 @@ import ShippingProfiles from './components/preorder/ShippingProfiles';
 import OrderTaggingPage from './components/preorder/OrderTaggingPage';
 import EdelweissLookup from './components/tools/EdelweissLookup';
 import NytReportPage from './components/reports/NytReportPage';
+import ReceivingEntryFlow from './supply-chain/receiving/ReceivingEntryFlow'
 
 const App = () => {
   const [dateTime, setDateTime] = useState({ date: "", time: "" });
@@ -174,6 +175,13 @@ const App = () => {
                           <ReceivingWizard />
                         </ProtectedRoute>
                       } />
+                      <Route path="/receiving/new"
+                        element={
+                          <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                            <ReceivingEntryFlow />
+                          </ProtectedRoute>
+                        }
+                      />
                       <Route path="/transfers" element={
                         <ProtectedRoute requiredRoles={['admin']}>
                           <TransferService />

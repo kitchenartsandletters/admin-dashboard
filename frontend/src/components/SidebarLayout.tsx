@@ -39,7 +39,9 @@ const navItems = [
       { label: 'Suppliers',       path: '/suppliers',       roles: ['admin'] },
       { label: 'Purchase Orders', path: '/purchase-orders', roles: ['admin'] },
       { label: 'Receiving',       path: '/receiving',       roles: ['admin'] },
+      { label: 'New Receipt',     path: '/receiving/new',   roles: ['admin'] },
       { label: 'Transfers',       path: '/transfers',       roles: ['admin'] },
+      { label: 'New Product',      path: '/supply-chain/new-product', roles: ['admin', 'editor'] },
     ],
   },
   {
