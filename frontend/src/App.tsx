@@ -27,6 +27,7 @@ import ReleaseManagement from './components/preorder/ReleaseManagement';
 import ShippingProfiles from './components/preorder/ShippingProfiles';
 import OrderTaggingPage from './components/preorder/OrderTaggingPage';
 import EdelweissLookup from './components/tools/EdelweissLookup';
+import NytReportPage from './components/reports/NytReportPage';
 
 const App = () => {
   const [dateTime, setDateTime] = useState({ date: "", time: "" });
@@ -126,6 +127,11 @@ const App = () => {
                       <Route path="/reports/exclusions" element={
                         <ProtectedRoute requiredRoles={['admin', 'editor']}>
                           <ReportExclusionsPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/reports/nyt" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <NytReportPage />
                         </ProtectedRoute>
                       } />
                       <Route path="/preorders" element={
