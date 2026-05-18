@@ -15,7 +15,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react'
 import { fetchSuppliers } from '../api/supplyChainApi'
-import { SupplierParty } from './suppliers/supplierTypes'
+import { SupplierParty } from '../supply-chain/suppliers/supplierTypes'
 
 // ---------------------------------------------------------------------------
 // Constants (from spec)
@@ -148,7 +148,7 @@ async function shopifyGraphQL(
   query: string,
   variables: Record<string, unknown> = {}
 ): Promise<{ data: Record<string, unknown>; errors?: unknown[] }> {
-  const baseUrl = import.meta.env.VITE_BACKEND_URL as string ?? ''
+  const baseUrl = import.meta.env.VITE_SC_BASE_URL as string ?? ''
   const res = await fetch(`${baseUrl}/api/shopify/graphql`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
