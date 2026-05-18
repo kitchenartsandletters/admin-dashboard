@@ -210,6 +210,16 @@ export default function SupplierService() {
   const activeCount = allSuppliers.filter(p => p.is_active).length
   const draftCount  = allSuppliers.filter(p => !p.is_active).length
 
+     // Fetch parent detail when selected party is a child (has parent_id)
+   const [parentDetail, setParentDetail] = useState<SupplierDetail | null>(null)
+
+   useEffect(() => {
+     if (!detail?.party.parent_id) { setParentDetail(null); return }
+     fetchSupplierDetail(detail.party.parent_id)
+       .then(setParentDetail)
+       .catch(() => setParentDetail(null))
+   }, [detail?.party.parent_id])
+
   return (
     <>
       <div className="space-y-4">
@@ -286,6 +296,14 @@ export default function SupplierService() {
         onNewPO={() => setShowPOBuilder(true)}
         onChildClick={handleChildClick}
         onImprintLinked={handleImprintLinked}
+        parentDetail={parentDetail}
+        onNewParentPO={() => {
+          if (parentDetail) {
+            // Switch selected party to parent, then open PO builder
+            setPartyStack([parentDetail.party])
+            setShowPOBuilder(true)
+          }
+        }}
       />
 
       {formMode === 'create' && (

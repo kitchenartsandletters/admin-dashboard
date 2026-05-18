@@ -18,6 +18,7 @@
 // Ad hoc POs capture the source and an informal reference number.
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useLocations } from '../hooks/useLocations'
 import {
   fetchSuppliers,
@@ -28,7 +29,8 @@ import {
 } from '../../api/supplyChainApi'
 import { SupplierParty, SupplierAccount } from '../suppliers/supplierTypes'
 import type { SupplierDetail } from '../suppliers/supplierTypes'
-import { AdHocSource } from '../purchase-orders/purchaseOrderTypes'
+import { AdHocSource, PurchaseOrder } from '../purchase-orders/purchaseOrderTypes'
+import { fetchPurchaseOrders } from '../../api/supplyChainApi'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -405,6 +407,11 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
 
   const { locations, locationName } = useLocations()
 
+  const [draftPOs, setDraftPOs] = useState<PurchaseOrder[]>([])
+  const [showDraftPrompt, setShowDraftPrompt] = useState(false)
+  const [selectedDraftPO, setSelectedDraftPO] = useState<string | null>(null)
+  const navigate = useNavigate()
+
   // Header fields
   // Pre-load supplier from initialSupplier prop
   const getInitialSelection = () => {
@@ -454,6 +461,18 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
     window.addEventListener('keydown', handleEsc, true)  // capture phase
     return () => window.removeEventListener('keydown', handleEsc, true)
   }, [])
+
+    useEffect(() => {
+    if (!supplierSelection) { setDraftPOs([]); return }
+    fetchPurchaseOrders({
+      supplierAccountId: supplierSelection.account.id,
+      status: 'draft',
+      limit: 5,
+    }).then(orders => {
+      setDraftPOs(orders)
+      if (orders.length > 0) setShowDraftPrompt(true)
+    }).catch(() => {})
+  }, [supplierSelection?.account.id])
 
   const handleClose = () => {
     setIsVisible(false)
@@ -575,6 +594,55 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
 
           {/* Step bar */}
           <StepBar step={step} />
+
+         {/* Draft PO prompt */}
+
+         {showDraftPrompt && draftPOs.length > 0 && step === 1 && supplierSelection && (
+           <div className="mx-5 mb-4 px-4 py-3 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+             <p className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-2">
+               {draftPOs.length} open draft PO{draftPOs.length !== 1 ? 's' : ''} for {supplierSelection.party.name}
+             </p>
+             <div className="space-y-1 mb-3">
+               {draftPOs.map(po => (
+                 <label key={po.id} className="flex items-center gap-2 cursor-pointer">
+                   <input
+                     type="radio"
+                     name="draft_po"
+                     value={po.id}
+                     checked={selectedDraftPO === po.id}
+                     onChange={() => setSelectedDraftPO(po.id)}
+                     className="accent-amber-600"
+                   />
+                   <span className="text-xs font-mono text-amber-700 dark:text-amber-300">{po.po_number}</span>
+                   {po.informal_ref && (
+                     <span className="text-xs text-amber-600 dark:text-amber-400">· {po.informal_ref}</span>
+                   )}
+                 </label>
+               ))}
+             </div>
+             <div className="flex gap-2">
+               <button
+                 onClick={() => {
+                   if (selectedDraftPO) {
+                     // Navigate to receiving flow with the selected draft PO
+                     onClose()
+                     navigate(`/receiving?po=${selectedDraftPO}`)
+                   }
+                 }}
+                 disabled={!selectedDraftPO}
+                 className="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold disabled:opacity-50"
+               >
+                 Add lines to selected PO
+               </button>
+               <button
+                 onClick={() => setShowDraftPrompt(false)}
+                 className="px-3 py-1.5 rounded border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 text-xs"
+               >
+                 Create new PO instead
+               </button>
+             </div>
+           </div>
+         )}
 
           {/* Content */}
           <div ref={contentRef} className="flex-1 overflow-y-auto px-5 py-5 space-y-5">

@@ -15,6 +15,8 @@ interface Props {
   onNewPO: () => void
   onChildClick?: (party: SupplierParty) => void
   onImprintLinked?: () => void
+  parentDetail?: SupplierDetail | null
+  onNewParentPO?: () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +157,7 @@ function LinkImprintWidget({
 
 const SupplierDetailSidebar: React.FC<Props> = ({
   detail, canGoBack, onBack, onClose, onEdit, onNewPO, onChildClick, onImprintLinked,
+  parentDetail, onNewParentPO,
 }) => {
   // isOpen controls the slide animation — only flips when sidebar opens or closes.
   // It does NOT flip when navigating between parties (detail.party.id changes).
@@ -300,6 +303,37 @@ const SupplierDetailSidebar: React.FC<Props> = ({
               )}
             </div>
           </section>
+
+          {parentDetail && (
+            <section>
+              <SectionHeader label="Ordering" color="blue" />
+              <div className="px-3 py-3 rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 space-y-2">
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  Orders for <strong>{party.name}</strong> titles are placed through:
+                </p>
+                <p className="font-semibold text-blue-900 dark:text-blue-100 text-sm">
+                  {parentDetail.party.name}
+                </p>
+                {(() => {
+                  const acct = parentDetail.accounts.find(a => a.is_primary && a.is_active)
+                    ?? parentDetail.accounts[0]
+                  return acct ? (
+                    <p className="text-xs text-blue-600 dark:text-blue-400">
+                      {acct.label}{acct.account_number ? ` · #${acct.account_number}` : ''}
+                    </p>
+                  ) : null
+                })()}
+                {onNewParentPO && (
+                  <button
+                    onClick={onNewParentPO}
+                    className="w-full px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors text-left"
+                  >
+                    + New {parentDetail.party.name} Order
+                  </button>
+                )}
+              </div>
+            </section>
+          )}
 
           {/* Terms */}
           <section>
