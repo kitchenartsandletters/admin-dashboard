@@ -112,6 +112,8 @@ export interface ReportablePreorderRow {
   current_week_start: string
   current_week_end: string
   anomaly_type: string | null
+  is_queued: boolean
+  is_reported: boolean
 }
 
 export interface UpcomingReleaseRow extends ReleaseReviewRow {

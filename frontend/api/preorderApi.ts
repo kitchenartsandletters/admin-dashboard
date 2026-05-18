@@ -185,7 +185,7 @@ export async function fetchReportablePreorders(): Promise<ReportablePreorderRow[
   return data
 }
 
-export async function markReported(
+export async function queueForReport(
   productIds: number[],
   weekAnchor: string
 ): Promise<{ marked: number; week_start: string; week_end: string }> {
@@ -196,10 +196,13 @@ export async function markReported(
   })
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(`Mark reported failed (${res.status}): ${text}`)
+    throw new Error(`Queue for report failed (${res.status}): ${text}`)
   }
   return res.json()
 }
+
+// Backward compat alias if markReported is imported anywhere else
+export const markReported = queueForReport
 
 export async function generateReportPreview(
   productIds: number[],

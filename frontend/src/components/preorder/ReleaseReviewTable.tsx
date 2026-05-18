@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react"
 import { ReleaseReviewRow, ReportablePreorderRow } from "../../types/preorderTypes"
-import { generateReportPreview, markReported } from "../../../api/preorderApi"
+import { generateReportPreview, queueForReport } from "../../../api/preorderApi"
 import {
   sortTitle, formatDate, stockReceivedLabel,
   SortConfig, SortIcon, nextSortDirection
@@ -20,6 +20,29 @@ function ConfidenceBadge({ confidence }: { confidence: "verified" | "estimated" 
         : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
     }`}>
       {confidence === "verified" ? "✓" : "~"} {confidence}
+    </span>
+  )
+}
+
+// ── Three-state status badge ───────────────────────────────────────────────────
+function ReportingStatusBadge({ row }: { row: ReportablePreorderRow }) {
+  if (row.is_reported) {
+    return (
+      <span className="text-[10px] px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 font-medium">
+        Reported
+      </span>
+    )
+  }
+  if (row.is_queued) {
+    return (
+      <span className="text-[10px] px-2 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-medium">
+        Queued
+      </span>
+    )
+  }
+  return (
+    <span className="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 font-medium">
+      Pending
     </span>
   )
 }
@@ -57,8 +80,8 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [marking, setMarking] = useState(false)
-  const [markSuccess, setMarkSuccess] = useState(false)
+  const [queuing, setQueuing] = useState(false)
+  const [queueSuccess, setQueueSuccess] = useState(false)
 
   const [upcomingSort, setUpcomingSort] = useState<SortConfig<{ title: string; pub_date: string }> | null>(null)
   const [reportableSort, setReportableSort] = useState<SortConfig<{ title: string; pub_date: string }> | null>(null)
@@ -115,10 +138,14 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
   }
 
   const toggleAll = () => {
-    if (selectedIds.size === sortedReportable.length) {
+    // Only select rows that are not queued and not reported
+    const eligible = sortedReportable
+      .filter((r) => !r.is_queued && !r.is_reported)
+      .map((r) => r.product_id)
+    if (selectedIds.size === eligible.length && eligible.length > 0) {
       setSelectedIds(new Set())
     } else {
-      setSelectedIds(new Set(sortedReportable.map((r) => r.product_id)))
+      setSelectedIds(new Set(eligible))
     }
   }
 
@@ -148,25 +175,28 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
     setSelectedIds(new Set())
   }
 
-  const handleMarkReported = async () => {
+  const handleQueueForReport = async () => {
     if (selectedIds.size === 0) return
-    setMarking(true)
-    setMarkSuccess(false)
+    setQueuing(true)
+    setQueueSuccess(false)
     setError(null)
     try {
-      await markReported(Array.from(selectedIds), toISODate(weekAnchor))
-      setMarkSuccess(true)
+      await queueForReport(Array.from(selectedIds), toISODate(weekAnchor))
+      setQueueSuccess(true)
       setSelectedIds(new Set())
-      // Signal parent to reload data so badges update
       onReported?.()
     } catch (err: any) {
-      setError(err.message || "Failed to mark as reported")
+      setError(err.message || "Failed to queue titles for report")
     } finally {
-      setMarking(false)
+      setQueuing(false)
     }
   }
 
   const thClass = "px-4 py-3 border-b dark:border-gray-700 text-left cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200 transition-colors text-[10px] sm:text-xs uppercase tracking-wider font-semibold"
+
+  const eligibleCount = sortedReportable.filter((r) => !r.is_queued && !r.is_reported).length
+  const queuedCount   = sortedReportable.filter((r) => r.is_queued).length
+  const reportedCount = sortedReportable.filter((r) => r.is_reported).length
 
   return (
     <div className="space-y-8">
@@ -256,9 +286,31 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
       {/* ── Reportable ── */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400 border-l-2 border-blue-500 pl-2">
-            Reportable — NYT Eligible
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400 border-l-2 border-blue-500 pl-2">
+              Reportable — NYT Eligible
+            </h2>
+            {/* State summary pills */}
+            {sortedReportable.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                {queuedCount > 0 && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-medium">
+                    {queuedCount} queued
+                  </span>
+                )}
+                {reportedCount > 0 && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 font-medium">
+                    {reportedCount} reported
+                  </span>
+                )}
+                {eligibleCount > 0 && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 font-medium">
+                    {eligibleCount} pending
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-2 text-xs">
             {showReturnButton && (
               <button
@@ -303,8 +355,9 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
                     <th className="px-4 py-3 border-b dark:border-gray-700 w-8">
                       <input
                         type="checkbox"
-                        checked={selectedIds.size === sortedReportable.length && sortedReportable.length > 0}
+                        checked={selectedIds.size > 0 && selectedIds.size === eligibleCount}
                         onChange={toggleAll}
+                        disabled={eligibleCount === 0}
                         className="rounded"
                       />
                     </th>
@@ -328,48 +381,43 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {sortedReportable.map((row) => (
-                    <tr
-                      key={row.product_id}
-                      className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${row.already_reported ? "opacity-50" : ""}`}
-                    >
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(row.product_id)}
-                          onChange={() => toggleId(row.product_id)}
-                          disabled={row.already_reported}
-                          className="rounded"
-                        />
-                      </td>
-                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-white max-w-xs truncate">
-                        {row.title}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
-                        {row.isbn ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                        {formatDate(row.pub_date)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="font-mono font-bold text-xs text-gray-900 dark:text-white">
-                          {row.total_presale_qty.toLocaleString()}
-                        </span>
-                        <ConfidenceBadge confidence={row.data_confidence} />
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {row.already_reported ? (
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 font-medium">
-                            Reported
+                  {sortedReportable.map((row) => {
+                    const locked = row.is_queued || row.is_reported
+                    return (
+                      <tr
+                        key={row.product_id}
+                        className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${locked ? "opacity-60" : ""}`}
+                      >
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(row.product_id)}
+                            onChange={() => toggleId(row.product_id)}
+                            disabled={locked}
+                            className="rounded"
+                          />
+                        </td>
+                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-white max-w-xs truncate">
+                          {row.title}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
+                          {row.isbn ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                          {formatDate(row.pub_date)}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="font-mono font-bold text-xs text-gray-900 dark:text-white">
+                            {row.total_presale_qty.toLocaleString()}
                           </span>
-                        ) : (
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 font-medium">
-                            Pending
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                          <ConfidenceBadge confidence={row.data_confidence} />
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <ReportingStatusBadge row={row} />
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -379,32 +427,34 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
                 {selectedIds.size > 0
                   ? `${selectedIds.size} title${selectedIds.size !== 1 ? "s" : ""} selected`
                   : weekIsClosed
-                  ? "Select titles to include in report"
-                  : `Reporting week closes ${formatDate(toISODate(week.end))}. Actions available from ${formatDate(toISODate(new Date(week.end.getTime() + 86400000)))}.`
+                  ? "Select titles to include in the NYT report"
+                  : `Reporting week closes ${formatDate(toISODate(week.end))}. Actions available once week closes.`
                 }
               </p>
               <div className="flex items-center gap-3">
                 {error && (
                   <span className="text-xs text-red-500 dark:text-red-400">{error}</span>
                 )}
-                {markSuccess && (
-                  <span className="text-xs text-green-600 dark:text-green-400">
-                    ✓ Marked as reported
+                {queueSuccess && (
+                  <span className="text-xs text-blue-600 dark:text-blue-400">
+                    ✓ Queued for report — review in Reports › NYT Reporting
                   </span>
                 )}
                 <button
                   onClick={handleGeneratePreview}
                   disabled={selectedIds.size === 0 || generating || !weekIsClosed}
                   className="px-4 py-2 text-xs font-bold bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed rounded transition-all"
+                  title="Download a CSV preview without queuing titles for upload"
                 >
-                  {generating ? "Generating…" : "Generate NYT Report"}
+                  {generating ? "Generating…" : "Preview CSV"}
                 </button>
                 <button
-                  onClick={handleMarkReported}
-                  disabled={selectedIds.size === 0 || marking || !weekIsClosed}
-                  className="px-4 py-2 text-xs font-bold bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded shadow transition-all active:scale-[0.98]"
+                  onClick={handleQueueForReport}
+                  disabled={selectedIds.size === 0 || queuing || !weekIsClosed}
+                  className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded shadow transition-all active:scale-[0.98]"
+                  title="Queue selected titles for the automated NYT report upload"
                 >
-                  {marking ? "Saving…" : "Mark as Reported"}
+                  {queuing ? "Queuing…" : "Queue for Report"}
                 </button>
               </div>
             </div>
