@@ -36,6 +36,15 @@ function Th({
   )
 }
 
+// Non-sortable header for joined/computed columns
+function ThStatic({ label }: { label: string }) {
+  return (
+    <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap text-left">
+      {label}
+    </th>
+  )
+}
+
 const POTable: React.FC<Props> = ({
   orders,
   sortConfig,
@@ -57,6 +66,7 @@ const POTable: React.FC<Props> = ({
         <thead className="bg-gray-50 dark:bg-gray-800">
           <tr>
             <Th label="PO Number"  sortKey="po_number"    sortConfig={sortConfig} onSort={onSort} />
+            <ThStatic label="Supplier" />
             <Th label="Status"     sortKey="status"       sortConfig={sortConfig} onSort={onSort} />
             <Th label="Ordered"    sortKey="ordered_at"   sortConfig={sortConfig} onSort={onSort} />
             <Th label="Expected"   sortKey="expected_at"  sortConfig={sortConfig} onSort={onSort} />
@@ -66,6 +76,14 @@ const POTable: React.FC<Props> = ({
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
           {orders.map(order => {
             const isSelected = order.id === selectedId
+            // Resolve supplier display name:
+            // supplier_name is joined by the API (supplier_parties.name)
+            // account_label is the supplier_accounts.label
+            // Fall back to account_id if neither is populated
+            const supplierDisplay = order.supplier_name
+              ?? order.account_label
+              ?? order.supplier_account_id
+
             return (
               <tr
                 key={order.id}
@@ -76,7 +94,7 @@ const POTable: React.FC<Props> = ({
                     : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
                   }`}
               >
-                {/* PO number */}
+                {/* PO number + ad hoc context */}
                 <td className="px-4 py-3">
                   <div className="font-mono text-sm font-medium text-gray-900 dark:text-gray-100">
                     {order.po_number}
@@ -91,6 +109,13 @@ const POTable: React.FC<Props> = ({
                       ref: {order.informal_ref}
                     </div>
                   )}
+                </td>
+
+                {/* Supplier */}
+                <td className="px-4 py-3">
+                  <span className="text-sm text-gray-700 dark:text-gray-300 truncate max-w-[160px] block">
+                    {supplierDisplay}
+                  </span>
                 </td>
 
                 {/* Status */}

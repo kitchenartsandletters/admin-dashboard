@@ -1,5 +1,5 @@
 // PreorderSummaryCards.tsx
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { PreorderSummaryMetrics } from "../../types/preorderTypes"
 import { formatDate } from "../../utils/tableUtils"
 import ConfirmModal from "../ConfirmModal"
@@ -159,8 +159,17 @@ const PreorderSummaryCards: React.FC<PreorderSummaryCardsProps> = ({
 
   // Pub date discrepancies
   const [discrepancies, setDiscrepancies] = useState<PubDateDiscrepancy[]>([])
+  const [discrepancyCount, setDiscrepancyCount] = useState<number | null>(null)
   const [showDiscrepancies, setShowDiscrepancies] = useState(false)
   const [loadingDiscrepancies, setLoadingDiscrepancies] = useState(false)
+
+  // Fetch discrepancy count on mount — determines whether to show the alert bar
+  useEffect(() => {
+    fetch(`${EDELWEISS_SERVICE_URL}/discrepancies`, { headers: edelweissHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setDiscrepancyCount(data.count ?? 0) })
+      .catch(() => setDiscrepancyCount(0))
+  }, [])
 
   // Dismiss state
   const [dismissing, setDismissing] = useState<Record<string, boolean>>({})
@@ -231,6 +240,7 @@ const PreorderSummaryCards: React.FC<PreorderSummaryCardsProps> = ({
       if (res.ok) {
         const data = await res.json()
         setDiscrepancies(data.discrepancies ?? [])
+        setDiscrepancyCount(data.count ?? 0)
         setShowDiscrepancies(true)
       }
     } catch (err) {
@@ -301,10 +311,6 @@ const PreorderSummaryCards: React.FC<PreorderSummaryCardsProps> = ({
     ? NO_ARRIVAL_REASONS
     : PUBDATE_DISMISS_REASONS
 
-  // Count open discrepancies for the alert pill
-  // We fetch lazily, so we show a static badge if discrepancies have been loaded
-  const openDiscrepancyCount = discrepancies.length
-
   return (
     <div className="space-y-3">
       {/* ── Metric Cards ── */}
@@ -334,17 +340,17 @@ const PreorderSummaryCards: React.FC<PreorderSummaryCardsProps> = ({
       <div className="flex flex-col gap-1.5">
 
         {/* ── Pub Date Discrepancies (from edelweiss-service) ── */}
+        {(discrepancyCount === null || discrepancyCount > 0) && (
         <div className="flex flex-col gap-1 px-3 py-2 rounded border border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/20">
           <div
             className="flex items-center gap-2 cursor-pointer"
             onClick={handleDiscrepanciesClick}
           >
             <span className="text-orange-600 dark:text-orange-400 text-sm font-bold">
-              {showDiscrepancies ? openDiscrepancyCount : "—"}
+              {discrepancyCount ?? "…"}
             </span>
             <span className="text-xs text-orange-700 dark:text-orange-300 flex-1">
               Edelweiss pub date mismatches
-              {!showDiscrepancies && " — click to check"}
             </span>
             <span className="text-xs text-orange-600 dark:text-orange-400 font-medium">
               {loadingDiscrepancies ? "…" : showDiscrepancies ? "▲" : "▼"}
@@ -405,6 +411,7 @@ const PreorderSummaryCards: React.FC<PreorderSummaryCardsProps> = ({
           )}
         </div>
 
+        )}
         {/* ── No-Arrival Alert ── */}
         {metrics.no_arrival_count > 0 && (
           <div className="flex flex-col gap-1 px-3 py-2 rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">

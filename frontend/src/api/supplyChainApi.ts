@@ -17,7 +17,7 @@ import type {
 import type {
   PurchaseOrder,
   PurchaseOrderDetail,
-  POLineCreate,
+  PurchaseOrderLine,
 } from '../supply-chain/purchase-orders/purchaseOrderTypes'
 
 import type {
@@ -293,7 +293,7 @@ export async function confirmPurchaseOrder(poId: string): Promise<PurchaseOrder>
   return sc(`/api/purchase-orders/${poId}/confirm`, { method: 'POST' })
 }
 
-export async function addPOLine(poId: string, body: Omit<POLineCreate, 'purchase_order_id'>): Promise<void> {
+export async function addPOLine(poId: string, body: Omit<PurchaseOrderLine, 'id' | 'purchase_order_id' | 'quantity_received' | 'quantity_backordered' | 'quantity_cancelled' | 'status' | 'created_at'>): Promise<void> {
   return sc(`/api/purchase-orders/${poId}/lines`, {
     method: 'POST',
     body: JSON.stringify({ ...body, purchase_order_id: poId }),
@@ -533,3 +533,58 @@ export async function createPOLine(
 export async function submitPO(poId: string): Promise<unknown> {
   return sc(`/api/purchase-orders/${poId}/submit`, { method: 'POST' })
 }
+
+// ===========================================================================
+// ADDITIONS FOR gap-fixes — append to supplyChainApi.ts
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Receipt history — linked to a PO
+// ---------------------------------------------------------------------------
+
+export interface ReceiptRecord {
+  id: string
+  purchase_order_id: string
+  location_id: string
+  receipt_type: string
+  status: string
+  notes: string | null
+  received_at: string
+  shopify_adjustment_group_id: string | null
+}
+
+export interface ReceiptLineRecord {
+  id: string
+  receipt_id: string
+  purchase_order_line_id: string
+  inventory_item_id: string
+  quantity_received: number
+  quantity_damaged: number
+  restock_applied_at: string | null
+  damage_applied_at: string | null
+  status: string
+  error_message: string | null
+  // Joined from inventory_events via source_id
+  shopify_group_id?: string
+  delta?: number
+}
+
+export async function fetchPOReceipts(poId: string): Promise<ReceiptRecord[]> {
+  return sc(`/api/receiving/po/${poId}`)
+}
+
+export async function fetchReceiptLines(receiptId: string): Promise<{ receipt: ReceiptRecord; lines: ReceiptLineRecord[] }> {
+  return sc(`/api/receiving/${receiptId}`)
+}
+
+// ---------------------------------------------------------------------------
+// POTable badge support — ad hoc fields in list response
+// ---------------------------------------------------------------------------
+// The list endpoint should return is_ad_hoc, ad_hoc_source, informal_ref.
+// Verify the backend GET /api/purchase-orders response includes these fields.
+// If not, update the Pydantic model in app/models/purchase_order.py to include them
+// in the PurchaseOrderRow response.
+
+// Corrected endpoint paths:
+// fetchPOReceipts → GET /api/receiving/po/{poId}
+// fetchReceiptLines → GET /api/receiving/{receiptId}  (returns receipt + lines together)
