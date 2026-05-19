@@ -40,8 +40,6 @@ type Tab = 'tree' | 'lookup'
 // Constants
 // ---------------------------------------------------------------------------
 
-const SC_BASE_URL  = import.meta.env.VITE_SC_BASE_URL as string
-const SC_TOKEN     = import.meta.env.VITE_SC_ADMIN_TOKEN as string
 
 const REL_TYPE_CONFIG: Record<string, {
   label: string
@@ -267,19 +265,64 @@ function TreeNode({
 }
 
 // ---------------------------------------------------------------------------
-// Detail panel — shown when a node is clicked
+// API helpers for edit operations
+// ---------------------------------------------------------------------------
+
+const SC_BASE_URL  = import.meta.env.VITE_SC_BASE_URL as string
+const SC_TOKEN     = import.meta.env.VITE_SC_ADMIN_TOKEN as string
+
+async function apiPatch(path: string, body: object) {
+  const res = await fetch(`${SC_BASE_URL}${path}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Token': SC_TOKEN },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? `HTTP ${res.status}`)
+  }
+  return res.json()
+}
+
+async function apiPost(path: string, body: object) {
+  const res = await fetch(`${SC_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Token': SC_TOKEN },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? `HTTP ${res.status}`)
+  }
+  return res.json()
+}
+
+async function fetchParentCandidates(search: string): Promise<CosmologyNode[]> {
+  const res = await fetch(
+    `${SC_BASE_URL}/api/suppliers?search=${encodeURIComponent(search)}&active_only=false`,
+    { headers: { 'X-Admin-Token': SC_TOKEN } }
+  )
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.slice(0, 10)
+}
+
+// ---------------------------------------------------------------------------
+// Detail panel — read view + inline edit panel
 // ---------------------------------------------------------------------------
 
 function NodeDetail({
   node,
   onClose,
+  onUpdated,
 }: {
   node: CosmologyNode
   onClose: () => void
+  onUpdated: (updated: Partial<CosmologyNode>) => void
 }) {
+  const [editing, setEditing] = useState(false)
   const isDeprecated = node.is_deprecated || node.relationship_type === 'deprecated_code'
   const cfg = REL_TYPE_CONFIG[node.relationship_type ?? '']
-
   const relNotes = node.notes?.replace(/^\[(IMPRINT|DISTRIBUTION CLIENT)\]\s*/, '') ?? null
 
   return (
@@ -293,85 +336,357 @@ function NodeDetail({
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{cfg.description}</p>
           )}
         </div>
-        <button onClick={onClose} className="text-sm text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 ml-2 shrink-0">✕</button>
+        <div className="flex items-center gap-2 ml-2 shrink-0">
+          {!editing && (
+            <button
+              onClick={() => setEditing(true)}
+              className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Edit
+            </button>
+          )}
+          <button onClick={onClose} className="text-sm text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">✕</button>
+        </div>
       </div>
 
-      <div className="overflow-y-auto flex-1 p-4 space-y-5 text-sm">
-
-        {isDeprecated && (
-          <div className="px-3 py-2 rounded bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-600 dark:text-red-400">
-            ⛔ Deprecated legacy code — do not use for new orders.
-          </div>
-        )}
-
-        {/* Codes */}
-        {node.shopify_vendor_codes && node.shopify_vendor_codes.length > 0 && (
-          <div>
-            <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1.5">
-              Vendor codes
-            </p>
-            <div className="flex flex-wrap gap-1">
-              {node.shopify_vendor_codes.map(c => <CodeChip key={c} code={c} />)}
-            </div>
-          </div>
-        )}
-
-        {/* Relationship type */}
-        {node.relationship_type && (
-          <div>
-            <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1">
-              Relationship
-            </p>
-            <RelBadge type={node.relationship_type} />
-          </div>
-        )}
-
-        {/* Ordering account */}
-        {node.primary_account_label && (
-          <div>
-            <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1.5">
-              Ordering account
-            </p>
-            <p className="font-medium text-gray-900 dark:text-gray-100">{node.primary_account_label}</p>
-            {node.primary_account_number && (
-              <p className="font-mono text-xs text-gray-500 mt-0.5">#{node.primary_account_number}</p>
-            )}
-            {node.ordering_method && (
-              <p className="text-xs text-gray-400 mt-0.5">
-                via {ORDERING_METHOD_LABELS[node.ordering_method] ?? node.ordering_method}
-              </p>
-            )}
-            {node.ordering_email && (
-              <p className="text-xs text-blue-500 mt-0.5">{node.ordering_email}</p>
-            )}
-          </div>
-        )}
-
-        {/* Notes */}
-        {relNotes && (
-          <div>
-            <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1">
-              Notes
-            </p>
-            <p className="text-gray-600 dark:text-gray-400 leading-relaxed">{relNotes}</p>
-          </div>
-        )}
-
-        {/* Children count */}
-        {node.child_count > 0 && (
-          <div>
-            <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1">
-              Imprints & clients
-            </p>
-            <p className="text-gray-600 dark:text-gray-400">
-              {node.child_count} linked {node.child_count === 1 ? 'entry' : 'entries'}
-            </p>
-          </div>
+      <div className="overflow-y-auto flex-1">
+        {editing ? (
+          <NodeEditPanel
+            node={node}
+            onCancel={() => setEditing(false)}
+            onSaved={(updated) => { setEditing(false); onUpdated(updated) }}
+          />
+        ) : (
+          <NodeReadView node={node} relNotes={relNotes} isDeprecated={isDeprecated} cfg={cfg} />
         )}
       </div>
     </div>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Read view (extracted from original NodeDetail)
+// ---------------------------------------------------------------------------
+
+function NodeReadView({ node, relNotes, isDeprecated, cfg }: {
+  node: CosmologyNode
+  relNotes: string | null
+  isDeprecated: boolean
+  cfg: typeof REL_TYPE_CONFIG[string] | undefined
+}) {
+  return (
+    <div className="p-4 space-y-5 text-sm">
+      {isDeprecated && (
+        <div className="px-3 py-2 rounded bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-600 dark:text-red-400">
+          ⛔ Deprecated legacy code — do not use for new orders.
+        </div>
+      )}
+      {node.shopify_vendor_codes && node.shopify_vendor_codes.length > 0 && (
+        <div>
+          <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1.5">Vendor codes</p>
+          <div className="flex flex-wrap gap-1">
+            {node.shopify_vendor_codes.map(c => <CodeChip key={c} code={c} />)}
+          </div>
+        </div>
+      )}
+      {node.relationship_type && (
+        <div>
+          <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1">Relationship</p>
+          <RelBadge type={node.relationship_type} />
+        </div>
+      )}
+      {node.primary_account_label && (
+        <div>
+          <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1.5">Ordering account</p>
+          <p className="font-medium text-gray-900 dark:text-gray-100">{node.primary_account_label}</p>
+          {node.primary_account_number && <p className="font-mono text-xs text-gray-500 mt-0.5">#{node.primary_account_number}</p>}
+          {node.ordering_method && <p className="text-xs text-gray-400 mt-0.5">via {ORDERING_METHOD_LABELS[node.ordering_method] ?? node.ordering_method}</p>}
+          {node.ordering_email && <p className="text-xs text-blue-500 mt-0.5">{node.ordering_email}</p>}
+        </div>
+      )}
+      {relNotes && (
+        <div>
+          <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1">Notes</p>
+          <p className="text-gray-600 dark:text-gray-400 leading-relaxed">{relNotes}</p>
+        </div>
+      )}
+      {node.child_count > 0 && (
+        <div>
+          <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1">Imprints & clients</p>
+          <p className="text-gray-600 dark:text-gray-400">{node.child_count} linked {node.child_count === 1 ? 'entry' : 'entries'}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Edit panel
+// ---------------------------------------------------------------------------
+
+const REL_TYPE_OPTIONS = [
+  { value: 'ordering_party',      label: 'Ordering party' },
+  { value: 'imprint',             label: 'Imprint' },
+  { value: 'distribution_client', label: 'Distribution client' },
+  { value: 'direct',              label: 'Direct' },
+  { value: 'deprecated_code',     label: 'Deprecated code' },
+]
+
+function NodeEditPanel({ node, onCancel, onSaved }: {
+  node: CosmologyNode
+  onCancel: () => void
+  onSaved: (updated: Partial<CosmologyNode>) => void
+}) {
+  const [name, setName] = useState(node.name)
+  const [relType, setRelType] = useState(node.relationship_type ?? '')
+  const [notes, setNotes] = useState(
+    node.notes?.replace(/^\[(IMPRINT|DISTRIBUTION CLIENT)\]\s*/, '') ?? ''
+  )
+  const [codes, setCodes] = useState<string[]>(node.shopify_vendor_codes ?? [])
+  const [newCode, setNewCode] = useState('')
+
+  // Parent assignment
+  const [parentSearch, setParentSearch] = useState('')
+  const [parentResults, setParentResults] = useState<CosmologyNode[]>([])
+  const [selectedParentId, setSelectedParentId] = useState<string | null>(node.parent_id)
+  const [selectedParentName, setSelectedParentName] = useState('')
+  const [reparentReason, setReparentReason] = useState('')
+  const [showParentSearch, setShowParentSearch] = useState(false)
+
+  // Deprecate
+  const [showDeprecate, setShowDeprecate] = useState(false)
+  const [deprecateReason, setDeprecateReason] = useState('')
+
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (parentSearch.length < 2) { setParentResults([]); return }
+    fetchParentCandidates(parentSearch).then(setParentResults)
+  }, [parentSearch])
+
+  const addCode = () => {
+    const c = newCode.trim().toUpperCase()
+    if (c && !codes.includes(c)) setCodes(prev => [...prev, c])
+    setNewCode('')
+  }
+
+  const removeCode = (c: string) => setCodes(prev => prev.filter(x => x !== c))
+
+  const handleSave = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      const updated: Partial<CosmologyNode> = {}
+
+      // Edit fields
+      const editBody: Record<string, unknown> = { reason: 'Admin edit via cosmology map' }
+      if (name !== node.name) { editBody.name = name; updated.name = name }
+      if (relType !== (node.relationship_type ?? '')) { editBody.relationship_type = relType; updated.relationship_type = relType }
+      if (notes !== (node.notes?.replace(/^\[(IMPRINT|DISTRIBUTION CLIENT)\]\s*/, '') ?? '')) {
+        editBody.notes = notes; updated.notes = notes
+      }
+      const codesChanged = JSON.stringify(codes.slice().sort()) !== JSON.stringify((node.shopify_vendor_codes ?? []).slice().sort())
+      if (codesChanged) { editBody.shopify_vendor_codes = codes; updated.shopify_vendor_codes = codes }
+
+      if (Object.keys(editBody).length > 1) {
+        await apiPatch(`/api/suppliers/${node.id}/cosmology`, editBody)
+      }
+
+      // Reparent if parent changed
+      const parentChanged = selectedParentId !== node.parent_id
+      if (parentChanged) {
+        if (!reparentReason.trim()) throw new Error('Reason is required when changing parent')
+        await apiPatch(`/api/suppliers/${node.id}/parent`, {
+          new_parent_id: selectedParentId,
+          new_relationship_type: relType || undefined,
+          reason: reparentReason,
+        })
+        updated.parent_id = selectedParentId
+      }
+
+      onSaved(updated)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeprecate = async () => {
+    if (!deprecateReason.trim()) { setError('Reason required'); return }
+    setSaving(true)
+    setError(null)
+    try {
+      await apiPost(`/api/suppliers/${node.id}/deprecate`, { reason: deprecateReason })
+      onSaved({ is_deprecated: true, is_active: false, relationship_type: 'deprecated_code' })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Deprecate failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const Label = ({ children }: { children: React.ReactNode }) => (
+    <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1">{children}</p>
+  )
+
+  const Input = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
+    <input {...props} className={`w-full px-2.5 py-1.5 border rounded text-sm dark:bg-gray-900 dark:text-white dark:border-gray-700 focus:ring-1 focus:ring-blue-500 outline-none ${props.className ?? ''}`} />
+  )
+
+  return (
+    <div className="p-4 space-y-5 text-sm">
+      {/* Name */}
+      <div>
+        <Label>Name</Label>
+        <Input value={name} onChange={e => setName(e.target.value)} />
+      </div>
+
+      {/* Relationship type */}
+      <div>
+        <Label>Relationship type</Label>
+        <select value={relType} onChange={e => setRelType(e.target.value)}
+          className="w-full px-2.5 py-1.5 border rounded text-sm dark:bg-gray-900 dark:text-white dark:border-gray-700 focus:ring-1 focus:ring-blue-500 outline-none">
+          <option value="">— unclassified —</option>
+          {REL_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </div>
+
+      {/* Vendor codes */}
+      <div>
+        <Label>Vendor codes</Label>
+        <div className="flex flex-wrap gap-1 mb-2">
+          {codes.map(c => (
+            <span key={c} className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
+              {c}
+              <button type="button" onClick={() => removeCode(c)} className="text-gray-400 hover:text-red-500 leading-none">×</button>
+            </span>
+          ))}
+        </div>
+        <div className="flex gap-1">
+          <Input value={newCode} onChange={e => setNewCode(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && addCode()}
+            placeholder="Add code…" className="flex-1" />
+          <button type="button" onClick={addCode}
+            className="px-2.5 py-1.5 rounded bg-gray-100 dark:bg-gray-800 text-xs font-semibold hover:bg-gray-200 dark:hover:bg-gray-700">
+            Add
+          </button>
+        </div>
+      </div>
+
+      {/* Notes */}
+      <div>
+        <Label>Notes</Label>
+        <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
+          className="w-full px-2.5 py-1.5 border rounded text-sm dark:bg-gray-900 dark:text-white dark:border-gray-700 focus:ring-1 focus:ring-blue-500 outline-none resize-none" />
+      </div>
+
+      {/* Parent assignment */}
+      <div>
+        <Label>Parent / ordering group</Label>
+        <div className="mb-1.5">
+          {selectedParentId ? (
+            <div className="flex items-center justify-between px-2.5 py-1.5 rounded bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+              <span className="text-xs font-medium text-blue-800 dark:text-blue-200">
+                {selectedParentName || (node.parent_id === selectedParentId ? '(current parent)' : selectedParentId.slice(0,8))}
+              </span>
+              <button type="button" onClick={() => { setSelectedParentId(null); setSelectedParentName('') }}
+                className="text-blue-400 hover:text-red-500 text-sm">×</button>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400 dark:text-gray-500 italic">No parent — root level</p>
+          )}
+        </div>
+        <button type="button" onClick={() => setShowParentSearch(v => !v)}
+          className="text-xs text-blue-500 hover:underline">
+          {showParentSearch ? 'Cancel' : 'Change parent…'}
+        </button>
+        {showParentSearch && (
+          <div className="mt-2 space-y-1">
+            <Input value={parentSearch} onChange={e => setParentSearch(e.target.value)}
+              placeholder="Search for new parent…" autoFocus />
+            {parentResults.length > 0 && (
+              <div className="border dark:border-gray-700 rounded overflow-hidden">
+                {parentResults.map(p => (
+                  <button key={p.id} type="button"
+                    onMouseDown={() => {
+                      setSelectedParentId(p.id)
+                      setSelectedParentName(p.name)
+                      setParentSearch('')
+                      setParentResults([])
+                      setShowParentSearch(false)
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 border-b dark:border-gray-800 last:border-0">
+                    <span className="font-medium">{p.name}</span>
+                    {p.shopify_vendor_codes?.[0] && (
+                      <span className="font-mono text-gray-400 ml-1.5">{p.shopify_vendor_codes[0]}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+            {selectedParentId !== node.parent_id && (
+              <div className="mt-2">
+                <Label>Reason for parent change</Label>
+                <Input value={reparentReason} onChange={e => setReparentReason(e.target.value)}
+                  placeholder="e.g. Acquired by HarperCollins 2027" />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="px-3 py-2 rounded bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-600 dark:text-red-400">
+          {error}
+        </div>
+      )}
+
+      {/* Save / Cancel */}
+      <div className="flex gap-2">
+        <button type="button" onClick={onCancel} disabled={saving}
+          className="px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50">
+          Cancel
+        </button>
+        <button type="button" onClick={handleSave} disabled={saving}
+          className="flex-1 px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold disabled:opacity-50 transition-colors">
+          {saving ? 'Saving…' : 'Save changes'}
+        </button>
+      </div>
+
+      {/* Deprecate — danger zone */}
+      {!node.is_deprecated && (
+        <div className="border-t dark:border-gray-800 pt-4">
+          {!showDeprecate ? (
+            <button type="button" onClick={() => setShowDeprecate(true)}
+              className="text-xs text-red-500 hover:underline">
+              Deprecate this party…
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-red-600 dark:text-red-400">Deprecate — this cannot be undone easily</p>
+              <Input value={deprecateReason} onChange={e => setDeprecateReason(e.target.value)}
+                placeholder="Reason (e.g. defunct distributor)" />
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setShowDeprecate(false)}
+                  className="px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-xs text-gray-600 dark:text-gray-300">
+                  Cancel
+                </button>
+                <button type="button" onClick={handleDeprecate} disabled={saving}
+                  className="px-3 py-1.5 rounded bg-red-600 hover:bg-red-700 text-white text-xs font-semibold disabled:opacity-50">
+                  {saving ? 'Deprecating…' : 'Confirm deprecate'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 
 // ---------------------------------------------------------------------------
 // Legend
@@ -625,7 +940,22 @@ export default function SupplierCosmologyMap() {
               {selectedNode && (
                 <div className="w-72 shrink-0">
                   <div className="sticky top-0 border dark:border-gray-800 rounded-lg overflow-hidden" style={{maxHeight: "calc(100vh - 2rem)"}}>
-                    <NodeDetail node={selectedNode} onClose={() => setSelectedNode(null)} />
+                    <NodeDetail
+                    node={selectedNode}
+                    onClose={() => setSelectedNode(null)}
+                    onUpdated={(updated) => {
+                      // Refresh tree data after any edit
+                      fetchCosmology().then(data => {
+                        setFlat(data)
+                        const result = buildTree(data)
+                        setRoots(result.roots)
+                        setUnclassified(result.unclassified)
+                        // Update selected node with fresh data
+                        const fresh = data.find(n => n.id === selectedNode?.id)
+                        if (fresh) setSelectedNode({ ...fresh, children: [], depth: 0 })
+                      })
+                    }}
+                  />
                   </div>
                 </div>
               )}
