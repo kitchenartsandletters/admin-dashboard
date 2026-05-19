@@ -7,7 +7,7 @@
 //
 // Phase 2 will add: admin edit panel, reparenting, deprecation, audit log
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 // ---------------------------------------------------------------------------
@@ -325,6 +325,15 @@ function NodeDetail({
   const cfg = REL_TYPE_CONFIG[node.relationship_type ?? '']
   const relNotes = node.notes?.replace(/^\[(IMPRINT|DISTRIBUTION CLIENT)\]\s*/, '') ?? null
 
+  // Bug fix #4: Reset edit mode when a different node is selected
+  const prevIdRef = useRef(node.id)
+  useEffect(() => {
+    if (prevIdRef.current !== node.id) {
+      prevIdRef.current = node.id
+      setEditing(false)
+    }
+  }, [node.id])
+
   return (
     <div className="border-l dark:border-gray-800 bg-white dark:bg-gray-950 flex flex-col h-full">
       <div className="flex items-start justify-between p-4 border-b dark:border-gray-800 shrink-0">
@@ -337,7 +346,7 @@ function NodeDetail({
           )}
         </div>
         <div className="flex items-center gap-2 ml-2 shrink-0">
-          {!editing && (
+          {!editing && !isDeprecated && (
             <button
               onClick={() => setEditing(true)}
               className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
@@ -351,7 +360,9 @@ function NodeDetail({
 
       <div className="overflow-y-auto flex-1">
         {editing ? (
+          // Bug fix #2: key on node.id forces remount when node changes, resetting all form state
           <NodeEditPanel
+            key={node.id}
             node={node}
             onCancel={() => setEditing(false)}
             onSaved={(updated) => { setEditing(false); onUpdated(updated) }}
@@ -363,6 +374,7 @@ function NodeDetail({
     </div>
   )
 }
+
 
 // ---------------------------------------------------------------------------
 // Read view (extracted from original NodeDetail)
@@ -442,16 +454,20 @@ function NodeEditPanel({ node, onCancel, onSaved }: {
   const [notes, setNotes] = useState(
     node.notes?.replace(/^\[(IMPRINT|DISTRIBUTION CLIENT)\]\s*/, '') ?? ''
   )
+  // Bug fix #2: prepopulate codes from node
   const [codes, setCodes] = useState<string[]>(node.shopify_vendor_codes ?? [])
   const [newCode, setNewCode] = useState('')
+  const codeInputRef = useRef<HTMLInputElement>(null)
 
-  // Parent assignment
-  const [parentSearch, setParentSearch] = useState('')
-  const [parentResults, setParentResults] = useState<CosmologyNode[]>([])
+  // Parent assignment — only shown for non-ordering_party entries
+  const isOrderingParty = node.relationship_type === 'ordering_party'
   const [selectedParentId, setSelectedParentId] = useState<string | null>(node.parent_id)
   const [selectedParentName, setSelectedParentName] = useState('')
-  const [reparentReason, setReparentReason] = useState('')
+  const [parentSearch, setParentSearch] = useState('')
+  const [parentResults, setParentResults] = useState<CosmologyNode[]>([])
   const [showParentSearch, setShowParentSearch] = useState(false)
+  const [reparentReason, setReparentReason] = useState('')
+  const parentSearchRef = useRef<HTMLDivElement>(null)
 
   // Deprecate
   const [showDeprecate, setShowDeprecate] = useState(false)
@@ -460,33 +476,60 @@ function NodeEditPanel({ node, onCancel, onSaved }: {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Bug fix #1: click-outside for parent search dropdown
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (parentSearchRef.current && !parentSearchRef.current.contains(e.target as Node)) {
+        setParentResults([])
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
   useEffect(() => {
     if (parentSearch.length < 2) { setParentResults([]); return }
     fetchParentCandidates(parentSearch).then(setParentResults)
   }, [parentSearch])
 
+  // Bug fix #1: add code without losing focus
   const addCode = () => {
     const c = newCode.trim().toUpperCase()
     if (c && !codes.includes(c)) setCodes(prev => [...prev, c])
     setNewCode('')
+    // Re-focus the input after adding
+    setTimeout(() => codeInputRef.current?.focus(), 0)
   }
 
   const removeCode = (c: string) => setCodes(prev => prev.filter(x => x !== c))
+
+  const handleSelectParent = (party: CosmologyNode) => {
+    setSelectedParentId(party.id)
+    setSelectedParentName(party.name)
+    setParentSearch('')
+    setParentResults([])
+    // Keep search open so user sees the selection and can enter reason
+  }
+
+  const handleClearParent = () => {
+    setSelectedParentId(null)
+    setSelectedParentName('')
+    setReparentReason('')
+  }
 
   const handleSave = async () => {
     setSaving(true)
     setError(null)
     try {
       const updated: Partial<CosmologyNode> = {}
-
-      // Edit fields
       const editBody: Record<string, unknown> = { reason: 'Admin edit via cosmology map' }
-      if (name !== node.name) { editBody.name = name; updated.name = name }
-      if (relType !== (node.relationship_type ?? '')) { editBody.relationship_type = relType; updated.relationship_type = relType }
+
+      if (name.trim() !== node.name) { editBody.name = name.trim(); updated.name = name.trim() }
+      if (relType !== (node.relationship_type ?? '')) { editBody.relationship_type = relType || null; updated.relationship_type = relType }
       if (notes !== (node.notes?.replace(/^\[(IMPRINT|DISTRIBUTION CLIENT)\]\s*/, '') ?? '')) {
         editBody.notes = notes; updated.notes = notes
       }
-      const codesChanged = JSON.stringify(codes.slice().sort()) !== JSON.stringify((node.shopify_vendor_codes ?? []).slice().sort())
+      const codesChanged = JSON.stringify([...codes].sort()) !== JSON.stringify([...(node.shopify_vendor_codes ?? [])].sort())
       if (codesChanged) { editBody.shopify_vendor_codes = codes; updated.shopify_vendor_codes = codes }
 
       if (Object.keys(editBody).length > 1) {
@@ -496,7 +539,11 @@ function NodeEditPanel({ node, onCancel, onSaved }: {
       // Reparent if parent changed
       const parentChanged = selectedParentId !== node.parent_id
       if (parentChanged) {
-        if (!reparentReason.trim()) throw new Error('Reason is required when changing parent')
+        if (!reparentReason.trim()) {
+          setError('Reason is required when changing parent.')
+          setSaving(false)
+          return
+        }
         await apiPatch(`/api/suppliers/${node.id}/parent`, {
           new_parent_id: selectedParentId,
           new_relationship_type: relType || undefined,
@@ -527,25 +574,34 @@ function NodeEditPanel({ node, onCancel, onSaved }: {
     }
   }
 
-  const Label = ({ children }: { children: React.ReactNode }) => (
+  const FieldLabel = ({ children }: { children: React.ReactNode }) => (
     <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1">{children}</p>
   )
 
-  const Input = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
-    <input {...props} className={`w-full px-2.5 py-1.5 border rounded text-sm dark:bg-gray-900 dark:text-white dark:border-gray-700 focus:ring-1 focus:ring-blue-500 outline-none ${props.className ?? ''}`} />
+  const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
+    (props, ref) => (
+      <input
+        ref={ref}
+        {...props}
+        className={`w-full px-2.5 py-1.5 border rounded text-sm dark:bg-gray-900 dark:text-white dark:border-gray-700 focus:ring-1 focus:ring-blue-500 outline-none ${props.className ?? ''}`}
+      />
+    )
   )
+
+  const parentHasChanged = selectedParentId !== node.parent_id
 
   return (
     <div className="p-4 space-y-5 text-sm">
+
       {/* Name */}
       <div>
-        <Label>Name</Label>
+        <FieldLabel>Name</FieldLabel>
         <Input value={name} onChange={e => setName(e.target.value)} />
       </div>
 
       {/* Relationship type */}
       <div>
-        <Label>Relationship type</Label>
+        <FieldLabel>Relationship type</FieldLabel>
         <select value={relType} onChange={e => setRelType(e.target.value)}
           className="w-full px-2.5 py-1.5 border rounded text-sm dark:bg-gray-900 dark:text-white dark:border-gray-700 focus:ring-1 focus:ring-blue-500 outline-none">
           <option value="">— unclassified —</option>
@@ -555,21 +611,31 @@ function NodeEditPanel({ node, onCancel, onSaved }: {
 
       {/* Vendor codes */}
       <div>
-        <Label>Vendor codes</Label>
-        <div className="flex flex-wrap gap-1 mb-2">
+        <FieldLabel>Vendor codes</FieldLabel>
+        <div className="flex flex-wrap gap-1 mb-2 min-h-[24px]">
+          {codes.length === 0 && (
+            <span className="text-xs text-gray-300 dark:text-gray-600 italic">No codes</span>
+          )}
           {codes.map(c => (
             <span key={c} className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
               {c}
-              <button type="button" onClick={() => removeCode(c)} className="text-gray-400 hover:text-red-500 leading-none">×</button>
+              <button type="button" onClick={() => removeCode(c)}
+                className="text-gray-400 hover:text-red-500 leading-none ml-0.5">×</button>
             </span>
           ))}
         </div>
+        {/* Bug fix #1: ref + setTimeout refocus so focus isn't lost on re-render */}
         <div className="flex gap-1">
-          <Input value={newCode} onChange={e => setNewCode(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && addCode()}
-            placeholder="Add code…" className="flex-1" />
+          <Input
+            ref={codeInputRef}
+            value={newCode}
+            onChange={e => setNewCode(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCode() } }}
+            placeholder="Type code and press Enter…"
+            className="flex-1"
+          />
           <button type="button" onClick={addCode}
-            className="px-2.5 py-1.5 rounded bg-gray-100 dark:bg-gray-800 text-xs font-semibold hover:bg-gray-200 dark:hover:bg-gray-700">
+            className="px-2.5 py-1.5 rounded bg-gray-100 dark:bg-gray-800 text-xs font-semibold hover:bg-gray-200 dark:hover:bg-gray-700 shrink-0">
             Add
           </button>
         </div>
@@ -577,65 +643,75 @@ function NodeEditPanel({ node, onCancel, onSaved }: {
 
       {/* Notes */}
       <div>
-        <Label>Notes</Label>
+        <FieldLabel>Notes</FieldLabel>
         <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
           className="w-full px-2.5 py-1.5 border rounded text-sm dark:bg-gray-900 dark:text-white dark:border-gray-700 focus:ring-1 focus:ring-blue-500 outline-none resize-none" />
       </div>
 
-      {/* Parent assignment */}
-      <div>
-        <Label>Parent / ordering group</Label>
-        <div className="mb-1.5">
-          {selectedParentId ? (
-            <div className="flex items-center justify-between px-2.5 py-1.5 rounded bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
-              <span className="text-xs font-medium text-blue-800 dark:text-blue-200">
-                {selectedParentName || (node.parent_id === selectedParentId ? '(current parent)' : selectedParentId.slice(0,8))}
-              </span>
-              <button type="button" onClick={() => { setSelectedParentId(null); setSelectedParentName('') }}
-                className="text-blue-400 hover:text-red-500 text-sm">×</button>
-            </div>
-          ) : (
-            <p className="text-xs text-gray-400 dark:text-gray-500 italic">No parent — root level</p>
-          )}
-        </div>
-        <button type="button" onClick={() => setShowParentSearch(v => !v)}
-          className="text-xs text-blue-500 hover:underline">
-          {showParentSearch ? 'Cancel' : 'Change parent…'}
-        </button>
-        {showParentSearch && (
-          <div className="mt-2 space-y-1">
-            <Input value={parentSearch} onChange={e => setParentSearch(e.target.value)}
-              placeholder="Search for new parent…" autoFocus />
-            {parentResults.length > 0 && (
-              <div className="border dark:border-gray-700 rounded overflow-hidden">
-                {parentResults.map(p => (
-                  <button key={p.id} type="button"
-                    onMouseDown={() => {
-                      setSelectedParentId(p.id)
-                      setSelectedParentName(p.name)
-                      setParentSearch('')
-                      setParentResults([])
-                      setShowParentSearch(false)
-                    }}
-                    className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 border-b dark:border-gray-800 last:border-0">
-                    <span className="font-medium">{p.name}</span>
-                    {p.shopify_vendor_codes?.[0] && (
-                      <span className="font-mono text-gray-400 ml-1.5">{p.shopify_vendor_codes[0]}</span>
-                    )}
-                  </button>
-                ))}
+      {/* Parent assignment — Bug fix #3: hidden for ordering parties */}
+      {!isOrderingParty && (
+        <div>
+          <FieldLabel>Parent / ordering group</FieldLabel>
+
+          {/* Current parent status */}
+          <div className="mb-2">
+            {selectedParentId ? (
+              <div className="flex items-center justify-between px-2.5 py-1.5 rounded bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                <span className="text-xs font-medium text-blue-800 dark:text-blue-200">
+                  {selectedParentName || (node.parent_id === selectedParentId ? '(current parent)' : selectedParentId.slice(0, 8))}
+                  {!parentHasChanged && <span className="text-blue-400 ml-1">(current)</span>}
+                  {parentHasChanged && <span className="text-amber-500 ml-1">← changed</span>}
+                </span>
+                <button type="button" onClick={handleClearParent}
+                  className="text-blue-400 hover:text-red-500 text-sm ml-2">×</button>
               </div>
+            ) : (
+              <p className="text-xs text-gray-400 dark:text-gray-500 italic">
+                {node.parent_id ? 'Parent cleared — will become root level' : 'No parent — root level'}
+              </p>
             )}
-            {selectedParentId !== node.parent_id && (
-              <div className="mt-2">
-                <Label>Reason for parent change</Label>
-                <Input value={reparentReason} onChange={e => setReparentReason(e.target.value)}
-                  placeholder="e.g. Acquired by HarperCollins 2027" />
+          </div>
+
+          {/* Bug fix #5: single toggle, doesn't duplicate */}
+          <div ref={parentSearchRef}>
+            <button type="button" onClick={() => setShowParentSearch(v => !v)}
+              className="text-xs text-blue-500 hover:underline">
+              {showParentSearch ? 'Cancel' : 'Change parent…'}
+            </button>
+
+            {showParentSearch && (
+              <div className="mt-2 space-y-2">
+                <Input value={parentSearch} onChange={e => setParentSearch(e.target.value)}
+                  placeholder="Search for new parent…" autoFocus />
+                {parentResults.length > 0 && (
+                  <div className="border dark:border-gray-700 rounded overflow-hidden">
+                    {parentResults.map(p => (
+                      <button key={p.id} type="button"
+                        onMouseDown={e => { e.preventDefault(); handleSelectParent(p) }}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 border-b dark:border-gray-800 last:border-0">
+                        <span className="font-medium">{p.name}</span>
+                        {p.shopify_vendor_codes?.[0] && (
+                          <span className="font-mono text-gray-400 ml-1.5">{p.shopify_vendor_codes[0]}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
-        )}
-      </div>
+
+          {/* Reason field — only shown when parent actually changed */}
+          {parentHasChanged && (
+            <div className="mt-2">
+              <FieldLabel>Reason for parent change *</FieldLabel>
+              <Input value={reparentReason} onChange={e => setReparentReason(e.target.value)}
+                placeholder="e.g. Acquired by HarperCollins 2027"
+                className={!reparentReason.trim() ? 'border-amber-400 dark:border-amber-600' : ''} />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Error */}
       {error && (
@@ -656,7 +732,7 @@ function NodeEditPanel({ node, onCancel, onSaved }: {
         </button>
       </div>
 
-      {/* Deprecate — danger zone */}
+      {/* Deprecate */}
       {!node.is_deprecated && (
         <div className="border-t dark:border-gray-800 pt-4">
           {!showDeprecate ? (
@@ -666,17 +742,17 @@ function NodeEditPanel({ node, onCancel, onSaved }: {
             </button>
           ) : (
             <div className="space-y-2">
-              <p className="text-xs font-semibold text-red-600 dark:text-red-400">Deprecate — this cannot be undone easily</p>
+              <p className="text-xs font-semibold text-red-600 dark:text-red-400">Deprecate — marks as do-not-use</p>
               <Input value={deprecateReason} onChange={e => setDeprecateReason(e.target.value)}
-                placeholder="Reason (e.g. defunct distributor)" />
+                placeholder="Reason (e.g. defunct distributor)" autoFocus />
               <div className="flex gap-2">
                 <button type="button" onClick={() => setShowDeprecate(false)}
                   className="px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-xs text-gray-600 dark:text-gray-300">
                   Cancel
                 </button>
-                <button type="button" onClick={handleDeprecate} disabled={saving}
+                <button type="button" onClick={handleDeprecate} disabled={saving || !deprecateReason.trim()}
                   className="px-3 py-1.5 rounded bg-red-600 hover:bg-red-700 text-white text-xs font-semibold disabled:opacity-50">
-                  {saving ? 'Deprecating…' : 'Confirm deprecate'}
+                  {saving ? 'Deprecating…' : 'Confirm'}
                 </button>
               </div>
             </div>
