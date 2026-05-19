@@ -97,28 +97,43 @@ async function fetchCosmology(): Promise<CosmologyNode[]> {
   return res.json()
 }
 
-function buildTree(flat: CosmologyNode[]): CosmologyNode[] {
+const ROOT_TYPES = new Set(['ordering_party', 'direct'])
+
+function buildTree(flat: CosmologyNode[]): {
+  roots: CosmologyNode[]
+  unclassified: CosmologyNode[]
+} {
   const map = new Map<string, CosmologyNode>()
   flat.forEach(n => map.set(n.id, { ...n, children: [], depth: 0 }))
 
   const roots: CosmologyNode[] = []
+  const unclassified: CosmologyNode[] = []
+
   map.forEach(node => {
     if (node.parent_id && map.has(node.parent_id)) {
+      // Has a known parent — nest under it
       map.get(node.parent_id)!.children.push(node)
-    } else {
+    } else if (ROOT_TYPES.has(node.relationship_type ?? '')) {
+      // Explicitly classified as a root-level party
       roots.push(node)
+    } else {
+      // parent_id is null but not a known root type —
+      // seeded draft or unclassified party, park in unclassified
+      unclassified.push(node)
     }
   })
 
-  // Set depth recursively
   function setDepth(node: CosmologyNode, depth: number) {
     node.depth = depth
     node.children.forEach(c => setDepth(c, depth + 1))
     node.children.sort((a, b) => a.name.localeCompare(b.name))
   }
+
   roots.sort((a, b) => a.name.localeCompare(b.name))
   roots.forEach(r => setDepth(r, 0))
-  return roots
+  unclassified.sort((a, b) => a.name.localeCompare(b.name))
+
+  return { roots, unclassified }
 }
 
 // ---------------------------------------------------------------------------
@@ -461,35 +476,40 @@ function CodeLookup({ flat }: { flat: CosmologyNode[] }) {
 export default function SupplierCosmologyMap() {
   const [tab, setTab] = useState<Tab>('tree')
   const [flat, setFlat] = useState<CosmologyNode[]>([])
-  const [tree, setTree] = useState<CosmologyNode[]>([])
+  const [roots, setRoots] = useState<CosmologyNode[]>([])
+  const [unclassified, setUnclassified] = useState<CosmologyNode[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedNode, setSelectedNode] = useState<CosmologyNode | null>(null)
   const [showDeprecated, setShowDeprecated] = useState(false)
-  const [expandAll, setExpandAll] = useState(false)
+  const [showUnclassified, setShowUnclassified] = useState(false)
 
   useEffect(() => {
     fetchCosmology()
       .then(data => {
         setFlat(data)
-        setTree(buildTree(data))
+        const result = buildTree(data)
+        setRoots(result.roots)
+        setUnclassified(result.unclassified)
       })
       .catch(e => setError(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => setLoading(false))
   }, [])
 
-  const visibleRoots = useMemo(() => {
-    if (showDeprecated) return tree
-    return tree.filter(n => !n.is_deprecated && n.relationship_type !== 'deprecated_code')
-  }, [tree, showDeprecated])
+  const visibleRoots = useMemo(() =>
+    showDeprecated
+      ? roots
+      : roots.filter(n => !n.is_deprecated && n.relationship_type !== 'deprecated_code')
+  , [roots, showDeprecated])
 
   const stats = useMemo(() => ({
-    total:      flat.length,
-    active:     flat.filter(n => n.is_active && !n.is_deprecated).length,
-    deprecated: flat.filter(n => n.is_deprecated).length,
-    ordering:   flat.filter(n => n.relationship_type === 'ordering_party').length,
-    direct:     flat.filter(n => n.relationship_type === 'direct').length,
-  }), [flat])
+    total:         flat.length,
+    active:        flat.filter(n => n.is_active && !n.is_deprecated).length,
+    deprecated:    flat.filter(n => n.is_deprecated).length,
+    ordering:      flat.filter(n => n.relationship_type === 'ordering_party').length,
+    direct:        flat.filter(n => n.relationship_type === 'direct').length,
+    unclassified:  unclassified.filter(n => !n.is_deprecated).length,
+  }), [flat, unclassified])
 
   return (
     <div className="flex flex-col h-full">
@@ -499,7 +519,7 @@ export default function SupplierCosmologyMap() {
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Supplier Cosmology</h1>
           {!loading && (
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-              {stats.active} active · {stats.ordering} ordering parties · {stats.direct} direct · {stats.deprecated} deprecated
+              {stats.active} active · {stats.ordering} ordering parties · {stats.direct} direct · {stats.unclassified} unclassified · {stats.deprecated} deprecated
             </p>
           )}
         </div>
@@ -569,6 +589,35 @@ export default function SupplierCosmologyMap() {
                       onNodeClick={setSelectedNode}
                     />
                   ))}
+
+                  {/* Unclassified section — seeded drafts awaiting triage */}
+                  {unclassified.filter(n => !n.is_deprecated).length > 0 && (
+                    <div className="border-t dark:border-gray-800 mt-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowUnclassified(v => !v)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-md"
+                      >
+                        <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                          {showUnclassified ? '▾' : '▸'} Unclassified ({unclassified.filter(n => !n.is_deprecated).length})
+                        </span>
+                        <span className="text-[10px] text-gray-300 dark:text-gray-600">
+                          Seeded drafts awaiting parent assignment
+                        </span>
+                      </button>
+                      {showUnclassified && unclassified
+                        .filter(n => !n.is_deprecated)
+                        .map(node => (
+                          <TreeNode
+                            key={node.id}
+                            node={node}
+                            defaultExpanded={false}
+                            onNodeClick={setSelectedNode}
+                          />
+                        ))
+                      }
+                    </div>
+                  )}
                 </div>
               </div>
 
