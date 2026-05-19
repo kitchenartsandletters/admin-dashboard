@@ -3,6 +3,8 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { InventoryTransfer, TransferDetail, TRANSFER_STATUS_LABELS, TRANSFER_STATUS_COLORS, TransferStatus } from './transferTypes'
 import { fetchTransfers, fetchTransferDetail } from '../../api/supplyChainApi'
 import { formatDate, SortConfig, SortIcon, nextSortDirection } from '../../utils/tableUtils'
+import TransferDispatchForm from './TransferDispatchForm'
+import TransferReceivePanel from './TransferReceivePanel'
 
 // ---------------------------------------------------------------------------
 // Transfer detail sidebar (inline — same pattern as other sidebars)
@@ -11,7 +13,8 @@ import { formatDate, SortConfig, SortIcon, nextSortDirection } from '../../utils
 function TransferDetailSidebar({
   detail,
   onClose,
-}: { detail: TransferDetail | null; onClose: () => void }) {
+  onReceive,
+}: { detail: TransferDetail | null; onClose: () => void; onReceive: (transferId: string) => void }) {
   const [isVisible, setIsVisible] = useState(false)
   const [shouldRender, setShouldRender] = useState(false)
 
@@ -82,12 +85,14 @@ function TransferDetailSidebar({
           </section>
 
           {/* In-transit note */}
-          {transfer.status === 'in_transit' && (
-            <div className="px-3 py-2.5 rounded bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-xs text-blue-700 dark:text-blue-300">
-              Stock has been decremented at the source location and is physically in transit.
-              Shopify shows zero at the destination until the receive step is completed.
-            </div>
-          )}
+           {transfer.status === 'in_transit' && (
+             <button
+               onClick={e => { e.stopPropagation(); onReceive(transfer.id) }}
+               className="px-2 py-1 rounded text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
+             >
+               Receive →
+             </button>
+           )}
 
           {/* Lines */}
           <section>
@@ -198,6 +203,9 @@ export default function TransferService() {
   const [selected, setSelected] = useState<InventoryTransfer | null>(null)
   const [detail, setDetail] = useState<TransferDetail | null>(null)
 
+  const [showDispatchForm, setShowDispatchForm] = useState(false)
+  const [receivingTransferId, setReceivingTransferId] = useState<string | null>(null)
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -237,50 +245,83 @@ export default function TransferService() {
   ]
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Transfers</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-          {loading ? 'Loading…' : `${transfers.length} total transfers`}
-        </p>
-      </div>
+    <>
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Transfers</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+            {loading ? 'Loading…' : `${transfers.length} total transfers`}
+          </p>
 
-      {error && (
-        <div className="px-4 py-3 rounded-md bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">{error}</div>
-      )}
-
-      <div className="flex gap-1 flex-wrap">
-        {STATUS_FILTERS.map(f => (
           <button
-            key={f.key}
-            onClick={() => setStatusFilter(f.key)}
-            className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors whitespace-nowrap
-              ${statusFilter === f.key
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'
-              }`}
+            onClick={() => setShowDispatchForm(true)}
+            className="px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
           >
-            {f.label}
+            + New transfer
           </button>
-        ))}
+        </div>
+
+        {error && (
+          <div className="px-4 py-3 rounded-md bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">{error}</div>
+        )}
+
+        <div className="flex gap-1 flex-wrap">
+          {STATUS_FILTERS.map(f => (
+            <button
+              key={f.key}
+              onClick={() => setStatusFilter(f.key)}
+              className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors whitespace-nowrap
+                ${statusFilter === f.key
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'
+                }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {loading ? (
+          <div className="h-32 rounded-md border dark:border-gray-700 bg-white dark:bg-gray-900 animate-pulse" />
+        ) : (
+          <TransferTable
+            transfers={filtered}
+            sortConfig={sortConfig}
+            onSort={k => setSortConfig(prev => ({ key: k, direction: nextSortDirection(prev, k) }))}
+            onRowClick={t => setSelected(prev => prev?.id === t.id ? null : t)}
+            selectedId={selected?.id ?? null}
+          />
+        )}
+
+        <TransferDetailSidebar
+          detail={detail}
+          onClose={() => setSelected(null)}
+          onReceive={setReceivingTransferId}
+        />
       </div>
 
-      {loading ? (
-        <div className="h-32 rounded-md border dark:border-gray-700 bg-white dark:bg-gray-900 animate-pulse" />
-      ) : (
-        <TransferTable
-          transfers={filtered}
-          sortConfig={sortConfig}
-          onSort={k => setSortConfig(prev => ({ key: k, direction: nextSortDirection(prev, k) }))}
-          onRowClick={t => setSelected(prev => prev?.id === t.id ? null : t)}
-          selectedId={selected?.id ?? null}
+      {showDispatchForm && (
+        <TransferDispatchForm
+          defaultFromLocationId="gid://shopify/Location/40052293765"
+          defaultToLocationId="gid://shopify/Location/67668738181"
+          onClose={() => setShowDispatchForm(false)}
+          onDispatched={async (transferId) => {
+            setShowDispatchForm(false)
+            await load()  // refresh the list
+          }}
         />
       )}
 
-      <TransferDetailSidebar
-        detail={detail}
-        onClose={() => setSelected(null)}
-      />
-    </div>
+      {receivingTransferId && (
+        <TransferReceivePanel
+          transferId={receivingTransferId}
+          onClose={() => setReceivingTransferId(null)}
+          onReceived={async () => {
+            setReceivingTransferId(null)
+            await load()  // refresh the list
+          }}
+        />
+      )}
+    </>
   )
 }
