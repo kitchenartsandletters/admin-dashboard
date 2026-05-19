@@ -7,7 +7,7 @@
 //
 // Phase 2 will add: admin edit panel, reparenting, deprecation, audit log
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef, forwardRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 // ---------------------------------------------------------------------------
@@ -578,7 +578,7 @@ function NodeEditPanel({ node, onCancel, onSaved }: {
     <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1">{children}</p>
   )
 
-  const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
+  const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
     (props, ref) => (
       <input
         ref={ref}
