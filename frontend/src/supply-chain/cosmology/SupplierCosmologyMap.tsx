@@ -308,7 +308,7 @@ function NodeDetail({
         {node.shopify_vendor_codes && node.shopify_vendor_codes.length > 0 && (
           <div>
             <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1.5">
-              Vendor codes (Booklog)
+              Vendor codes
             </p>
             <div className="flex flex-wrap gap-1">
               {node.shopify_vendor_codes.map(c => <CodeChip key={c} code={c} />)}
@@ -621,10 +621,12 @@ export default function SupplierCosmologyMap() {
                 </div>
               </div>
 
-              {/* Detail panel */}
+              {/* Detail panel — sticky so it stays in view regardless of tree scroll position */}
               {selectedNode && (
-                <div className="w-72 shrink-0 border dark:border-gray-800 rounded-lg overflow-hidden">
-                  <NodeDetail node={selectedNode} onClose={() => setSelectedNode(null)} />
+                <div className="w-72 shrink-0">
+                  <div className="sticky top-0 border dark:border-gray-800 rounded-lg overflow-hidden" style={{maxHeight: "calc(100vh - 2rem)"}}>
+                    <NodeDetail node={selectedNode} onClose={() => setSelectedNode(null)} />
+                  </div>
                 </div>
               )}
             </div>
