@@ -29,6 +29,7 @@ import OrderTaggingPage from './components/preorder/OrderTaggingPage';
 import EdelweissLookup from './components/tools/EdelweissLookup';
 import NytReportPage from './components/reports/NytReportPage';
 import ReceivingEntryFlow from './supply-chain/receiving/ReceivingEntryFlow'
+import SupplierCosmologyMap from './supply-chain/cosmology/SupplierCosmologyMap'
 
 const App = () => {
   const [dateTime, setDateTime] = useState({ date: "", time: "" });
@@ -187,7 +188,14 @@ const App = () => {
                           <TransferService />
                         </ProtectedRoute>
                       } />
-
+                      <Route
+                        path="/supply-chain/cosmology"
+                        element={
+                          <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                            <SupplierCosmologyMap />
+                          </ProtectedRoute>
+                        }
+                      />
                       {/* ── Tools ── */}
                       <Route path="/tools/edelweiss-lookup" element={
                         <ProtectedRoute requiredRoles={['admin', 'editor']}>
