@@ -426,9 +426,7 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 {selectedIds.size > 0
                   ? `${selectedIds.size} title${selectedIds.size !== 1 ? "s" : ""} selected`
-                  : weekIsClosed
-                  ? "Select titles to include in the NYT report"
-                  : `Reporting week closes ${formatDate(toISODate(week.end))}. Actions available once week closes.`
+                  : "Select titles to include in the NYT report"
                 }
               </p>
               <div className="flex items-center gap-3">
@@ -442,7 +440,7 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
                 )}
                 <button
                   onClick={handleGeneratePreview}
-                  disabled={selectedIds.size === 0 || generating || !weekIsClosed}
+                  disabled={selectedIds.size === 0 || generating}
                   className="px-4 py-2 text-xs font-bold bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed rounded transition-all"
                   title="Download a CSV preview without queuing titles for upload"
                 >
@@ -450,7 +448,7 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
                 </button>
                 <button
                   onClick={handleQueueForReport}
-                  disabled={selectedIds.size === 0 || queuing || !weekIsClosed}
+                  disabled={selectedIds.size === 0 || queuing}
                   className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded shadow transition-all active:scale-[0.98]"
                   title="Queue selected titles for the automated NYT report upload"
                 >
