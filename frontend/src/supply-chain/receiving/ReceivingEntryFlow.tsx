@@ -828,7 +828,6 @@ function SummaryStep({
 // ---------------------------------------------------------------------------
 
 export default function ReceivingEntryFlow() {
-  const navigate = useNavigate()
   const { locationName } = useLocations()
 
   const [step, setStep] = useState<FlowStep>('po_lookup')
@@ -840,6 +839,7 @@ export default function ReceivingEntryFlow() {
   const [newProductTargetKey, setNewProductTargetKey] = useState<string | null>(null)
   const [executing, setExecuting] = useState(false)
   const [execError, setExecError] = useState<string | null>(null)
+  const navigate = useNavigate()
 
   const HQ_LOCATION_ID = 'gid://shopify/Location/40052293765'
 
@@ -1031,6 +1031,16 @@ export default function ReceivingEntryFlow() {
 
   return (
     <div className="max-w-2xl mx-auto py-8 px-4">
+      {/* Back to Receiving */}
+      <div className="mb-4">
+        <button
+          onClick={() => navigate('/receiving')}
+          className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+        >
+          <span className="text-base leading-none">←</span>
+          Receiving
+        </button>
+      </div>
       {/* Page header */}
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">New Receipt</h1>

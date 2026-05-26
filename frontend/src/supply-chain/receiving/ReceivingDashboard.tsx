@@ -7,6 +7,9 @@
 
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import PODetailSidebar from '../purchase-orders/PODetailSidebar'
+import { fetchPurchaseOrderDetail } from '../../api/supplyChainApi'
+import { PurchaseOrderDetail } from '../purchase-orders/purchaseOrderTypes'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -161,7 +164,7 @@ function StatCard({ label, value, sub, alert }: {
 // PO group row
 // ---------------------------------------------------------------------------
 
-function POGroupRow({ group }: { group: POReceivingGroup }) {
+function POGroupRow({ group, onRowClick }: { group: POReceivingGroup; onRowClick: (poId: string) => void }) {
   const [expanded, setExpanded] = useState(false)
   const hasMultipleAttempts = group.attempts.length > 1
   const nonCanonical = group.attempts.filter(a => a.id !== group.canonical_receipt?.id)
@@ -169,7 +172,9 @@ function POGroupRow({ group }: { group: POReceivingGroup }) {
   return (
     <div className="border-b dark:border-gray-800 last:border-0">
       {/* Main row */}
-      <div className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+      <div className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
+        onClick={() => onRowClick(group.po_id)}
+      >
 
         {/* Toggle — only shown when there are extra attempts */}
         <button
@@ -276,6 +281,8 @@ export default function ReceivingDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [selectedPODetail, setSelectedPODetail] = useState<PurchaseOrderDetail | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
 
   useEffect(() => {
     fetchReceiptHistory()
@@ -299,6 +306,18 @@ export default function ReceivingDashboard() {
     pending: pendingGroups.length,
     partial: groups.filter(g => g.canonical_status === 'partial').length,
     failed:  failedGroups.length,
+  }
+
+  const handleRowClick = async (poId: string) => {
+    setDetailLoading(true)
+    try {
+      const detail = await fetchPurchaseOrderDetail(poId)
+      setSelectedPODetail(detail)
+    } catch {
+      // ignore
+    } finally {
+      setDetailLoading(false)
+    }
   }
 
   return (
@@ -400,10 +419,15 @@ export default function ReceivingDashboard() {
             <div className="w-16 shrink-0 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide text-right">Units</div>
           </div>
           {filtered.map(group => (
-            <POGroupRow key={group.po_id} group={group} />
+            <POGroupRow key={group.po_id} group={group} onRowClick={handleRowClick} />
           ))}
         </div>
       )}
+         <PODetailSidebar
+          detail={detailLoading ? null : selectedPODetail}
+          onClose={() => setSelectedPODetail(null)}
+          onReceive={(poId) => navigate(`/receiving/new?po=${poId}`)}
+        />
     </div>
   )
 }

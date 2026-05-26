@@ -63,7 +63,7 @@ const SupplierTable: React.FC<Props> = ({
   if (suppliers.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-600">
-        <p className="text-sm">No suppliers found.</p>
+        <p className="text-sm">No publishers found.</p>
       </div>
     )
   }

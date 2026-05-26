@@ -52,7 +52,16 @@ export default function POService() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const [statusFilter, setStatusFilter] = useState<string>('open')
+  const PO_STATUS_FILTER_KEY = 'sc_po_status_filter'
+
+  function getInitialPOFilter(): string {
+     try {
+       return localStorage.getItem(PO_STATUS_FILTER_KEY) ?? 'all'
+     } catch {
+       return 'all'
+     }
+   }
+  const [statusFilter, setStatusFilter] = useState<string>(getInitialPOFilter)
   const [search, setSearch] = useState('')
   const [sortConfig, setSortConfig] = useState<SortConfig<PurchaseOrder> | null>({
     key: 'created_at', direction: 'desc',
@@ -151,7 +160,7 @@ export default function POService() {
       <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
         <input
           type="text"
-          placeholder="Search PO number, ref, notes…"
+          placeholder="Search PO number, supplier, ISBN…"
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="px-3 py-2 border rounded text-sm bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none flex-1"
@@ -160,7 +169,12 @@ export default function POService() {
           {STATUS_FILTERS.map(f => (
             <button
               key={f.key}
-              onClick={() => setStatusFilter(f.key)}
+              onClick={() => {
+                setStatusFilter(f.key)
+                try {
+                  localStorage.setItem(PO_STATUS_FILTER_KEY, f.key)
+                } catch {}
+              }}
               className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors whitespace-nowrap
                 ${statusFilter === f.key
                   ? 'bg-blue-600 text-white border-blue-600'
@@ -192,8 +206,7 @@ export default function POService() {
       <PODetailSidebar
         detail={detailLoading ? null : detail}
         onClose={() => setSelectedOrder(null)}
-        onReceive={poId => navigate(`/receiving?po=${poId}`)}
-        onRefresh={load}
+        onReceive={poId => navigate(`/receiving/new?po=${poId}`)}
       />
 
       {showBuilder && (

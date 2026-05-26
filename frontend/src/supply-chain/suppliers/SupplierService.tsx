@@ -225,7 +225,7 @@ export default function SupplierService() {
       <div className="space-y-4">
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Suppliers</h1>
+            <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Publishers</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
               {loading ? 'Loading…' : `${activeCount} active · ${draftCount} drafts`}
             </p>
