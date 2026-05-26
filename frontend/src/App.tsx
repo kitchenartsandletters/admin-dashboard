@@ -17,7 +17,6 @@ import BusinessCalendarPage from './components/BusinessCalendarPage';
 import ReportJobPage from './components/ReportJobPage';
 import SupplierService from './supply-chain/suppliers/SupplierService'
 import POService from './supply-chain/purchase-orders/POService'
-import ReceivingWizard from './supply-chain/receiving/ReceivingWizard'
 import TransferService from './supply-chain/transfers/TransferService'
 import { supabase } from './lib/supabase';
 import DefaultRedirect from './auth/DefaultRedirect';
@@ -30,6 +29,7 @@ import EdelweissLookup from './components/tools/EdelweissLookup';
 import NytReportPage from './components/reports/NytReportPage';
 import ReceivingEntryFlow from './supply-chain/receiving/ReceivingEntryFlow'
 import SupplierCosmologyMap from './supply-chain/cosmology/SupplierCosmologyMap'
+import ReceivingDashboard from './supply-chain/receiving/ReceivingDashboard'
 
 const App = () => {
   const [dateTime, setDateTime] = useState({ date: "", time: "" });
@@ -173,7 +173,7 @@ const App = () => {
                       } />
                       <Route path="/receiving" element={
                         <ProtectedRoute requiredRoles={['admin']}>
-                          <ReceivingWizard />
+                          <ReceivingDashboard />
                         </ProtectedRoute>
                       } />
                       <Route path="/receiving/new"

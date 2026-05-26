@@ -33,11 +33,11 @@ import {
   fetchSuppliers, fetchSupplierDetail,
   createPurchaseOrder, createPOLine,
   POLookupResult, VariantSearchResult,
-} from '../../api/supplyChainApi'
-import { SupplierParty, SupplierDetail } from '../suppliers/supplierTypes'
-import { PurchaseOrder } from '../purchase-orders/purchaseOrderTypes'
-import { useLocations } from '../hooks/useLocations'
-import NewProductWizard from '../receiving/NewProductWizard'
+} from '../api/supplyChainApi'
+import { SupplierParty, SupplierDetail } from './suppliers/supplierTypes'
+import { PurchaseOrder } from './purchase-orders/purchaseOrderTypes'
+import { useLocations } from './hooks/useLocations'
+import NewProductWizard from './receiving/NewProductWizard'
 
 // ---------------------------------------------------------------------------
 // Session types
@@ -285,6 +285,7 @@ function SupplierStep({
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SupplierParty[]>([])
   const [loading, setLoading] = useState(false)
+  const [selected, setSelected] = useState<SupplierDetail | null>(null)
 
   useEffect(() => {
     if (query.length < 2) { setResults([]); return }
@@ -295,9 +296,11 @@ function SupplierStep({
 
   const handleSelect = async (party: SupplierParty) => {
     setLoading(true)
+    setResults([])
     try {
       const detail = await fetchSupplierDetail(party.id)
-      onSelect(detail)
+      setSelected(detail)
+      setQuery(party.name)
     } catch {
       // ignore
     } finally {
@@ -305,27 +308,82 @@ function SupplierStep({
     }
   }
 
+  const handleConfirm = () => {
+    if (selected) onSelect(selected)
+  }
+
+  // Derive ordering pathway from selected detail
+  const primaryAccount = selected?.accounts.find(a => a.is_primary && a.is_active)
+    ?? selected?.accounts[0]
+
   return (
     <div className="space-y-5">
       <StepHeader
         step={2}
-        label="Identify Supplier"
-        sub="Search for the supplier on this packing slip."
+        label="Identify Publisher"
+        sub="Search by publisher name. The system will show you the ordering pathway."
       />
 
       <div className="space-y-3">
         <div>
-          <Label required>Supplier name or vendor code</Label>
+          <Label required>Publisher or distributor name</Label>
           <Input
             value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Ingram, RDH, Brian Voll…"
+            onChange={e => { setQuery(e.target.value); setSelected(null) }}
+            placeholder="Graywolf Press, Phaidon, Brian Voll…"
             autoFocus
             disabled={loading}
           />
         </div>
 
-        {results.length > 0 && (
+        {/* Ordering pathway confirmation — shown after selection */}
+        {selected && (
+          <div className="px-4 py-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 space-y-2">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="font-semibold text-blue-900 dark:text-blue-100 text-sm">
+                  {selected.party.name}
+                </p>
+                {/* Show distributor relationship if this is an imprint/distribution client */}
+                {selected.party.parent_id && (
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
+                    ↳ Orders via parent distributor
+                  </p>
+                )}
+                {primaryAccount && (
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
+                    {primaryAccount.label}
+                    {primaryAccount.account_number && ` · #${primaryAccount.account_number}`}
+                    {primaryAccount.ordering_method && ` · via ${primaryAccount.ordering_method}`}
+                  </p>
+                )}
+                {selected.party.shopify_vendor_codes?.length ? (
+                  <p className="text-[11px] text-blue-400 dark:text-blue-500 mt-1">
+                    Shopify vendor: <span className="font-semibold">{selected.party.name}</span>
+                    {selected.party.shopify_vendor_codes.length > 0 && (
+                      <span className="ml-1 opacity-70">(legacy: {selected.party.shopify_vendor_codes.join(', ')})</span>
+                    )}
+                  </p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => { setSelected(null); setQuery('') }}
+                className="text-blue-400 hover:text-blue-700 dark:hover:text-blue-200 text-sm ml-2"
+              >
+                ✕
+              </button>
+            </div>
+            <button
+              onClick={handleConfirm}
+              className="w-full px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
+            >
+              Continue with {selected.party.name} →
+            </button>
+          </div>
+        )}
+
+        {results.length > 0 && !selected && (
           <div className="border dark:border-gray-700 rounded-md overflow-hidden">
             {results.map(party => (
               <button

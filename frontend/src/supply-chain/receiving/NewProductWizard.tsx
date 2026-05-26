@@ -291,7 +291,10 @@ export default function NewProductWizard({ prefill, onCreated, onCancel }: Props
 
   const setF = (patch: Partial<WizardForm>) => setForm(prev => ({ ...prev, ...patch }))
 
+  // Vendor policy: new products use full publisher name as Shopify vendor field.
+  // Legacy codes are for reference only — not used as the vendor on new products.
   const vendorCode = form.selected_party?.shopify_vendor_codes?.[0] ?? ''
+  const vendorName = form.selected_party?.name ?? ''
 
   // Derived fields
   const fTag = formatTag(form.format)
@@ -329,7 +332,7 @@ export default function NewProductWizard({ prefill, onCreated, onCancel }: Props
         input: {
           title:           form.title,
           descriptionHtml: form.description || undefined,
-          vendor:          vendorCode || undefined,
+          vendor:          vendorName || undefined,  // full name per vendor policy
           productType:     'BOOK',
           status:          'DRAFT',
           tags,
@@ -485,7 +488,7 @@ export default function NewProductWizard({ prefill, onCreated, onCancel }: Props
             variant_id:          variantId,
             isbn:                form.isbn || null,
             title:               form.title,
-            vendor:              vendorCode || null,
+            vendor:              vendorName || null,  // full name per vendor policy
             unit_cost:           form.unit_cost ? parseFloat(form.unit_cost) : null,
             is_primary_supplier: true,
             is_active:           true,
@@ -653,7 +656,8 @@ export default function NewProductWizard({ prefill, onCreated, onCancel }: Props
                 ['Format',            `${form.format} → tag: ${fTag}`],
                 ['Author (SKU)',       sku || '—'],
                 ['Pub date tag',      pdTag || '—'],
-                ['Vendor code',       vendorCode || '—'],
+                ['Shopify vendor',    vendorName || '—'],
+            ['Legacy code',       vendorCode || '—'],
                 ['Retail price',      `$${form.price}`],
                 ['Unit cost',         form.unit_cost ? `$${form.unit_cost}` : '—'],
                 ['Inventory policy',  form.inventory_policy],
