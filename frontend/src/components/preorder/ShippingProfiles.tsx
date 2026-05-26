@@ -423,7 +423,29 @@ const ShippingProfiles = () => {
                           {profile.products.map((prod) => (
                             <div key={prod.product_id} className="flex items-center justify-between text-xs">
                               <span className="text-gray-900 dark:text-gray-100">{prod.title}</span>
-                              <span className="text-gray-400">{prod.product_id}</span>
+                              <div className="flex items-center gap-3">
+                                <span className="text-gray-400">{prod.product_id}</span>
+                                {actionResults[prod.product_id] && (
+                                  <span className="text-green-600 dark:text-green-400">{actionResults[prod.product_id]}</span>
+                                )}
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setConfirmModal({
+                                      open: true,
+                                      productId: prod.product_id,
+                                      pubDate: profile.pub_date ?? '',
+                                      title: prod.title,
+                                      action: 'remove',
+                                      profileName: profile.name,
+                                    });
+                                  }}
+                                  disabled={!!actionLoading[prod.product_id]}
+                                  className="px-2 py-0.5 rounded text-[10px] border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 disabled:opacity-40"
+                                >
+                                  {actionLoading[prod.product_id] ? '…' : 'Remove'}
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>
