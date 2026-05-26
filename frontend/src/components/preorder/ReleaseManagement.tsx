@@ -213,7 +213,7 @@ const ReleaseManagement = () => {
     batchFetchedRef.current = true;
 
     const eligible = products.filter(
-      (p) => p.classification !== 'historical_preorder' && p.classification !== 'not_a_preorder_product'
+      (p) => p.classification !== 'not_a_preorder_product'
     );
 
     const fetchBatch = async () => {
@@ -450,6 +450,65 @@ const ReleaseManagement = () => {
           </div>
         </div>
       )}
+
+      {/* ── Historical Anomalies ── */}
+      {(() => {
+        const historicalNeedsAttention = products.filter((p) => {
+          if (p.classification !== 'historical_preorder') return false;
+          const cs = cleanupStates[p.product_id];
+          if (!cs) return false;
+          return cs.description_needs_cleaning || cs.in_preorder_collection || cs.published_to_catch_all;
+        });
+        if (historicalNeedsAttention.length === 0) return null;
+        return (
+          <div className="mb-6 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-4">
+            <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200 mb-3">
+              Historical — Needs Attention ({historicalNeedsAttention.length})
+            </h3>
+            <p className="text-xs text-amber-700 dark:text-amber-400 mb-3">
+              These titles have released but retain preorder residue (description, collection, or catch-all).
+            </p>
+            <div className="space-y-2">
+              {historicalNeedsAttention.map((p) => {
+                const cs = cleanupStates[p.product_id];
+                const isLoading = actionLoading[p.product_id];
+                const result = actionResults[p.product_id];
+                return (
+                  <div key={p.product_id}
+                    className="flex items-center justify-between gap-4 text-sm bg-white dark:bg-gray-800 rounded px-3 py-2 border border-amber-100 dark:border-amber-800/50">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="font-medium text-gray-900 dark:text-gray-100 truncate">{p.title}</span>
+                      <span className="text-xs text-gray-400">{formatDate(p.pub_date)}</span>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      {cs.description_needs_cleaning && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Body</span>
+                      )}
+                      {cs.in_preorder_collection && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Collection</span>
+                      )}
+                      {cs.published_to_catch_all && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Catch All</span>
+                      )}
+                      {result?.overall && (
+                        <span className={`text-xs font-medium ${result.overall === 'success' ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                          {result.overall === 'success' ? '✓ Done' : '⚠ Partial'}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => setConfirmModal({ open: true, productId: p.product_id, title: p.title, action: 'full' })}
+                        disabled={isLoading}
+                        className="px-2.5 py-1 text-xs rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50">
+                        {isLoading ? 'Running…' : 'Full Cleanup'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Controls ── */}
       <div className="flex flex-wrap gap-3 items-center mb-4">
