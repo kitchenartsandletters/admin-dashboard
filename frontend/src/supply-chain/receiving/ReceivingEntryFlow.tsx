@@ -33,11 +33,11 @@ import {
   fetchSuppliers, fetchSupplierDetail,
   createPurchaseOrder, createPOLine,
   POLookupResult, VariantSearchResult,
-} from '../api/supplyChainApi'
-import { SupplierParty, SupplierDetail } from './suppliers/supplierTypes'
-import { PurchaseOrder } from './purchase-orders/purchaseOrderTypes'
-import { useLocations } from './hooks/useLocations'
-import NewProductWizard from './receiving/NewProductWizard'
+} from '../../api/supplyChainApi'
+import { SupplierParty, SupplierDetail } from '../suppliers/supplierTypes'
+import { PurchaseOrder } from '../purchase-orders/purchaseOrderTypes'
+import { useLocations } from '../hooks/useLocations'
+import NewProductWizard from '../receiving/NewProductWizard'
 
 // ---------------------------------------------------------------------------
 // Session types

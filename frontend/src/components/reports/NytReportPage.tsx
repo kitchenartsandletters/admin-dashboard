@@ -108,7 +108,7 @@ function QueuePanel({
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 text-center">
         <p className="text-sm text-gray-400 dark:text-gray-500">No titles queued for this week's report.</p>
         <p className="text-xs text-gray-300 dark:text-gray-600 mt-1">
-          Titles are queued from Preorders → Releases → Reportable.
+          Titles are queued from Preorders → Releases → Reportable — NYT Eligible.
         </p>
       </div>
     );
