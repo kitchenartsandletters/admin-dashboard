@@ -34,7 +34,6 @@ interface CleanupState {
   barcode: string | null;
   pub_date: string | null;
   in_preorder_collection: boolean;
-  published_to_catch_all: boolean;
 }
 
 interface CleanupResult {
@@ -301,7 +300,7 @@ const ReleaseManagement = () => {
         if (filter === 'needs_cleanup') {
           const cs = cleanupStates[p.product_id];
           if (!cs) return false;
-          if (!cs.description_needs_cleaning && !cs.in_preorder_collection && !cs.published_to_catch_all) return false;
+          if (!cs.description_needs_cleaning && !cs.in_preorder_collection) return false;
           if (!isPastPubDate(p.pub_date)) return false;
         }
         if (search) {
@@ -346,7 +345,7 @@ const ReleaseManagement = () => {
   }
 
   // ── Render helpers ──
-  const renderCleanupCell = (productId: number, field: 'description_status' | 'in_preorder_collection' | 'published_to_catch_all') => {
+  const renderCleanupCell = (productId: number, field: 'description_status' | 'in_preorder_collection') => {
     const cs = cleanupStates[productId];
     if (!cs) return <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>;
     if (field === 'description_status') {
@@ -357,10 +356,6 @@ const ReleaseManagement = () => {
       return cs.in_preorder_collection
         ? <span className="text-green-600 dark:text-green-400 text-xs font-medium">In</span>
         : <span className="text-gray-400 dark:text-gray-500 text-xs">Out</span>;
-    if (field === 'published_to_catch_all')
-      return cs.published_to_catch_all
-        ? <span className="text-green-600 dark:text-green-400 text-xs font-medium">On</span>
-        : <span className="text-gray-400 dark:text-gray-500 text-xs">Off</span>;
     return null;
   };
 
@@ -378,7 +373,7 @@ const ReleaseManagement = () => {
             Inspect
           </button>
         )}
-        {cs && pastPub && (cs.description_needs_cleaning || cs.in_preorder_collection || cs.published_to_catch_all) && (
+        {cs && pastPub && (cs.description_needs_cleaning || cs.in_preorder_collection) && (
           <button
             onClick={() => setConfirmModal({ open: true, productId: product.product_id, title: product.title, action: 'full' })}
             disabled={isLoading}
@@ -387,7 +382,7 @@ const ReleaseManagement = () => {
           </button>
         )}
         {cs && !pastPub && <span className="text-xs text-gray-400 dark:text-gray-500 italic">Not yet due</span>}
-        {cs && pastPub && !cs.description_needs_cleaning && !cs.in_preorder_collection && !cs.published_to_catch_all && (
+        {cs && pastPub && !cs.description_needs_cleaning && !cs.in_preorder_collection && (
           <span className="text-xs text-green-600 dark:text-green-400">✓ Clean</span>
         )}
         {result?.overall && (
@@ -435,9 +430,6 @@ const ReleaseManagement = () => {
                           <span className={`text-xs ${cs.in_preorder_collection ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>
                             {cs.in_preorder_collection ? 'In coll.' : 'Out'}
                           </span>
-                          <span className={`text-xs ${cs.published_to_catch_all ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>
-                            {cs.published_to_catch_all ? 'Catch All' : 'Off'}
-                          </span>
                         </>
                       ) : (
                         <span className="text-xs text-gray-400 dark:text-gray-500 animate-pulse">Loading…</span>
@@ -457,7 +449,7 @@ const ReleaseManagement = () => {
           if (p.classification !== 'historical_preorder') return false;
           const cs = cleanupStates[p.product_id];
           if (!cs) return false;
-          return cs.description_needs_cleaning || cs.in_preorder_collection || cs.published_to_catch_all;
+          return cs.description_needs_cleaning || cs.in_preorder_collection;
         });
         if (historicalNeedsAttention.length === 0) return null;
         return (
@@ -486,9 +478,6 @@ const ReleaseManagement = () => {
                       )}
                       {cs.in_preorder_collection && (
                         <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Collection</span>
-                      )}
-                      {cs.published_to_catch_all && (
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Catch All</span>
                       )}
                       {result?.overall && (
                         <span className={`text-xs font-medium ${result.overall === 'success' ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
@@ -540,7 +529,6 @@ const ReleaseManagement = () => {
               ))}
               <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Body HTML</th>
               <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300 text-center">Collection</th>
-              <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300 text-center">Catch All</th>
               <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Actions</th>
             </tr>
           </thead>
@@ -563,13 +551,12 @@ const ReleaseManagement = () => {
                   </td>
                   <td className="px-4 py-3">{renderCleanupCell(product.product_id, 'description_status')}</td>
                   <td className="px-4 py-3 text-center">{renderCleanupCell(product.product_id, 'in_preorder_collection')}</td>
-                  <td className="px-4 py-3 text-center">{renderCleanupCell(product.product_id, 'published_to_catch_all')}</td>
                   <td className="px-4 py-3">{renderActions(product)}</td>
                 </tr>
               );
             })}
             {filteredProducts.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400 dark:text-gray-500 text-sm">No products match the current filter.</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400 dark:text-gray-500 text-sm">No products match the current filter.</td></tr>
             )}
           </tbody>
         </table>
