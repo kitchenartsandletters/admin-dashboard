@@ -23,6 +23,16 @@ export function formatDate(date: string | null | undefined): string {
   })
 }
 
+/** Format a Date object to YYYY-MM-DD using local date parts.
+ *  Never use toISOString() for date-only formatting — it returns UTC
+ *  which shifts the date when the local timezone is behind UTC. */
+export function toISODate(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
+}
+
 /** Operational stock status label for the Releases Upcoming section */
 export function stockReceivedLabel(
   inventory: number,

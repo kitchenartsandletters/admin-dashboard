@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react"
 import { ReleaseReviewRow, ReportablePreorderRow } from "../../types/preorderTypes"
 import { generateReportPreview, queueForReport } from "../../../api/preorderApi"
 import {
-  sortTitle, formatDate, stockReceivedLabel,
+  sortTitle, formatDate, stockReceivedLabel, toISODate,
   SortConfig, SortIcon, nextSortDirection
 } from "../../utils/tableUtils"
 
@@ -55,10 +55,6 @@ function resolveWeekBounds(anchor: Date): { start: Date; end: Date; label: strin
   end.setDate(start.getDate() + 6)
   const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
   return { start, end, label: `${fmt(start)} – ${fmt(end)}, ${end.getFullYear()}` }
-}
-
-function toISODate(d: Date): string {
-  return d.toISOString().split("T")[0]
 }
 
 function daysUntil(pubDate: string | null): number | null {
