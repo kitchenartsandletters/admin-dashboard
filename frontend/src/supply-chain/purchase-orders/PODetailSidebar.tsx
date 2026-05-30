@@ -18,11 +18,13 @@ import {
   fetchReceiptsForPO,
 } from '../../api/supplyChainApi'
 import { useLocations } from '../hooks/useLocations'
+import { submitPurchaseOrder, confirmPurchaseOrder } from '../../api/supplyChainApi'
 
 interface Props {
   detail: PurchaseOrderDetail | null
   onClose: () => void
   onReceive: (poId: string) => void
+  onRefresh?: () => void  // called after status transitions to trigger detail reload
 }
 
 // ---------------------------------------------------------------------------
@@ -191,10 +193,11 @@ function ReceiptLines({ receiptId }: { receiptId: string }) {
 // Main sidebar
 // ---------------------------------------------------------------------------
 
-const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive }) => {
+const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefresh }) => {
   const [isOpen, setIsOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
+  const [transitionError, setTransitionError] = useState<string | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const wasNullRef = useRef(true)
 
@@ -233,6 +236,21 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive }) => {
   const canReceive = ['submitted', 'confirmed', 'partial'].includes(order.status)
   const totalOrdered = lines.reduce((s, l) => s + l.quantity_ordered, 0)
   const totalReceived = lines.reduce((s, l) => s + l.quantity_received, 0)
+
+  const handleTransition = async (action: 'submit' | 'confirm') => {
+     if (!detail) return
+     setTransitioning(true)
+     setTransitionError(null)
+     try {
+       if (action === 'submit') await submitPurchaseOrder(detail.order.id)
+       if (action === 'confirm') await confirmPurchaseOrder(detail.order.id)
+       onRefresh?.()  // caller reloads the detail
+     } catch (e) {
+       setTransitionError(e instanceof Error ? e.message : 'Action failed')
+     } finally {
+       setTransitioning(false)
+     }
+   }
 
   return (
     <>
@@ -370,6 +388,46 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive }) => {
             <SectionHeader label="Receipts" />
             <ReceiptSection poId={order.id} />
           </section>
+
+          {/* Status actions — bottom of content, after Receipts section */}
+          {detail && (
+            <section>
+              <SectionHeader label="Actions" />
+              <div className="space-y-2">
+                {order.status === 'draft' && (
+                  <button
+                    onClick={() => handleTransition('submit')}
+                    disabled={transitioning || lines.length === 0}
+                    className="w-full px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
+                  >
+                    {transitioning ? 'Submitting…' : 'Submit PO → Submitted'}
+                  </button>
+                )}
+                {order.status === 'submitted' && (
+                  <button
+                    onClick={() => handleTransition('confirm')}
+                    disabled={transitioning}
+                    className="w-full px-3 py-2 rounded-md bg-green-600 hover:bg-green-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
+                  >
+                    {transitioning ? 'Confirming…' : 'Mark as Confirmed'}
+                  </button>
+                )}
+                {order.status === 'draft' && lines.length === 0 && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 text-center">
+                    Add lines before submitting
+                  </p>
+                )}
+                {order.status === 'received' && (
+                  <p className="text-xs text-center text-green-600 dark:text-green-400 font-semibold">
+                    ✓ Fully received — no further actions
+                  </p>
+                )}
+                {transitionError && (
+                  <p className="text-xs text-red-600 dark:text-red-400">{transitionError}</p>
+                )}
+              </div>
+            </section>
+          )}
 
         </div>
       </div>

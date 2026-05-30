@@ -49,13 +49,10 @@ const headers = {
 }
 
 // ---------------------------------------------------------------------------
-// Base fetch wrapper — throws on non-ok responses with the error body
+// Base fetch wrapper
 // ---------------------------------------------------------------------------
 
-async function sc<T>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
+async function sc<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${SC_BASE_URL}${path}`
   const res = await fetch(url, { ...options, headers: { ...headers, ...options.headers } })
   if (!res.ok) {
@@ -63,12 +60,9 @@ async function sc<T>(
     try {
       const body = await res.json()
       detail = body.detail ?? body.message ?? detail
-    } catch {
-      // non-JSON error body
-    }
+    } catch { /* non-JSON error body */ }
     throw new Error(`[${res.status}] ${detail}`)
   }
-  // 204 No Content
   if (res.status === 204) return undefined as T
   return res.json()
 }
@@ -85,10 +79,6 @@ function qs(params: Record<string, string | number | boolean | undefined | null>
 // ===========================================================================
 // SUPPLIERS
 // ===========================================================================
-
-// ---------------------------------------------------------------------------
-// Parties
-// ---------------------------------------------------------------------------
 
 export async function fetchSuppliers(opts: {
   activeOnly?: boolean
@@ -131,9 +121,7 @@ export async function fetchSuppliersForInventoryItem(
   return sc(`/api/suppliers/by-inventory-item/${encodeURIComponent(inventoryItemId)}`)
 }
 
-// ---------------------------------------------------------------------------
 // Accounts
-// ---------------------------------------------------------------------------
 
 export async function createSupplierAccount(
   partyId: string,
@@ -166,9 +154,7 @@ export async function fetchAccountProducts(
   return sc(`/api/suppliers/accounts/${accountId}/products${qs({ active_only: activeOnly })}`)
 }
 
-// ---------------------------------------------------------------------------
 // Contacts
-// ---------------------------------------------------------------------------
 
 export async function createSupplierContact(
   partyId: string,
@@ -194,9 +180,7 @@ export async function deleteSupplierContact(contactId: string): Promise<void> {
   return sc(`/api/suppliers/contacts/${contactId}`, { method: 'DELETE' })
 }
 
-// ---------------------------------------------------------------------------
-// Supplier products (variant ↔ account mappings)
-// ---------------------------------------------------------------------------
+// Supplier products
 
 export async function createSupplierProduct(
   body: Omit<SupplierProduct, 'id' | 'is_active' | 'created_at'>
@@ -221,25 +205,45 @@ export async function deactivateSupplierProduct(productId: string): Promise<void
   return sc(`/api/suppliers/products/${productId}`, { method: 'DELETE' })
 }
 
+// Variant search — used by POBuilder, receiving flow, and ISBN lookup
+
+export interface VariantSearchResult {
+  inventory_item_id: string
+  variant_id: string
+  title: string
+  isbn: string
+  vendor: string
+}
+
+export async function searchVariants(query: string): Promise<VariantSearchResult[]> {
+  return sc(`/api/suppliers/products/search${qs({ q: query, limit: 15 })}`)
+}
+
+export async function lookupProductByISBN(isbn: string): Promise<VariantSearchResult[]> {
+  return sc(`/api/suppliers/products/search${qs({ q: isbn, limit: 5 })}`)
+}
+
 // ===========================================================================
 // PURCHASE ORDERS
 // ===========================================================================
 
 export async function fetchPurchaseOrders(opts: {
-  status?: string          // comma-separated: 'draft,submitted'
+  status?: string
   supplierAccountId?: string
   locationId?: string
   isAdHoc?: boolean
+  search?: string
   limit?: number
   offset?: number
 } = {}): Promise<PurchaseOrder[]> {
   return sc(`/api/purchase-orders${qs({
-    status: opts.status,
-    supplier_account_id: opts.supplierAccountId,
-    location_id: opts.locationId,
-    is_ad_hoc: opts.isAdHoc,
-    limit: opts.limit ?? 100,
-    offset: opts.offset ?? 0,
+    status:               opts.status,
+    supplier_account_id:  opts.supplierAccountId,
+    location_id:          opts.locationId,
+    is_ad_hoc:            opts.isAdHoc,
+    search:               opts.search,
+    limit:                opts.limit ?? 100,
+    offset:               opts.offset ?? 0,
   })}`)
 }
 
@@ -258,9 +262,6 @@ export async function createPurchaseOrder(body: {
   is_ad_hoc?: boolean
   ad_hoc_source?: string
   informal_ref?: string
-  is_drop_ship?: boolean
-  drop_ship_venue_id?: string
-  drop_ship_address?: string
 }): Promise<PurchaseOrder> {
   return sc('/api/purchase-orders', { method: 'POST', body: JSON.stringify(body) })
 }
@@ -293,16 +294,47 @@ export async function confirmPurchaseOrder(poId: string): Promise<PurchaseOrder>
   return sc(`/api/purchase-orders/${poId}/confirm`, { method: 'POST' })
 }
 
-export async function addPOLine(poId: string, body: Omit<PurchaseOrderLine, 'id' | 'purchase_order_id' | 'quantity_received' | 'quantity_backordered' | 'quantity_cancelled' | 'status' | 'created_at'>): Promise<void> {
+// Alias for backwards compatibility with POBuilder
+export const submitPO = submitPurchaseOrder
+
+export async function addPOLine(
+  poId: string,
+  body: Omit<PurchaseOrderLine,
+    'id' | 'purchase_order_id' | 'quantity_received' |
+    'quantity_backordered' | 'quantity_cancelled' | 'status' | 'created_at'>
+): Promise<void> {
   return sc(`/api/purchase-orders/${poId}/lines`, {
     method: 'POST',
     body: JSON.stringify({ ...body, purchase_order_id: poId }),
   })
 }
 
+export async function createPOLine(
+  poId: string,
+  body: {
+    inventory_item_id: string
+    variant_id: string
+    quantity_ordered: number
+    unit_cost?: number
+    notes?: string
+  }
+): Promise<unknown> {
+  return sc(`/api/purchase-orders/${poId}/lines`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
 export async function updatePOLine(
   lineId: string,
-  body: Partial<{ unit_cost: number; quantity_ordered: number; quantity_backordered: number; quantity_cancelled: number; status: string; notes: string }>
+  body: Partial<{
+    unit_cost: number
+    quantity_ordered: number
+    quantity_backordered: number
+    quantity_cancelled: number
+    status: string
+    notes: string
+  }>
 ): Promise<void> {
   return sc(`/api/purchase-orders/lines/${lineId}`, {
     method: 'PATCH',
@@ -312,6 +344,22 @@ export async function updatePOLine(
 
 export async function removePOLine(lineId: string): Promise<void> {
   return sc(`/api/purchase-orders/lines/${lineId}`, { method: 'DELETE' })
+}
+
+// PO lookup for packing slip resolution
+
+export interface POLookupResult extends PurchaseOrder {
+  match_type: 'exact' | 'fuzzy'
+}
+
+export async function lookupPurchaseOrders(opts: {
+  poNumber?: string
+  supplierName?: string
+}): Promise<POLookupResult[]> {
+  return sc(`/api/purchase-orders/lookup${qs({
+    po_number:     opts.poNumber,
+    supplier_name: opts.supplierName,
+  })}`)
 }
 
 // ===========================================================================
@@ -326,31 +374,86 @@ export async function fetchReceiptsForPO(poId: string): Promise<Receipt[]> {
   return sc(`/api/receiving/po/${poId}`)
 }
 
-export async function fetchReceipt(receiptId: string): Promise<{ receipt: Receipt; lines: unknown[] }> {
+export async function fetchReceipt(
+  receiptId: string
+): Promise<{ receipt: Receipt; lines: unknown[] }> {
   return sc(`/api/receiving/${receiptId}`)
 }
 
-export async function parsePackingSlip(file: File): Promise<{
-  lines: Array<{
-    supplier_sku: string | null
-    isbn: string | null
-    title: string | null
-    quantity: number | null
-    unit_cost: number | null
-    confidence: number
-    needs_review: boolean
-  }>
+// Packing slip / invoice parsing
+
+export interface ParsedSlipLine {
+  isbn: string | null
+  title: string | null
+  supplier_sku: string | null
+  quantity: number | null
+  unit_cost: number | null
+  confidence: number
+  needs_review: boolean
+}
+
+export interface SlipParseResult {
+  lines: ParsedSlipLine[]
   stub: boolean
-}> {
+  invoice_number?: string | null
+  invoice_date?: string | null
+  supplier_name?: string | null
+  invoice_total?: number | null
+  confidence?: number
+}
+
+export async function parsePackingSlip(file: File): Promise<SlipParseResult> {
   const form = new FormData()
   form.append('file', file)
   const res = await fetch(`${SC_BASE_URL}/api/receiving/parse-packing-slip`, {
     method: 'POST',
     headers: { 'X-Admin-Token': SC_TOKEN },
+    // Do NOT set Content-Type — browser sets it with multipart boundary
     body: form,
   })
-  if (!res.ok) throw new Error(`[${res.status}] Failed to parse packing slip`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? `[${res.status}] Failed to parse packing slip`)
+  }
   return res.json()
+}
+
+// Receipt detail records
+
+export interface ReceiptRecord {
+  id: string
+  purchase_order_id: string
+  location_id: string
+  receipt_type: string
+  status: string
+  notes: string | null
+  received_at: string
+  shopify_adjustment_group_id: string | null
+}
+
+export interface ReceiptLineRecord {
+  id: string
+  receipt_id: string
+  purchase_order_line_id: string
+  inventory_item_id: string
+  quantity_received: number
+  quantity_damaged: number
+  restock_applied_at: string | null
+  damage_applied_at: string | null
+  status: string
+  error_message: string | null
+  shopify_group_id?: string
+  delta?: number
+}
+
+export async function fetchPOReceipts(poId: string): Promise<ReceiptRecord[]> {
+  return sc(`/api/receiving/po/${poId}`)
+}
+
+export async function fetchReceiptLines(
+  receiptId: string
+): Promise<{ receipt: ReceiptRecord; lines: ReceiptLineRecord[] }> {
+  return sc(`/api/receiving/${receiptId}`)
 }
 
 // ===========================================================================
@@ -365,11 +468,11 @@ export async function fetchTransfers(opts: {
   offset?: number
 } = {}): Promise<InventoryTransfer[]> {
   return sc(`/api/transfers${qs({
-    status: opts.status,
+    status:           opts.status,
     from_location_id: opts.fromLocationId,
-    to_location_id: opts.toLocationId,
-    limit: opts.limit ?? 100,
-    offset: opts.offset ?? 0,
+    to_location_id:   opts.toLocationId,
+    limit:            opts.limit ?? 100,
+    offset:           opts.offset ?? 0,
   })}`)
 }
 
@@ -409,7 +512,7 @@ export async function cancelTransfer(transferId: string): Promise<void> {
 }
 
 // ===========================================================================
-// RECONCILIATION (audit / admin use)
+// RECONCILIATION
 // ===========================================================================
 
 export async function fetchInventoryEvents(opts: {
@@ -420,11 +523,11 @@ export async function fetchInventoryEvents(opts: {
   offset?: number
 } = {}): Promise<unknown[]> {
   return sc(`/api/inventory-events${qs({
-    status: opts.status,
-    source_type: opts.sourceType,
-    inventory_item_id: opts.inventoryItemId,
-    limit: opts.limit ?? 100,
-    offset: opts.offset ?? 0,
+    status:             opts.status,
+    source_type:        opts.sourceType,
+    inventory_item_id:  opts.inventoryItemId,
+    limit:              opts.limit ?? 100,
+    offset:             opts.offset ?? 0,
   })}`)
 }
 
@@ -469,8 +572,8 @@ export async function fetchUnrecognizedVendors(): Promise<{
 // ===========================================================================
 
 export interface Location {
-  id: string             // Shopify GID: gid://shopify/Location/...
-  name: string           // "Kitchen Arts & Letters", "FiDi Satellite"
+  id: string
+  name: string
   address: string | null
   is_active: boolean
   is_fulfillment: boolean
@@ -493,120 +596,4 @@ export async function fetchLocations(): Promise<Location[]> {
 
 export async function syncLocations(): Promise<LocationSyncResult> {
   return sc('/api/locations/sync', { method: 'POST' })
-}
-
-// ===========================================================================
-// ADDITIONS FOR POBuilder — append to supplyChainApi.ts
-// ===========================================================================
-
-// Variant search — used by POBuilder line item search
-export interface VariantSearchResult {
-  inventory_item_id: string
-  variant_id: string
-  title: string
-  isbn: string
-  vendor: string
-}
-
-export async function searchVariants(query: string): Promise<VariantSearchResult[]> {
-  return sc(`/api/suppliers/products/search${qs({ q: query, limit: 15 })}`)
-}
-
-// Create a PO line
-export async function createPOLine(
-  poId: string,
-  body: {
-    inventory_item_id: string
-    variant_id: string
-    quantity_ordered: number
-    unit_cost?: number
-    notes?: string
-  }
-): Promise<unknown> {
-  return sc(`/api/purchase-orders/${poId}/lines`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  })
-}
-
-// Submit a draft PO
-export async function submitPO(poId: string): Promise<unknown> {
-  return sc(`/api/purchase-orders/${poId}/submit`, { method: 'POST' })
-}
-
-// ===========================================================================
-// ADDITIONS FOR gap-fixes — append to supplyChainApi.ts
-// ===========================================================================
-
-// ---------------------------------------------------------------------------
-// Receipt history — linked to a PO
-// ---------------------------------------------------------------------------
-
-export interface ReceiptRecord {
-  id: string
-  purchase_order_id: string
-  location_id: string
-  receipt_type: string
-  status: string
-  notes: string | null
-  received_at: string
-  shopify_adjustment_group_id: string | null
-}
-
-export interface ReceiptLineRecord {
-  id: string
-  receipt_id: string
-  purchase_order_line_id: string
-  inventory_item_id: string
-  quantity_received: number
-  quantity_damaged: number
-  restock_applied_at: string | null
-  damage_applied_at: string | null
-  status: string
-  error_message: string | null
-  // Joined from inventory_events via source_id
-  shopify_group_id?: string
-  delta?: number
-}
-
-export async function fetchPOReceipts(poId: string): Promise<ReceiptRecord[]> {
-  return sc(`/api/receiving/po/${poId}`)
-}
-
-export async function fetchReceiptLines(receiptId: string): Promise<{ receipt: ReceiptRecord; lines: ReceiptLineRecord[] }> {
-  return sc(`/api/receiving/${receiptId}`)
-}
-
-// ---------------------------------------------------------------------------
-// POTable badge support — ad hoc fields in list response
-// ---------------------------------------------------------------------------
-// The list endpoint should return is_ad_hoc, ad_hoc_source, informal_ref.
-// Verify the backend GET /api/purchase-orders response includes these fields.
-// If not, update the Pydantic model in app/models/purchase_order.py to include them
-// in the PurchaseOrderRow response.
-
-// Corrected endpoint paths:
-// fetchPOReceipts → GET /api/receiving/po/{poId}
-// fetchReceiptLines → GET /api/receiving/{receiptId}  (returns receipt + lines together)
-
-// PO lookup result — includes match_type from the backend resolver
-export interface POLookupResult extends PurchaseOrder {
-  match_type: 'exact' | 'fuzzy'
-}
-
-// Look up POs from a packing slip PO number or supplier name
-export async function lookupPurchaseOrders(opts: {
-  poNumber?: string
-  supplierName?: string
-}): Promise<POLookupResult[]> {
-  return sc(`/api/purchase-orders/lookup${qs({
-    po_number:     opts.poNumber,
-    supplier_name: opts.supplierName,
-  })}`)
-}
-
-// Search Shopify catalog by ISBN barcode — used to resolve packing slip lines
-// Returns existing supplier_products records if found
-export async function lookupProductByISBN(isbn: string): Promise<VariantSearchResult[]> {
-  return sc(`/api/suppliers/products/search${qs({ q: isbn, limit: 5 })}`)
 }

@@ -38,6 +38,7 @@ import { SupplierParty, SupplierDetail } from '../suppliers/supplierTypes'
 import { PurchaseOrder } from '../purchase-orders/purchaseOrderTypes'
 import { useLocations } from '../hooks/useLocations'
 import NewProductWizard from '../receiving/NewProductWizard'
+import PackingSlipUpload, { ParsedSlipLine } from '../receiving/PackingSlipUpload'
 
 // ---------------------------------------------------------------------------
 // Session types
@@ -929,6 +930,21 @@ export default function ReceivingEntryFlow() {
   }, [])
 
   // Called when NewProductWizard creates a product successfully
+  const handleSlipLinesAccepted = useCallback(async (slipLines: ParsedSlipLine[]) => {
+     // Each accepted slip line goes through the same ISBN resolution as manual entry.
+     // We fire them sequentially so the resolving state is visible per line.
+     for (const sl of slipLines) {
+       if (!sl.isbn && !sl.title) continue
+       await addLine(
+         sl.isbn ?? '',
+         sl.quantity ?? 1,
+         sl.unit_cost ? String(sl.unit_cost) : '',
+         sl.title ?? '',
+       )
+     }
+   }, [addLine])
+
+  // Called when NewProductWizard creates a product successfully
   const handleNewProductCreated = useCallback((
     productId: string,
     inventoryItemId: string,
@@ -1083,6 +1099,12 @@ export default function ReceivingEntryFlow() {
               </span>
             )}
           </div>
+          {/* Packing slip scanner — shown before manual entry */}
+          {lines.length === 0 && (
+            <div className="mb-6">
+              <PackingSlipUpload onLinesAccepted={handleSlipLinesAccepted} />
+            </div>
+          )}
           <LineEntryStep
             lines={lines}
             onAddLine={addLine}
