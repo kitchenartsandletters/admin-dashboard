@@ -133,8 +133,9 @@ export default function PackingSlipUpload({ onLinesAccepted }: Props) {
           Scan packing slip to pre-fill line items
         </p>
         <p className="text-xs text-gray-400 dark:text-gray-500">
-          Take a photo or upload a PDF/image of the packing slip or invoice.
-          The system will extract ISBNs and quantities automatically.
+          Take a photo of the packing slip or invoice.
+          Hold your phone upright in portrait orientation, directly above the document.
+          The system will extract ISBNs and quantities — always review before confirming.
         </p>
         <div className="flex justify-center gap-2">
           <button
