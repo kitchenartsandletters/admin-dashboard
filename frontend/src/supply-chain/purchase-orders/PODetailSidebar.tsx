@@ -351,7 +351,7 @@ function InlineLineEntry({
       await createPOLine(poId, {
         inventory_item_id: variant.inventory_item_id,
         variant_id:        variant.variant_id,
-        quantity_ordered:  qty,
+        quantity_ordered:  Number(qty),
       })
       setQuery('')
       setResults([])

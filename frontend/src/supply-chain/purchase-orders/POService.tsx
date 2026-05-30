@@ -203,10 +203,21 @@ export default function POService() {
         />
       )}
 
-      <PODetailSidebar
+    <PODetailSidebar
         detail={detailLoading ? null : detail}
         onClose={() => setSelectedOrder(null)}
         onReceive={poId => navigate(`/receiving/new?po=${poId}`)}
+        onRefresh={async () => {
+          if (selectedOrder) {
+            setDetailLoading(true)
+            try {
+              const fresh = await fetchPurchaseOrderDetail(selectedOrder.id)
+              setDetail(fresh)
+            } finally {
+              setDetailLoading(false)
+            }
+          }
+        }}
       />
 
       {showBuilder && (
