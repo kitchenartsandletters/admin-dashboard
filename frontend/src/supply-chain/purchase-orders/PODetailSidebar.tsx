@@ -18,7 +18,8 @@ import {
   fetchReceiptsForPO,
 } from '../../api/supplyChainApi'
 import { useLocations } from '../hooks/useLocations'
-import { submitPurchaseOrder, confirmPurchaseOrder, searchVariants, createPOLine, VariantSearchResult } from '../../api/supplyChainApi'
+import { submitPurchaseOrder, confirmPurchaseOrder, searchVariants, createPOLine, updatePurchaseOrder } from '../../api/supplyChainApi'
+import type { VariantSearchResult } from '../../api/supplyChainApi'
 
 interface Props {
   detail: PurchaseOrderDetail | null
@@ -185,6 +186,121 @@ function ReceiptLines({ receiptId }: { receiptId: string }) {
           )}
         </div>
       ))}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Editable order fields component used in the Order details section of the sidebar. This is kept separate from the main component for clarity, but could be moved into the main file if desired.
+// ---------------------------------------------------------------------------
+function EditableOrderFields({
+  order,
+  onSaved,
+}: {
+  order: PurchaseOrder
+  onSaved: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [expectedAt, setExpectedAt] = useState(order.expected_at?.slice(0, 10) ?? '')
+  const [informalRef, setInformalRef] = useState(order.informal_ref ?? '')
+  const [notes, setNotes] = useState(order.notes ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSave = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      await updatePurchaseOrder(order.id, {
+        expected_at:  expectedAt || undefined,
+        informal_ref: informalRef || undefined,
+        notes:        notes || undefined,
+      })
+      setEditing(false)
+      onSaved()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!editing) {
+    return (
+      <div className="flex items-start justify-between gap-2">
+        <div className="space-y-0.5 text-xs text-gray-500 dark:text-gray-400 min-w-0">
+          {order.expected_at && (
+            <p>Expected: {new Date(order.expected_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+          )}
+          {order.informal_ref && (
+            <p>Ref: <span className="font-mono">{order.informal_ref}</span></p>
+          )}
+          {order.notes && (
+            <p className="italic truncate">{order.notes.slice(0, 80)}{order.notes.length > 80 ? '…' : ''}</p>
+          )}
+          {!order.expected_at && !order.informal_ref && !order.notes && (
+            <p className="text-gray-300 dark:text-gray-600 text-[11px]">No details set — click Edit to add</p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="text-[10px] text-blue-500 hover:underline shrink-0"
+        >
+          Edit
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1">Expected arrival</p>
+        <input
+          type="date"
+          value={expectedAt}
+          onChange={e => setExpectedAt(e.target.value)}
+          className="w-full px-2.5 py-1.5 border rounded text-xs dark:bg-gray-900 dark:text-white dark:border-gray-700 focus:ring-1 focus:ring-blue-500 outline-none"
+        />
+      </div>
+      <div>
+        <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1">Supplier ref</p>
+        <input
+          value={informalRef}
+          onChange={e => setInformalRef(e.target.value)}
+          placeholder="Supplier's order or invoice number"
+          className="w-full px-2.5 py-1.5 border rounded text-xs dark:bg-gray-900 dark:text-white dark:border-gray-700 focus:ring-1 focus:ring-blue-500 outline-none"
+        />
+      </div>
+      <div>
+        <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1">Notes</p>
+        <textarea
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          rows={2}
+          className="w-full px-2.5 py-1.5 border rounded text-xs dark:bg-gray-900 dark:text-white dark:border-gray-700 focus:ring-1 focus:ring-blue-500 outline-none resize-none"
+        />
+      </div>
+      {error && <p className="text-[10px] text-red-600 dark:text-red-400">{error}</p>}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => setEditing(false)}
+          disabled={saving}
+          className="px-2.5 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-[10px] text-gray-600 dark:text-gray-300 disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="flex-1 px-2.5 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-semibold disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -433,6 +549,15 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
                   <p className="text-gray-700 dark:text-gray-300 mt-0.5 text-sm leading-relaxed">
                     {order.notes}
                   </p>
+                </div>
+              )}
+
+              {order.status === 'draft' && (
+                <div className="pt-2 border-t dark:border-gray-800">
+                  <EditableOrderFields
+                    order={order}
+                    onSaved={() => onRefresh?.()}
+                  />
                 </div>
               )}
             </div>
