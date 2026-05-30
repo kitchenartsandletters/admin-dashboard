@@ -68,6 +68,7 @@ interface SessionLine {
 type FlowStep =
   | 'po_lookup'        // Step 1: Enter/lookup PO number
   | 'po_fuzzy'         // Step 1b: Staff confirms fuzzy match
+  | 'po_received'      // Step 1c: PO already received (new step for feedback)`
   | 'supplier'         // Step 2: Identify supplier (ad hoc path)
   | 'lines'            // Step 3: Add line items
   | 'new_product'      // Step 3b: Create new product (inline)
@@ -847,8 +848,14 @@ export default function ReceivingEntryFlow() {
   // ── PO resolution handlers ───────────────────────────────────────────────
 
   const handleExactMatch = useCallback((po: PurchaseOrder) => {
-    // Exact match — go straight to standard receiving wizard with this PO
-    navigate(`/receiving?po=${po.id}`)
+    if (po.status === 'received') {
+      // Don't navigate — show feedback in the flow
+      setStep('po_received')  // new step
+      setExistingPO(po)
+      return
+    }
+    // For receivable POs, navigate to ReceivingWizard directly
+    navigate(`/receiving/wizard?po=${po.id}`)
   }, [navigate])
 
   const handleFuzzyMatches = useCallback((matches: POLookupResult[]) => {
@@ -862,8 +869,12 @@ export default function ReceivingEntryFlow() {
   }, [])
 
   const handleFuzzySelect = useCallback((po: PurchaseOrder) => {
-    // Staff confirmed a fuzzy match — treat as exact, go to receiving wizard
-    navigate(`/receiving?po=${po.id}`)
+    if (po.status === 'received') {
+      setExistingPO(po)
+      setStep('po_received')
+      return
+    }
+    navigate(`/receiving/wizard?po=${po.id}`)
   }, [navigate])
 
   const handleFuzzyReject = useCallback(() => {
@@ -1015,7 +1026,7 @@ export default function ReceivingEntryFlow() {
       }
 
       // 3. Navigate to receiving wizard with the PO pre-loaded
-      navigate(`/receiving?po=${poId}`)
+      navigate(`/receiving/wizard?po=${poId}`)
     } catch (e) {
       setExecError(e instanceof Error ? e.message : 'Failed to create PO')
       setExecuting(false)
@@ -1080,6 +1091,49 @@ export default function ReceivingEntryFlow() {
           onSelect={handleFuzzySelect}
           onReject={handleFuzzyReject}
         />
+      )}
+
+      {step === 'po_received' && existingPO && (
+        <div className="space-y-5">
+          <StepHeader
+            step={1}
+            label="Already Received"
+            sub="This PO has already been fully received."
+          />
+          <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
+            <div className="px-4 py-3 bg-green-50 dark:bg-green-900/20 border-b dark:border-gray-700">
+              <div className="flex items-center gap-2">
+                <span className="text-green-600 dark:text-green-400 font-semibold text-sm">
+                  ✓ Received
+                </span>
+                <span className="font-mono text-sm text-gray-700 dark:text-gray-300">
+                  {existingPO.po_number}
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {existingPO.supplier_name ?? existingPO.account_label}
+              </p>
+            </div>
+            <div className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 space-y-2">
+              <p>This PO was already received. No further inventory adjustments can be made against it.</p>
+              <p>If additional stock has arrived for this title, start a new ad hoc receipt.</p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => { setStep('po_lookup'); setExistingPO(null) }}
+              className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+            >
+              ← Try another PO
+            </button>
+            <button
+              onClick={() => { setExistingPO(null); setStep('supplier') }}
+              className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
+            >
+              New ad hoc receipt →
+            </button>
+          </div>
+        </div>
       )}
 
       {step === 'supplier' && (

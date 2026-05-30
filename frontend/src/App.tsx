@@ -30,6 +30,7 @@ import NytReportPage from './components/reports/NytReportPage';
 import ReceivingEntryFlow from './supply-chain/receiving/ReceivingEntryFlow'
 import SupplierCosmologyMap from './supply-chain/cosmology/SupplierCosmologyMap'
 import ReceivingDashboard from './supply-chain/receiving/ReceivingDashboard'
+import ReceivingWizard from './supply-chain/receiving/ReceivingWizard'
 
 const App = () => {
   const [dateTime, setDateTime] = useState({ date: "", time: "" });
@@ -183,6 +184,11 @@ const App = () => {
                           </ProtectedRoute>
                         }
                       />
+                      <Route path="/receiving/wizard" element={
+                        <ProtectedRoute requiredRoles={['admin']}>
+                          <ReceivingWizard />
+                        </ProtectedRoute>
+                      } />
                       <Route path="/transfers" element={
                         <ProtectedRoute requiredRoles={['admin']}>
                           <TransferService />

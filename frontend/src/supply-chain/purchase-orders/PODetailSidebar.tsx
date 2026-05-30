@@ -18,7 +18,7 @@ import {
   fetchReceiptsForPO,
 } from '../../api/supplyChainApi'
 import { useLocations } from '../hooks/useLocations'
-import { submitPurchaseOrder, confirmPurchaseOrder } from '../../api/supplyChainApi'
+import { submitPurchaseOrder, confirmPurchaseOrder, searchVariants, createPOLine, VariantSearchResult } from '../../api/supplyChainApi'
 
 interface Props {
   detail: PurchaseOrderDetail | null
@@ -185,6 +185,119 @@ function ReceiptLines({ receiptId }: { receiptId: string }) {
           )}
         </div>
       ))}
+    </div>
+  )
+}
+
+// =============================================================================
+// Inline line entry component used in the "Add line" section of the sidebar. This is kept separate from the main component for clarity, but could be moved into the main file if desired.
+// =============================================================================
+
+function InlineLineEntry({
+  poId,
+  onLineAdded,
+}: {
+  poId: string
+  onLineAdded: () => void
+}) {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<VariantSearchResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const [qty, setQty] = useState(1)
+  const [adding, setAdding] = useState<string | null>(null) // inventory_item_id being added
+  const [error, setError] = useState<string | null>(null)
+  const ref = React.useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (query.length < 2) { setResults([]); return }
+    setSearching(true)
+    const t = setTimeout(() => {
+      searchVariants(query)
+        .then(setResults)
+        .catch(() => setResults([]))
+        .finally(() => setSearching(false))
+    }, 250)
+    return () => clearTimeout(t)
+  }, [query])
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setResults([])
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  const handleAdd = async (variant: VariantSearchResult) => {
+    setAdding(variant.inventory_item_id)
+    setError(null)
+    try {
+      await createPOLine(poId, {
+        inventory_item_id: variant.inventory_item_id,
+        variant_id:        variant.variant_id,
+        quantity_ordered:  qty,
+      })
+      setQuery('')
+      setResults([])
+      setQty(1)
+      onLineAdded()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to add line')
+    } finally {
+      setAdding(null)
+    }
+  }
+
+  return (
+    <div className="space-y-2" ref={ref}>
+      <div className="flex gap-2">
+        <div className="flex-1 relative">
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search by title or ISBN…"
+            className="w-full px-2.5 py-1.5 border rounded text-xs dark:bg-gray-900 dark:text-white dark:border-gray-700 focus:ring-1 focus:ring-blue-500 outline-none"
+          />
+          {searching && (
+            <span className="absolute right-2 top-1.5 text-[10px] text-gray-400 animate-pulse">
+              searching…
+            </span>
+          )}
+        </div>
+        <input
+          type="number"
+          min={1}
+          value={qty}
+          onChange={e => setQty(Math.max(1, parseInt(e.target.value) || 1))}
+          className="w-14 px-2 py-1.5 border rounded text-xs text-center dark:bg-gray-900 dark:text-white dark:border-gray-700 focus:ring-1 focus:ring-blue-500 outline-none"
+          title="Quantity"
+        />
+      </div>
+
+      {results.length > 0 && (
+        <div className="border dark:border-gray-700 rounded overflow-hidden bg-white dark:bg-gray-900 shadow-lg">
+          {results.slice(0, 6).map(r => (
+            <button
+              key={r.inventory_item_id}
+              type="button"
+              disabled={!!adding}
+              onMouseDown={e => { e.preventDefault(); handleAdd(r) }}
+              className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 border-b dark:border-gray-800 last:border-0 disabled:opacity-50"
+            >
+              <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
+                {adding === r.inventory_item_id ? 'Adding…' : r.title}
+              </p>
+              <p className="text-[10px] font-mono text-gray-400 dark:text-gray-500 mt-0.5">
+                {r.isbn}
+              </p>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {error && (
+        <p className="text-[10px] text-red-600 dark:text-red-400">{error}</p>
+      )}
     </div>
   )
 }
@@ -359,6 +472,20 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
               </>
             )}
           </section>
+
+          {/* Add line section — only for draft POs */}
+          {order.status === 'draft' && (
+          <div className="mt-3 pt-3 border-t dark:border-gray-700">
+            <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400
+                          dark:text-gray-500 mb-2">
+              Add line
+            </p>
+            <InlineLineEntry
+              poId={order.id}
+              onLineAdded={() => onRefresh?.()}
+            />
+          </div>
+        )}
 
           {/* Supersession context */}
           {(order.supersedes_ids?.length > 0 || order.superseded_by) && (
