@@ -66,6 +66,57 @@
 .animate-fade-in-up {
   animation: fade-in-up 0.3s ease-out forwards;
 }
+
+/* =============================================================================
+   Display Density
+   Two modes applied via class on <html>:
+     .density-comfortable  — accessible defaults, minimum 12px secondary text
+     .density-compact      — information-dense, allows smaller text for power users
+
+   Usage in components:
+     text-[var(--text-body)]      → 14px comfortable / 13px compact
+     text-[var(--text-secondary)] → 12px comfortable / 11px compact
+     text-[var(--text-label)]     → 11px comfortable / 10px compact
+     text-[var(--text-mono)]      → 12px comfortable / 11px compact
+   ============================================================================= */
+
+html.density-comfortable {
+  --text-body:      0.875rem;   /* 14px — sm */
+  --text-secondary: 0.75rem;    /* 12px — xs */
+  --text-label:     0.6875rem;  /* 11px — between xs and [10px] */
+  --text-mono:      0.75rem;    /* 12px */
+  --text-badge:     0.6875rem;  /* 11px */
+  --row-py:         0.625rem;   /* py-2.5 equivalent */
+  --cell-px:        1rem;       /* px-4 equivalent */
+}
+
+html.density-compact {
+  --text-body:      0.8125rem;  /* 13px */
+  --text-secondary: 0.6875rem;  /* 11px */
+  --text-label:     0.625rem;   /* 10px */
+  --text-mono:      0.6875rem;  /* 11px */
+  --text-badge:     0.625rem;   /* 10px */
+  --row-py:         0.5rem;     /* py-2 equivalent */
+  --cell-px:        0.75rem;    /* px-3 equivalent */
+}
+
+/* Default to comfortable if no class set (shouldn't happen with index.html init) */
+html:not(.density-comfortable):not(.density-compact) {
+  --text-body:      0.875rem;
+  --text-secondary: 0.75rem;
+  --text-label:     0.6875rem;
+  --text-mono:      0.75rem;
+  --text-badge:     0.6875rem;
+  --row-py:         0.625rem;
+  --cell-px:        1rem;
+}
+
+/* Utility classes — use these in components instead of hardcoded text-[10px] etc */
+.kal-text-body      { font-size: var(--text-body); }
+.kal-text-secondary { font-size: var(--text-secondary); }
+.kal-text-label     { font-size: var(--text-label); font-weight: bold; letter-spacing: 0.05em; text-transform: uppercase; }
+.kal-text-mono      { font-size: var(--text-mono); font-family: ui-monospace, monospace; }
+.kal-text-badge     { font-size: var(--text-badge); font-weight: 600; }
 /*
 .admin-dashboard-container.dark-mode {
   background-color: #1e1e1e;

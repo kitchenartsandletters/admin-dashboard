@@ -14,7 +14,11 @@
         document.documentElement.classList.add('dark');
       }
     } catch (_) {}
-  </script>
+    try {
+      const density = localStorage.getItem('density') || 'comfortable';
+      document.documentElement.classList.add('density-' + density);
+    } catch (_) {}
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
