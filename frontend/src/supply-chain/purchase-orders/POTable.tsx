@@ -9,6 +9,8 @@ interface Props {
   onSort: (key: keyof PurchaseOrder) => void
   onRowClick: (order: PurchaseOrder) => void
   selectedId: string | null
+  onDeleteDraft?: (order: PurchaseOrder) => void
+  deletingId?: string | null
 }
 
 function Th({
@@ -51,6 +53,8 @@ const POTable: React.FC<Props> = ({
   onSort,
   onRowClick,
   selectedId,
+  onDeleteDraft,
+  deletingId,
 }) => {
   if (orders.length === 0) {
     return (
@@ -60,7 +64,7 @@ const POTable: React.FC<Props> = ({
     )
   }
 
-  return (
+    return (
     <div className="overflow-x-auto border rounded-md dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
       <table className="min-w-full border-collapse text-sm">
         <thead className="bg-gray-50 dark:bg-gray-800">
@@ -71,15 +75,12 @@ const POTable: React.FC<Props> = ({
             <Th label="Ordered"    sortKey="ordered_at"   sortConfig={sortConfig} onSort={onSort} />
             <Th label="Expected"   sortKey="expected_at"  sortConfig={sortConfig} onSort={onSort} />
             <Th label="Created"    sortKey="created_at"   sortConfig={sortConfig} onSort={onSort} />
+            <th className="px-4 py-3 w-16" />
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
           {orders.map(order => {
             const isSelected = order.id === selectedId
-            // Resolve supplier display name:
-            // supplier_name is joined by the API (supplier_parties.name)
-            // account_label is the supplier_accounts.label
-            // Fall back to account_id if neither is populated
             const supplierDisplay = order.supplier_name
               ?? order.account_label
               ?? order.supplier_account_id
@@ -88,7 +89,7 @@ const POTable: React.FC<Props> = ({
               <tr
                 key={order.id}
                 onClick={() => onRowClick(order)}
-                className={`cursor-pointer transition-colors
+                className={`group cursor-pointer transition-colors
                   ${isSelected
                     ? 'bg-blue-50 dark:bg-blue-900/20'
                     : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
@@ -138,6 +139,22 @@ const POTable: React.FC<Props> = ({
                 {/* Created at */}
                 <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap text-xs">
                   {formatDate(order.created_at)}
+                </td>
+
+                {/* Actions — delete button for draft POs only, visible on row hover */}
+                <td className="px-2 py-3 text-right" onClick={e => e.stopPropagation()}>
+                  {order.status === 'draft' && (
+                    <button
+                      onClick={() => onDeleteDraft?.(order)}
+                      disabled={deletingId === order.id}
+                      className="opacity-0 group-hover:opacity-100 px-1.5 py-0.5 rounded text-[10px]
+                                 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all
+                                 disabled:opacity-40"
+                      title="Delete draft PO"
+                    >
+                      {deletingId === order.id ? '…' : 'Delete'}
+                    </button>
+                  )}
                 </td>
               </tr>
             )

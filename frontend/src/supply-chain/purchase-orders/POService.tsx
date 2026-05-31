@@ -5,7 +5,7 @@ import POTable from './POTable'
 import PODetailSidebar from './PODetailSidebar'
 import POBuilder from './POBuilder'
 import { PurchaseOrder, PurchaseOrderDetail, POStatus } from './purchaseOrderTypes'
-import { fetchPurchaseOrders, fetchPurchaseOrderDetail } from '../../api/supplyChainApi'
+import { fetchPurchaseOrders, fetchPurchaseOrderDetail, cancelPurchaseOrder } from '../../api/supplyChainApi'
 import { SortConfig, nextSortDirection } from '../../utils/tableUtils'
 
 const STATUS_FILTERS: { key: POStatus | 'all' | 'open'; label: string }[] = [
@@ -73,6 +73,8 @@ export default function POService() {
 
   const [showBuilder, setShowBuilder] = useState(false)
 
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -132,6 +134,20 @@ export default function POService() {
   const handleSort = (key: keyof PurchaseOrder) => {
     setSortConfig(prev => ({ key, direction: nextSortDirection(prev, key) }))
   }
+
+  const handleDeleteDraft = async (po: PurchaseOrder) => {
+     if (!window.confirm(`Delete draft PO ${po.po_number}? This cannot be undone.`)) return
+     setDeletingId(po.id)
+     try {
+       await cancelPurchaseOrder(po.id)
+       setOrders(prev => prev.filter(o => o.id !== po.id))
+       if (selectedOrder?.id === po.id) setSelectedOrder(null)
+     } catch (e) {
+       alert(e instanceof Error ? e.message : 'Delete failed')
+     } finally {
+       setDeletingId(null)
+     }
+   }
 
   return (
     <div className="space-y-4">
