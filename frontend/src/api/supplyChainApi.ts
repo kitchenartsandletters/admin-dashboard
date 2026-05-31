@@ -321,7 +321,7 @@ export async function createPOLine(
 ): Promise<unknown> {
   return sc(`/api/purchase-orders/${poId}/lines`, {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, purchase_order_id: poId }),
   })
 }
 
