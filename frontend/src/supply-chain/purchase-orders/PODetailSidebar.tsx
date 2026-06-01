@@ -24,6 +24,7 @@ import {
   updatePOLine,
   removePOLine,
   updatePurchaseOrder,
+  downloadPOPdf
 } from '../../api/supplyChainApi'
 import type { VariantSearchResult } from '../../api/supplyChainApi'
 import { useLocations } from '../hooks/useLocations'
@@ -512,6 +513,7 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
   const [transitioning, setTransitioning] = useState(false)
   const [transitionError, setTransitionError] = useState<string | null>(null)
   const [localLines, setLocalLines] = useState<PurchaseOrderLine[]>([])
+  const [pdfDownloading, setPdfDownloading] = useState(false)
 
   const wasNullRef = useRef(true)
   const prevOrderIdRef = useRef<string | null>(null)
@@ -585,6 +587,18 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
       setTransitioning(false)
     }
   }
+
+  const handleDownloadPdf = async () => {
+     setPdfDownloading(true)
+     try {
+       await downloadPOPdf(order.id, order.po_number)
+     } catch (e) {
+       // Surface error — could add a toast here
+       console.error('PDF download failed:', e)
+     } finally {
+       setPdfDownloading(false)
+     }
+   }
 
   // Sidebar width: wider for draft on desktop to accommodate split pane
   const sidebarWidth = isDraft ? 'sm:w-[56rem]' : 'sm:w-[30rem]'
@@ -683,13 +697,48 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
 
         {/* Actions — sticky footer */}
         <div className="shrink-0 border-t dark:border-gray-800 bg-white dark:bg-gray-950 px-5 py-3 space-y-2">
-          {isDraft && (
-            <button onClick={() => handleTransition('submit')}
-              disabled={transitioning || localLines.length === 0}
-              className="w-full px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors">
-              {transitioning ? 'Submitting…' : 'Submit PO → Submitted'}
-            </button>
-          )}
+        {isDraft && (
+        <div className="space-y-2">
+          <button
+            onClick={async () => {
+              await handleTransition('submit')
+              // Download PDF after successful submit
+              // handleTransition sets transitioning=false when done
+              // We check status via onRefresh which updates detail
+              await handleDownloadPdf()
+            }}
+            disabled={transitioning || localLines.length === 0}
+            className="w-full px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700
+                        text-white text-sm font-semibold disabled:opacity-50 transition-colors"
+          >
+            {transitioning ? 'Submitting…' : 'Submit PO + Download PDF'}
+          </button>
+          <button
+            onClick={handleDownloadPdf}
+            disabled={pdfDownloading || localLines.length === 0}
+            className="w-full px-3 py-2 rounded-md border border-gray-300
+                        dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300
+                        hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50
+                        transition-colors"
+          >
+            {pdfDownloading ? 'Generating…' : 'Download draft PDF'}
+          </button>
+        </div>
+      )}
+
+      {/* Download PDF for submitted/confirmed/received POs */}
+      {['submitted', 'confirmed', 'partial', 'received'].includes(order.status) && (
+        <button
+          onClick={handleDownloadPdf}
+          disabled={pdfDownloading}
+          className="w-full px-3 py-2 rounded-md border border-gray-300
+                      dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300
+                      hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50
+                      transition-colors"
+        >
+          {pdfDownloading ? 'Generating…' : 'Download PDF'}
+        </button>
+      )}
           {order.status === 'submitted' && (
             <button onClick={() => handleTransition('confirm')}
               disabled={transitioning}

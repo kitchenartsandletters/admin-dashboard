@@ -365,6 +365,29 @@ export async function lookupPurchaseOrders(opts: {
   })}`)
 }
 
+// PDF export
+
+export async function downloadPOPdf(poId: string, poNumber: string): Promise<void> {
+  // Fetch PDF as blob so we can pass the auth header
+  const res = await fetch(`${SC_BASE_URL}/api/purchase-orders/${poId}/pdf`, {
+    method: 'GET',
+    headers: { 'X-Admin-Token': SC_TOKEN },
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? `[${res.status}] Failed to generate PDF`)
+  }
+  const blob = await res.blob()
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `KAL-${poNumber}.pdf`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 // ===========================================================================
 // RECEIVING
 // ===========================================================================
