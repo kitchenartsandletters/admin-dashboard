@@ -135,19 +135,24 @@ export default function POService() {
     setSortConfig(prev => ({ key, direction: nextSortDirection(prev, key) }))
   }
 
-  const handleDeleteDraft = async (po: PurchaseOrder) => {
-     if (!window.confirm(`Delete draft PO ${po.po_number}? This cannot be undone.`)) return
-     setDeletingId(po.id)
-     try {
-       await cancelPurchaseOrder(po.id)
-       setOrders(prev => prev.filter(o => o.id !== po.id))
-       if (selectedOrder?.id === po.id) setSelectedOrder(null)
-     } catch (e) {
-       alert(e instanceof Error ? e.message : 'Delete failed')
-     } finally {
-       setDeletingId(null)
-     }
-   }
+  const handleDeleteDraft = async (order: PurchaseOrder) => {
+    if (!window.confirm(`Delete draft PO ${order.po_number}? This cannot be undone.`)) return
+    setDeletingId(order.id)
+    try {
+      await cancelPurchaseOrder(order.id)
+      // Remove from local state immediately — don't reload (load() would bring it back in 'all' view)
+      setOrders(prev => prev.filter(o => o.id !== order.id))
+      // If this PO was selected in the sidebar, close it
+      if (selectedOrder?.id === order.id) {
+        setSelectedOrder(null)
+        setDetail(null)
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Delete failed')
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -216,6 +221,8 @@ export default function POService() {
           onSort={handleSort}
           onRowClick={o => setSelectedOrder(prev => prev?.id === o.id ? null : o)}
           selectedId={selectedOrder?.id ?? null}
+          onDeleteDraft={handleDeleteDraft}
+          deletingId={deletingId}
         />
       )}
 
