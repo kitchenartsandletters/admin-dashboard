@@ -26,6 +26,8 @@ import {
   createPurchaseOrder,
   createPOLine,
   searchVariants,
+  submitPurchaseOrder,
+  downloadPOPdf
 } from '../../api/supplyChainApi'
 import { SupplierParty, SupplierAccount } from '../suppliers/supplierTypes'
 import type { SupplierDetail } from '../suppliers/supplierTypes'
@@ -527,7 +529,7 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
         ad_hoc_source:           (adHocSource || undefined) as AdHocSource | undefined,
         informal_ref:            informalRef.trim() || undefined,
         is_drop_ship:            isDropShip,
-        drop_ship_venue_id:      isDropShip ? 'default' : undefined,  // API requires a value if is_drop_ship=true
+        drop_ship_venue_id:      isDropShip ? 'default' : undefined,
         drop_ship_address:       isDropShip ? dropShipAddress.trim() : undefined,
       })
 
@@ -542,18 +544,13 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
         })
       }
 
-      // 3. Optionally submit
+      // 3. Submit and download PDF
       if (andSubmit) {
-        await fetch(
-          `${import.meta.env.VITE_SC_BASE_URL}/api/purchase-orders/${po.id}/submit`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Admin-Token': import.meta.env.VITE_SC_ADMIN_TOKEN,
-            },
-          }
-        )
+        await submitPurchaseOrder(po.id)
+        // Download PDF after successful submit — best effort, don't block onCreated
+        downloadPOPdf(po.id, po.po_number).catch(e => {
+          console.warn('PDF download failed after submit:', e)
+        })
       }
 
       onCreated(po.id)
@@ -949,7 +946,7 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                     disabled={busy}
                     className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors active:scale-[0.98]"
                   >
-                    {busy ? 'Submitting…' : 'Save & submit'}
+                    {busy ? 'Submitting…' : 'Save, submit + download PDF'}
                   </button>
                 </>
               )}
