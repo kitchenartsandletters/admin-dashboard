@@ -262,6 +262,9 @@ export async function createPurchaseOrder(body: {
   is_ad_hoc?: boolean
   ad_hoc_source?: string
   informal_ref?: string
+  is_drop_ship?: boolean
+  drop_ship_venue_id?: string
+  drop_ship_address?: string
 }): Promise<PurchaseOrder> {
   return sc('/api/purchase-orders', { method: 'POST', body: JSON.stringify(body) })
 }
@@ -318,7 +321,7 @@ export async function createPOLine(
     unit_cost?: number
     notes?: string
   }
-): Promise<unknown> {
+): Promise<PurchaseOrderLine> {
   return sc(`/api/purchase-orders/${poId}/lines`, {
     method: 'POST',
     body: JSON.stringify({ ...body, purchase_order_id: poId }),

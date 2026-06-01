@@ -101,9 +101,9 @@ export interface PurchaseOrderLine {
   notes: string | null
   created_at: string
   // Populated by API from supplier_products
-  title?: string
-  isbn?: string
-  supplier_sku?: string
+  title?: string | null
+  isbn?: string | null
+  supplier_sku?: string | null
 }
 
 export interface PurchaseOrderDetail {

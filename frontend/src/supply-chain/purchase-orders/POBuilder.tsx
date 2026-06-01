@@ -527,6 +527,7 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
         ad_hoc_source:           (adHocSource || undefined) as AdHocSource | undefined,
         informal_ref:            informalRef.trim() || undefined,
         is_drop_ship:            isDropShip,
+        drop_ship_venue_id:      isDropShip ? 'default' : undefined,  // API requires a value if is_drop_ship=true
         drop_ship_address:       isDropShip ? dropShipAddress.trim() : undefined,
       })
 

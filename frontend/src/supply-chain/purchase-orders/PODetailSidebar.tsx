@@ -277,13 +277,19 @@ function InlineLineEntry({ poId, existingItemIds, onLineAdded }: {
     }
     setAdding(v.inventory_item_id)
     try {
-      const newLine = await createPOLine(poId, {
+      const rawLine = await createPOLine(poId, {
         inventory_item_id: v.inventory_item_id,
         variant_id: v.variant_id,
         quantity_ordered: Number(qty),
       }) as PurchaseOrderLine
+      // Enrich with title/isbn from the search result — the raw DB row has neither
+      const enrichedLine: PurchaseOrderLine = {
+        ...rawLine,
+        title: rawLine.title ?? v.title ?? null,
+        isbn:  rawLine.isbn  ?? v.isbn  ?? null,
+      }
       setQuery(''); setResults([]); setQty(1)
-      onLineAdded(newLine)
+      onLineAdded(enrichedLine)
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to add line'
       setError(msg.includes('500') || msg.includes('fetch')
