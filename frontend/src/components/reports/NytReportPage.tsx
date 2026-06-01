@@ -203,7 +203,7 @@ function QueuePanel({
   );
 }
 
-function LogPanel({ log, onRefresh }: { log: LogEntry[]; onRefresh: () => void }) {
+function LogPanel({ log, onRefresh, onRegenerate, onMarkUploaded }: { log: LogEntry[]; onRefresh: () => void; onRegenerate: (weekStart: string) => void; onMarkUploaded: (weekStart: string) => void }) {
   const downloadCsv = async (logId: string, filename: string) => {
     const resp = await fetch(`${API_BASE}/nyt/log/${logId}/csv`, { headers });
     if (!resp.ok) return;
@@ -254,13 +254,29 @@ function LogPanel({ log, onRefresh }: { log: LogEntry[]; onRefresh: () => void }
                 <td className="px-4 py-2.5 text-xs text-gray-400 dark:text-gray-500 max-w-xs truncate">
                   {entry.fallback_reason ?? "—"}
                 </td>
-                <td className="px-4 py-2.5 text-right">
+                <td className="px-4 py-2.5 text-right space-x-2">
                   {entry.csv_filename && (
                     <button
                       onClick={() => downloadCsv(entry.id, entry.csv_filename!)}
                       className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
                     >
                       CSV ↓
+                    </button>
+                  )}
+                  {(entry.upload_status === "fallback" || entry.upload_status === "error") && (
+                    <button
+                      onClick={() => onRegenerate(entry.week_start)}
+                      className="text-xs text-amber-600 dark:text-amber-400 hover:underline"
+                    >
+                      Regen ↺
+                    </button>
+                  )}
+                  {entry.upload_status === "fallback" && (
+                    <button
+                      onClick={() => onMarkUploaded(entry.week_start)}
+                      className="text-xs text-green-600 dark:text-green-400 hover:underline"
+                    >
+                      Mark uploaded ✓
                     </button>
                   )}
                 </td>
@@ -328,20 +344,25 @@ export default function NytReportPage() {
     }
   };
 
-  const handleMarkUploaded = async (ids: number[]) => {
+  const handleMarkUploaded = async (ids: number[], weekStart?: string) => {
     try {
       const resp = await fetch(`${API_BASE}/nyt/mark-uploaded`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ product_ids: ids }),
-      });
-      if (!resp.ok) throw new Error(await resp.text());
-      showToast(`${ids.length} title${ids.length !== 1 ? "s" : ""} marked as manually uploaded.`);
-      load();
+        body: JSON.stringify({
+          product_ids: ids,
+          week_anchor: weekStart,
+        }),
+      })
+      if (!resp.ok) throw new Error(await resp.text())
+      showToast(ids.length > 0
+        ? `${ids.length} title${ids.length !== 1 ? "s" : ""} marked as manually uploaded.`
+        : "Week marked as manually uploaded.")
+      load()
     } catch {
-      showToast("Failed to mark titles as uploaded.");
+      showToast("Failed to mark as uploaded.")
     }
-  };
+  }
 
   if (loading) {
     return (
@@ -358,6 +379,17 @@ export default function NytReportPage() {
         <button onClick={load} className="text-xs text-gray-500 dark:text-gray-400 underline">Retry</button>
       </div>
     );
+  }
+
+  const regenerateCsv = async (weekStart: string) => {
+    const resp = await fetch(`${API_BASE}/nyt/regenerate`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ week_anchor: weekStart }),
+    })
+    if (!resp.ok) { showToast("Regeneration failed"); return }
+    showToast("CSV regenerated — download from log")
+    load()
   }
 
   return (
@@ -418,7 +450,7 @@ export default function NytReportPage() {
       />
 
       {/* Upload history */}
-      <LogPanel log={log} onRefresh={load} />
+      <LogPanel log={log} onRefresh={load} onRegenerate={regenerateCsv} onMarkUploaded={(weekStart) => handleMarkUploaded([], weekStart)} />
     </div>
   );
 }
