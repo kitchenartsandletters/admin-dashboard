@@ -89,6 +89,9 @@ export interface PurchaseOrder {
   // Beta Testing fields
   is_test: boolean
   archived_at: string | null
+
+  // For display purposes, we populate this from supplier_accounts.account_number but it is not guaranteed to be present on all POs
+  account_number?: string     // supplier_accounts.account_number
 }
 
 export interface PurchaseOrderLine {

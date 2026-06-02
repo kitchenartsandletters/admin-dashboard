@@ -436,7 +436,7 @@ function OrderDetailsPanel({ order, onRefresh }: { order: PurchaseOrder; onRefre
   return (
     <div className="space-y-2 text-sm">
       <DetailItem label="Supplier" value={order.supplier_name ?? order.account_label} />
-      <DetailItem label="Account" value={order.account_label} />
+      <DetailItem label="Account" value={order.account_number ?? order.account_label} />
       <DetailItem label="Receiving at" value={locationName(order.destination_location_id)} />
       <DetailItem label="Ordered" value={formatDate(order.ordered_at)} />
       <DetailItem label="Expected" value={formatDate(order.expected_at)} />
