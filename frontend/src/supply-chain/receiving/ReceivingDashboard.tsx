@@ -409,7 +409,7 @@ export default function ReceivingDashboard() {
               {submittedPOs.map(po => (
                 <button
                   key={po.id}
-                  onClick={() => navigate(`/receiving/new?po=${po.po_number}`)}
+                  onClick={() => navigate(`/receiving/wizard?po=${po.id}`)}
                   className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors text-left"
                 >
                   <div className="flex items-center gap-3 min-w-0">
@@ -503,6 +503,7 @@ export default function ReceivingDashboard() {
         detail={selectedPODetail}
         onClose={() => setSelectedPODetail(null)}
         onReceive={poId => navigate(`/receiving/new?po=${poId}`)}
+        wide={true}
       />
     </div>
   )

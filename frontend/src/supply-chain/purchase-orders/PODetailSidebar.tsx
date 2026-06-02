@@ -34,6 +34,7 @@ interface Props {
   onClose: () => void
   onReceive: (poId: string) => void
   onRefresh?: () => void
+  wide?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -528,7 +529,7 @@ function LinesPanel({ order, lines, onLineAdded, onQtyChange, onDelete }: {
 // Main sidebar
 // ---------------------------------------------------------------------------
 
-const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefresh }) => {
+const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefresh, wide }) => {
   const [isOpen, setIsOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
@@ -624,7 +625,7 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
    }
 
   // Sidebar width: wider for draft on desktop to accommodate split pane
-  const sidebarWidth = isDraft ? 'sm:w-[56rem]' : 'sm:w-[30rem]'
+  const sidebarWidth = (isDraft || wide) ? 'sm:w-[56rem]' : 'sm:w-[30rem]'
 
   return (
     <>
@@ -666,7 +667,7 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
         </div>
 
         {/* Body — split pane for draft on desktop, single column otherwise */}
-        {isDraft ? (
+        {(isDraft || wide) ? (
           // DRAFT: two-column layout on desktop
           <div className="flex-1 min-h-0 flex flex-col sm:flex-row">
             {/* Left: Order details */}

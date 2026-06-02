@@ -9,7 +9,7 @@
 //   - receipt_type (full/partial) computed automatically from quantities
 
 import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { WizardLine, ReceiveResult } from './receivingTypes'
 import { PurchaseOrderDetail } from '../purchase-orders/purchaseOrderTypes'
 import { fetchPurchaseOrderDetail, receiveOrder } from '../../api/supplyChainApi'
@@ -129,6 +129,8 @@ export default function ReceivingWizard() {
   const [error,    setError]    = useState<string | null>(null)
   const [result,   setResult]   = useState<ReceiveResult | null>(null)
 
+  const navigate = useNavigate()
+
   useEffect(() => {
     if (!poId) return
     setLoading(true)
@@ -228,14 +230,9 @@ export default function ReceivingWizard() {
     }
   }
 
-  function handleReset() {
-    setPhase('idle')
-    setPoDetail(null)
-    setLines([])
-    setResult(null)
-    setError(null)
-    setNotes('')
-  }
+   function handleReset() {
+    navigate('/receiving')
+   }
 
   const order = poDetail?.order as any
 
