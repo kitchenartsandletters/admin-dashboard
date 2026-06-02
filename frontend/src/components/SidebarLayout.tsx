@@ -36,11 +36,11 @@ const navItems = [
     path: '/suppliers',
     roles: ['admin'],
     children: [
-      { label: 'Publishers',       path: '/suppliers',       roles: ['admin','editor'] },
+      { label: 'Vendors/Publishers',       path: '/suppliers',       roles: ['admin','editor'] },
       { label: 'Purchase Orders', path: '/purchase-orders', roles: ['admin','editor'] },
       { label: 'Receiving',       path: '/receiving',       roles: ['admin','editor'] },
       { label: 'Transfers',       path: '/transfers',       roles: ['admin','editor'] },
-      { label: 'Supplier Map',       path: '/supply-chain/cosmology', roles: ['admin', 'editor'] },
+      { label: 'Vendor Map',       path: '/supply-chain/cosmology', roles: ['admin', 'editor'] },
     ],
   },
   {

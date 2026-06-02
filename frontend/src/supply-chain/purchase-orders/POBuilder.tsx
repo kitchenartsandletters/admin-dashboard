@@ -125,18 +125,27 @@ function SupplierAccountPicker({
     setLoadingAccounts(true)
     setOpen(false)
     try {
-      const detail = await fetchSupplierDetail(party.id)
-      const primary = detail.accounts.find(a => a.is_primary) ?? detail.accounts[0]
+    const detail = await fetchSupplierDetail(party.id)
+    let accounts = detail.accounts.filter(a => a.is_active)
+    let orderingParty = party
+    // If this party has no active accounts, walk up to the parent
+      // (e.g. Ten Speed Press → Penguin Random House)
+      if (accounts.length === 0 && detail.party.parent_id) {
+        const parentDetail = await fetchSupplierDetail(detail.party.parent_id)
+        accounts = parentDetail.accounts.filter(a => a.is_active)
+        orderingParty = parentDetail.party
+      }
+
+      const primary = accounts.find(a => a.is_primary) ?? accounts[0]
       if (primary) {
-        onChange({ party, account: primary })
-        setSearch(party.name)
+        onChange({ party: orderingParty, account: primary })
+        setSearch(orderingParty.name)
       }
     } catch {
       // ignore
     } finally {
       setLoadingAccounts(false)
     }
-  }
 
   return (
     <div ref={ref} className="relative">
