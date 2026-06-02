@@ -146,6 +146,7 @@ function SupplierAccountPicker({
     } finally {
       setLoadingAccounts(false)
     }
+  };
 
   return (
     <div ref={ref} className="relative">
