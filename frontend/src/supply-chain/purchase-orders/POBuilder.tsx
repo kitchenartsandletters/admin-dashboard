@@ -240,7 +240,7 @@ function VariantSearchRow({
       setSearching(true)
       try {
         const data = await searchVariants(query)
-        setResults(data.slice(0, 10))
+        setResults(data.slice(0, 15))
       } catch {
         setResults([])
       } finally {
@@ -817,41 +817,45 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
 
             {/* ── STEP 2: Lines ── */}
             {step === 2 && (
-              <div className="space-y-4">
-                <div>
+              <div className="flex flex-col h-full -mx-5 -my-5">
+                {/* Sticky search header */}
+                <div className="px-5 pt-5 pb-3 border-b dark:border-gray-800
+                                bg-white dark:bg-gray-950 shrink-0">
                   <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                    Add line items by searching ISBN or title. You can also save the PO as draft now and add lines later.
+                    Add line items by searching ISBN or title. You can also save
+                    the PO as draft now and add lines later.
                   </p>
                   <VariantSearchRow onAdd={addLine} existingItemIds={existingItemIds} />
                 </div>
-
-                {lines.length === 0 ? (
-                  <div className="text-center py-8 text-sm text-gray-400 dark:text-gray-500 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg">
-                    No lines added yet.
-                    <br />
-                    <span className="text-xs">Search above or save as draft and add lines later.</span>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {lines.map(line => (
-                      <LineRow
-                        key={line._key}
-                        line={line}
-                        onChange={patch => updateLine(line._key, patch)}
-                        onRemove={() => removeLine(line._key)}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {lines.length > 0 && (
-                  <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500 px-1 pt-1">
-                    <span>{totalLines} line{totalLines !== 1 ? 's' : ''} · {totalQty} units</span>
-                    {totalCost > 0 && (
-                      <span>Est. cost: ${totalCost.toFixed(2)}</span>
-                    )}
-                  </div>
-                )}
+                {/* Scrollable line list */}
+                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+                  {lines.length === 0 ? (
+                    <div className="text-center py-8 text-sm text-gray-400 dark:text-gray-500
+                                    border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg">
+                      No lines added yet.
+                      <br />
+                      <span className="text-xs">Search above or save as draft and add lines later.</span>
+                    </div>
+                  ) : (
+                    <>
+                      {lines.map(line => (
+                        <LineRow
+                          key={line._key}
+                          line={line}
+                          onChange={patch => updateLine(line._key, patch)}
+                          onRemove={() => removeLine(line._key)}
+                        />
+                      ))}
+                      {lines.length > 0 && (
+                        <div className="flex items-center justify-between text-xs
+                                        text-gray-400 dark:text-gray-500 px-1 pt-1">
+                          <span>{totalLines} line{totalLines !== 1 ? 's' : ''} · {totalQty} units</span>
+                          {totalCost > 0 && <span>Est. cost: ${totalCost.toFixed(2)}</span>}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             )}
 

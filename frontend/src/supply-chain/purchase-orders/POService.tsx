@@ -16,7 +16,7 @@ const STATUS_FILTERS: { key: POStatus | 'all' | 'open' | 'test'; label: string }
   { key: 'confirmed', label: 'Confirmed' },
   { key: 'partial',   label: 'Partial' },
   { key: 'received',  label: 'Received' },
-  { key: 'cancelled', label: 'Cancelledå' },
+  { key: 'cancelled', label: 'Cancelled' },
   { key: 'test',      label: 'Test' },
 ]
 

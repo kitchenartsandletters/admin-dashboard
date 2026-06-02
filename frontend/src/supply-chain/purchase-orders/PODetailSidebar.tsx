@@ -92,17 +92,19 @@ function EditableOrderFields({ order, onSaved }: { order: PurchaseOrder; onSaved
   const [expectedAt, setExpectedAt] = useState(order.expected_at?.slice(0, 10) ?? '')
   const [informalRef, setInformalRef] = useState(order.informal_ref ?? '')
   const [notes, setNotes] = useState(order.notes ?? '')
+  const [orderedAt, setOrderedAt] = useState(order.ordered_at?.slice(0, 10) ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const handleSave = async () => {
     setSaving(true); setError(null)
     try {
-      await updatePurchaseOrder(order.id, {
-        expected_at: expectedAt || undefined,
-        informal_ref: informalRef || undefined,
-        notes: notes || undefined,
-      })
+        await updatePurchaseOrder(order.id, {
+          ordered_at:   orderedAt  || undefined,
+          expected_at:  expectedAt || undefined,
+          informal_ref: informalRef || undefined,
+          notes:        notes || undefined,
+        })
       setEditing(false)
       onSaved()
     } catch (e) {
@@ -116,6 +118,7 @@ function EditableOrderFields({ order, onSaved }: { order: PurchaseOrder; onSaved
     return (
       <div className="flex items-start justify-between gap-2">
         <div className="space-y-0.5 text-xs text-gray-500 dark:text-gray-400 min-w-0">
+          {order.ordered_at && <p>Ordered: {formatDate(order.ordered_at)}</p>}
           {order.expected_at && <p>Expected: {formatDate(order.expected_at)}</p>}
           {order.informal_ref && <p>Ref: <span className="font-mono">{order.informal_ref}</span></p>}
           {order.notes && <p className="italic truncate">{order.notes.slice(0, 80)}{order.notes.length > 80 ? '…' : ''}</p>}
@@ -131,6 +134,18 @@ function EditableOrderFields({ order, onSaved }: { order: PurchaseOrder; onSaved
 
   return (
     <div className="space-y-2">
+      <div>
+        <p className="text-[10px] uppercase tracking-wider font-bold
+                      text-gray-400 dark:text-gray-500 mb-1">Order date</p>
+        <input
+          type="date"
+          value={orderedAt}
+          onChange={e => setOrderedAt(e.target.value)}
+          className="w-full px-2.5 py-1.5 border rounded text-xs dark:bg-gray-900
+                      dark:text-white dark:border-gray-700 focus:ring-1
+                      focus:ring-blue-500 outline-none"
+        />
+      </div>
       <div>
         <p className="kal-text-label text-gray-400 dark:text-gray-500 mb-1">Expected arrival</p>
         <input type="date" value={expectedAt} onChange={e => setExpectedAt(e.target.value)}
@@ -317,7 +332,7 @@ function InlineLineEntry({ poId, existingItemIds, onLineAdded }: {
       </div>
       {results.length > 0 && (
         <div className="border dark:border-gray-700 rounded overflow-hidden bg-white dark:bg-gray-900 shadow-lg max-h-48 overflow-y-auto">
-          {results.slice(0, 8).map(r => {
+          {results.slice(0,10).map(r => {
             const dup = existingItemIds.has(r.inventory_item_id)
             return (
               <button key={r.inventory_item_id} type="button"
@@ -581,14 +596,16 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
     setLocalLines(prev => prev.filter(l => l.id !== lineId))
   }
 
-  const handleTransition = async (action: 'submit' | 'confirm') => {
+  const handleTransition = async (action: 'submit' | 'confirm'): Promise<boolean> => {
     setTransitioning(true); setTransitionError(null)
     try {
       if (action === 'submit') await submitPurchaseOrder(order.id)
       if (action === 'confirm') await confirmPurchaseOrder(order.id)
       onRefresh?.()
+      return true
     } catch (e) {
       setTransitionError(e instanceof Error ? e.message : 'Action failed')
+      return false
     } finally {
       setTransitioning(false)
     }
@@ -721,11 +738,10 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
         <div className="space-y-2">
           <button
             onClick={async () => {
-              await handleTransition('submit')
-              // Download PDF after successful submit
-              // handleTransition sets transitioning=false when done
-              // We check status via onRefresh which updates detail
-              await handleDownloadPdf()
+              const succeeded = await handleTransition('submit')
+              if (succeeded) {
+                await handleDownloadPdf()
+              }
             }}
             disabled={transitioning || localLines.length === 0}
             className="w-full px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700
