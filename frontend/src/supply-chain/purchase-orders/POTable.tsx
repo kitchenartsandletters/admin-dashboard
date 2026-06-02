@@ -105,6 +105,14 @@ const POTable: React.FC<Props> = ({
                       Ad hoc
                     </span>
                   )}
+                  {order.is_test && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded
+                                      bg-yellow-100 text-yellow-700
+                                      dark:bg-yellow-900/30 dark:text-yellow-300
+                                      uppercase tracking-wide">
+                      Test
+                    </span>
+                  )}
                   {order.informal_ref && (
                     <div className="text-[11px] text-gray-400 dark:text-gray-500 font-mono mt-0.5">
                       ref: {order.informal_ref}

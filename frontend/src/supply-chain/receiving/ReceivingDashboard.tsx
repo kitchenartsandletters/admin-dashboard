@@ -48,6 +48,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string 
   pending:   { label: 'Pending',   color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',       dot: 'bg-blue-400'  },
   failed:    { label: 'Failed',    color: 'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400',           dot: 'bg-red-500'   },
   cancelled: { label: 'Cancelled', color: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500',          dot: 'bg-gray-400'  },
+  test_applied: { label: 'Test run', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300', dot: 'bg-yellow-500' },
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -119,7 +120,7 @@ function groupByPO(rows: RawReceiptRow[]): POReceivingGroup[] {
     group.attempts.push(attempt)
 
     // Applied receipt is always canonical; otherwise use latest
-    if (row.status === 'applied' || row.status === 'partial') {
+    if (row.status === 'applied' || row.status === 'partial' || row.status === 'test_applied') {
       group.canonical_receipt = attempt
       group.canonical_status = row.status
       group.total_units = row.units_received
@@ -134,7 +135,7 @@ function groupByPO(rows: RawReceiptRow[]): POReceivingGroup[] {
 
   // Sort: applied first, then by most recent date
   return Array.from(map.values()).sort((a, b) => {
-    const statusOrder: Record<string, number> = { applied: 0, partial: 1, pending: 2, failed: 3, cancelled: 4 }
+    const statusOrder: Record<string, number> = { applied: 0, partial: 1, pending: 2, failed: 3, cancelled: 4, test_applied: 5 }
     const aOrder = statusOrder[a.canonical_status] ?? 9
     const bOrder = statusOrder[b.canonical_status] ?? 9
     if (aOrder !== bOrder) return aOrder - bOrder

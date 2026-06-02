@@ -234,7 +234,7 @@ export default function SupplierService() {
             onClick={() => { setPartyStack([]); setFormMode('create') }}
             className="px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors active:scale-[0.98]"
           >
-            + New Party
+            + New Profile
           </button>
         </div>
 

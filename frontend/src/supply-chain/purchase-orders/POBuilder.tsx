@@ -422,6 +422,9 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
   const [draftPOs, setDraftPOs] = useState<PurchaseOrder[]>([])
   const [showDraftPrompt, setShowDraftPrompt] = useState(false)
   const [selectedDraftPO, setSelectedDraftPO] = useState<string | null>(null)
+
+  const [isTest, setIsTest] = useState(false)
+
   const navigate = useNavigate()
 
   // Header fields
@@ -541,6 +544,7 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
         is_drop_ship:            isDropShip,
         drop_ship_venue_id:      isDropShip ? 'default' : undefined,
         drop_ship_address:       isDropShip ? dropShipAddress.trim() : undefined,
+        is_test:                 isTest,
       })
 
       // 2. Add lines sequentially
@@ -766,6 +770,39 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                   )}
                 </div>
 
+                {/* Test mode */}
+                <div className={`flex items-center justify-between rounded-md border px-3 py-2.5
+                  ${isTest
+                    ? 'border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-600'
+                    : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'
+                  }`}>
+                  <div>
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                      Test mode
+                      {isTest && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-200 dark:bg-yellow-800
+                                          text-yellow-800 dark:text-yellow-200 font-bold uppercase tracking-wide">
+                          Beta
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      {isTest
+                        ? 'PO will be created and receiving will run — but NO inventory changes in Shopify.'
+                        : 'Full production mode — all inventory changes apply to Shopify.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsTest(v => !v)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                      ${isTest ? 'bg-yellow-400' : 'bg-gray-300 dark:bg-gray-600'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow
+                      transition-transform ${isTest ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+
                 {/* Notes */}
                 <div>
                   <Label>PO notes</Label>
@@ -906,6 +943,15 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                     </div>
                   )}
                 </div>
+
+                {isTest && (
+                  <div className="px-3 py-2.5 rounded-md bg-yellow-50 dark:bg-yellow-900/20
+                                  border border-yellow-300 dark:border-yellow-700 text-sm
+                                  text-yellow-800 dark:text-yellow-200">
+                    ⚠ Test mode active — this PO will NOT update Shopify inventory when received.
+                    All other steps (PO creation, line management, receiving flow) run normally.
+                  </div>
+                )}
 
                 {error && (
                   <div className="px-3 py-2.5 rounded-md bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">

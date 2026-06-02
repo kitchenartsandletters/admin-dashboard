@@ -265,6 +265,7 @@ export async function createPurchaseOrder(body: {
   is_drop_ship?: boolean
   drop_ship_venue_id?: string
   drop_ship_address?: string
+  is_test?: boolean
 }): Promise<PurchaseOrder> {
   return sc('/api/purchase-orders', { method: 'POST', body: JSON.stringify(body) })
 }
@@ -295,6 +296,10 @@ export async function submitPurchaseOrder(poId: string): Promise<PurchaseOrder> 
 
 export async function confirmPurchaseOrder(poId: string): Promise<PurchaseOrder> {
   return sc(`/api/purchase-orders/${poId}/confirm`, { method: 'POST' })
+}
+
+export async function archiveTestPOs(): Promise<{ archived_count: number }> {
+  return sc('/api/purchase-orders/archive-test-pos', { method: 'POST' })
 }
 
 // Alias for backwards compatibility with POBuilder

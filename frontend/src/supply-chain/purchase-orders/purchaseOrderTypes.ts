@@ -85,6 +85,10 @@ export interface PurchaseOrder {
   // Joined fields (populated by API when joining supplier data)
   supplier_name?: string       // supplier_parties.name
   account_label?: string       // supplier_accounts.label
+
+  // Beta Testing fields
+  is_test: boolean
+  archived_at: string | null
 }
 
 export interface PurchaseOrderLine {
@@ -117,7 +121,7 @@ export interface Receipt {
   purchase_order_id: string
   location_id: string
   receipt_type: string
-  status: 'pending' | 'applied' | 'failed' | 'partial'
+  status: 'pending' | 'applied' | 'failed' | 'partial' | 'cancelled' | 'test_applied'
   notes: string | null
   received_at: string
   shopify_adjustment_group_id: string | null

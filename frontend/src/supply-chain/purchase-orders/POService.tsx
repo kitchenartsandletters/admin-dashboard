@@ -5,10 +5,10 @@ import POTable from './POTable'
 import PODetailSidebar from './PODetailSidebar'
 import POBuilder from './POBuilder'
 import { PurchaseOrder, PurchaseOrderDetail, POStatus } from './purchaseOrderTypes'
-import { fetchPurchaseOrders, fetchPurchaseOrderDetail, cancelPurchaseOrder } from '../../api/supplyChainApi'
+import { fetchPurchaseOrders, fetchPurchaseOrderDetail, cancelPurchaseOrder, archiveTestPOs } from '../../api/supplyChainApi'
 import { SortConfig, nextSortDirection } from '../../utils/tableUtils'
 
-const STATUS_FILTERS: { key: POStatus | 'all' | 'open'; label: string }[] = [
+const STATUS_FILTERS: { key: POStatus | 'all' | 'open' | 'test'; label: string }[] = [
   { key: 'all',       label: 'All' },
   { key: 'open',      label: 'Open' },
   { key: 'draft',     label: 'Draft' },
@@ -16,7 +16,8 @@ const STATUS_FILTERS: { key: POStatus | 'all' | 'open'; label: string }[] = [
   { key: 'confirmed', label: 'Confirmed' },
   { key: 'partial',   label: 'Partial' },
   { key: 'received',  label: 'Received' },
-  { key: 'cancelled', label: 'Cancelled' },
+  { key: 'cancelled', label: 'Cancelledå' },
+  { key: 'test',      label: 'Test' },
 ]
 
 function TableSkeleton() {
@@ -75,6 +76,8 @@ export default function POService() {
 
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
+  const [archiving, setArchiving] = useState(false)
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -102,9 +105,12 @@ export default function POService() {
 
   const filtered = useMemo(() => {
     let list = orders
+    list = list.filter(o => !o.archived_at)
 
     if (statusFilter === 'open') {
       list = list.filter(o => !['received','cancelled'].includes(o.status))
+    } else if (statusFilter === 'test') {
+      list = list.filter(o => o.is_test && !o.archived_at)
     } else if (statusFilter !== 'all') {
       list = list.filter(o => o.status === statusFilter)
     }
@@ -154,6 +160,26 @@ export default function POService() {
     }
   }
 
+  const handleArchiveTestPOs = async () => {
+    if (!window.confirm(
+      `Archive all ${filtered.length} test PO${filtered.length !== 1 ? 's' : ''}? `+
+      `They will be hidden from all views. This cannot be easily undone.`
+    )) return
+    setArchiving(true)
+    try {
+      const result = await archiveTestPOs()
+      // Remove archived POs from local state immediately
+      setOrders(prev => prev.filter(o => !o.is_test || o.archived_at))
+      setSelectedOrder(null)
+      setDetail(null)
+      alert(`${result.archived_count} test PO${result.archived_count !== 1 ? 's' : ''} archived.`)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Archive failed')
+    } finally {
+      setArchiving(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between">
@@ -165,6 +191,18 @@ export default function POService() {
           >
             + New PO
           </button>
+             {statusFilter === 'test' && filtered.length > 0 && (
+                <button
+                  onClick={handleArchiveTestPOs}
+                  disabled={archiving}
+                  className="px-3 py-2 rounded-md border border-yellow-300 dark:border-yellow-700
+                              text-yellow-700 dark:text-yellow-300 text-sm font-semibold
+                              hover:bg-yellow-50 dark:hover:bg-yellow-900/20 disabled:opacity-50
+                              transition-colors"
+                >
+                  {archiving ? 'Archiving…' : `Archive all test POs (${filtered.length})`}
+                </button>
+              )}
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
             {loading ? 'Loading…' : `${orders.length} total orders`}
           </p>

@@ -363,9 +363,15 @@ function ReceiptSection({ poId }: { poId: string }) {
           <button type="button" onClick={() => setExpanded(p => p === r.id ? null : r.id)}
             className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 text-left">
             <div className="flex items-center gap-2">
-              <span className={`kal-text-badge px-1.5 py-0.5 rounded font-semibold uppercase
-                ${r.status === 'applied' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-500'}`}>
-                {r.status}
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase
+                ${r.status === 'applied'
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                  : r.status === 'test_applied'
+                  ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+                  : r.status === 'failed'
+                  ? 'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400'
+                  : 'bg-gray-100 text-gray-500'}`}>
+                {r.status === 'test_applied' ? 'test run' : r.status}
               </span>
               <span className="text-xs font-mono text-gray-500 dark:text-gray-400">{r.id.slice(0, 8)}</span>
             </div>
@@ -619,6 +625,13 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
               <h3 className="font-bold text-base text-gray-900 dark:text-white font-mono">{order.po_number}</h3>
               <StatusBadge status={order.status} />
               {order.is_ad_hoc && <AdHocBadge />}
+              {order.is_test && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px]
+                                  font-bold bg-yellow-100 text-yellow-700
+                                  dark:bg-yellow-900/30 dark:text-yellow-300 uppercase tracking-wide">
+                  Test
+                </span>
+              )}
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               {order.supplier_name ?? order.account_label ?? order.supplier_account_id}
@@ -697,6 +710,13 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
 
         {/* Actions — sticky footer */}
         <div className="shrink-0 border-t dark:border-gray-800 bg-white dark:bg-gray-950 px-5 py-3 space-y-2">
+        {order.is_test && (
+          <div className="px-3 py-2 rounded bg-yellow-50 dark:bg-yellow-900/20
+                          border border-yellow-200 dark:border-yellow-800
+                          text-xs text-yellow-700 dark:text-yellow-300 text-center">
+            Test PO — receiving will simulate the flow without touching Shopify inventory
+          </div>
+        )}
         {isDraft && (
         <div className="space-y-2">
           <button
