@@ -468,7 +468,6 @@ export interface ReceiptLineRecord {
   purchase_order_line_id: string
   inventory_item_id: string
   quantity_received: number
-  quantity_damaged: number
   restock_applied_at: string | null
   damage_applied_at: string | null
   status: string
@@ -527,7 +526,6 @@ export async function receiveTransfer(
       transfer_line_id: string
       inventory_item_id: string
       quantity_received: number
-      quantity_damaged: number
     }>
     notes?: string
   }

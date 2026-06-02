@@ -49,7 +49,6 @@ export interface InventoryTransferLine {
   variant_id: string
   quantity_sent: number
   quantity_received: number | null
-  quantity_damaged: number
   shopify_decrement_key: string
   shopify_increment_key: string
   damage_key: string | null

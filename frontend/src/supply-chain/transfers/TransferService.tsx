@@ -1,4 +1,7 @@
 // TransferService.tsx
+// Transfer list, detail sidebar, and dispatch/receive orchestration.
+// quantity_damaged removed from detail sidebar display — not relevant for transfers.
+
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { InventoryTransfer, TransferDetail, TRANSFER_STATUS_LABELS, TRANSFER_STATUS_COLORS, TransferStatus } from './transferTypes'
 import { fetchTransfers, fetchTransferDetail } from '../../api/supplyChainApi'
@@ -7,16 +10,16 @@ import TransferDispatchForm from './TransferDispatchForm'
 import TransferReceivePanel from './TransferReceivePanel'
 
 // ---------------------------------------------------------------------------
-// Transfer detail sidebar (inline — same pattern as other sidebars)
+// Transfer detail sidebar
 // ---------------------------------------------------------------------------
 
-function TransferDetailSidebar({
-  detail,
-  onClose,
-  onReceive,
-}: { detail: TransferDetail | null; onClose: () => void; onReceive: (transferId: string) => void }) {
-  const [isVisible, setIsVisible] = useState(false)
-  const [shouldRender, setShouldRender] = useState(false)
+function TransferDetailSidebar({ detail, onClose, onReceive }: {
+  detail: TransferDetail | null
+  onClose: () => void
+  onReceive: (transferId: string) => void
+}) {
+  const [isVisible,     setIsVisible]     = useState(false)
+  const [shouldRender,  setShouldRender]  = useState(false)
 
   useEffect(() => {
     if (detail) {
@@ -30,17 +33,16 @@ function TransferDetailSidebar({
   }, [detail])
 
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
+    const h = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isVisible) { setIsVisible(false); setTimeout(onClose, 300) }
     }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
   }, [isVisible, onClose])
 
   const handleClose = () => { setIsVisible(false); setTimeout(onClose, 300) }
 
   if (!shouldRender || !detail) return null
-
   const { transfer, lines } = detail
 
   return (
@@ -50,6 +52,7 @@ function TransferDetailSidebar({
         onClick={handleClose}
       />
       <div className={`fixed top-0 right-0 h-full w-full sm:w-[28rem] bg-white dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800 shadow-2xl z-50 transition-transform duration-300 transform ${isVisible ? 'translate-x-0' : 'translate-x-full'}`}>
+
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50">
           <div>
@@ -63,6 +66,7 @@ function TransferDetailSidebar({
 
         {/* Content */}
         <div className="p-5 text-sm space-y-6 overflow-y-auto h-[calc(100%-4.5rem)] pb-10">
+
           {/* Route */}
           <section>
             <h4 className="font-bold text-gray-900 dark:text-white uppercase text-[11px] tracking-widest border-l-2 border-blue-500 pl-2 mb-4">Route</h4>
@@ -84,15 +88,15 @@ function TransferDetailSidebar({
             </div>
           </section>
 
-          {/* In-transit note */}
-           {transfer.status === 'in_transit' && (
-             <button
-               onClick={e => { e.stopPropagation(); onReceive(transfer.id) }}
-               className="px-2 py-1 rounded text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
-             >
-               Receive →
-             </button>
-           )}
+          {/* Receive button */}
+          {transfer.status === 'in_transit' && (
+            <button
+              onClick={e => { e.stopPropagation(); onReceive(transfer.id) }}
+              className="px-2 py-1 rounded text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
+            >
+              Receive →
+            </button>
+          )}
 
           {/* Lines */}
           <section>
@@ -102,18 +106,21 @@ function TransferDetailSidebar({
             <div className="space-y-2">
               {lines.map(line => (
                 <div key={line.id} className="rounded border dark:border-gray-700 px-3 py-2.5 bg-gray-50/50 dark:bg-gray-900/50">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-xs text-gray-500 dark:text-gray-500">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
                       {line.inventory_item_id.split('/').pop()}
                     </span>
                     <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
                       {line.status.replace('_', ' ')}
                     </span>
                   </div>
-                  <div className="flex gap-4 mt-1.5 text-xs text-gray-600 dark:text-gray-400">
+                  <div className="flex gap-4 text-xs text-gray-600 dark:text-gray-400">
                     <span>Sent: <strong>{line.quantity_sent}</strong></span>
-                    {line.quantity_received != null && <span>Rcvd: <strong>{line.quantity_received}</strong></span>}
-                    {line.quantity_damaged > 0 && <span className="text-amber-600 dark:text-amber-400">Damaged: <strong>{line.quantity_damaged}</strong></span>}
+                    {line.quantity_received != null && (
+                      <span className={line.quantity_received < line.quantity_sent ? 'text-amber-600 dark:text-amber-400' : ''}>
+                        Rcvd: <strong>{line.quantity_received}</strong>
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -129,12 +136,10 @@ function TransferDetailSidebar({
 // Transfer table
 // ---------------------------------------------------------------------------
 
-function TransferTable({
-  transfers, sortConfig, onSort, onRowClick, selectedId,
-}: {
-  transfers: InventoryTransfer[]
+function TransferTable({ transfers, sortConfig, onSort, onRowClick, selectedId }: {
+  transfers:  InventoryTransfer[]
   sortConfig: SortConfig<InventoryTransfer> | null
-  onSort: (k: keyof InventoryTransfer) => void
+  onSort:     (k: keyof InventoryTransfer) => void
   onRowClick: (t: InventoryTransfer) => void
   selectedId: string | null
 }) {
@@ -151,11 +156,8 @@ function TransferTable({
         <thead className="bg-gray-50 dark:bg-gray-800">
           <tr>
             {(['status','created_at','received_at'] as (keyof InventoryTransfer)[]).map(k => (
-              <th
-                key={k}
-                onClick={() => onSort(k)}
-                className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200 whitespace-nowrap"
-              >
+              <th key={k} onClick={() => onSort(k)}
+                className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200 whitespace-nowrap">
                 {k.replace('_at','').replace('_',' ')}
                 <SortIcon active={sortConfig?.key === k} direction={sortConfig?.direction ?? 'asc'} />
               </th>
@@ -165,11 +167,8 @@ function TransferTable({
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
           {transfers.map(t => (
-            <tr
-              key={t.id}
-              onClick={() => onRowClick(t)}
-              className={`cursor-pointer transition-colors ${t.id === selectedId ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}
-            >
+            <tr key={t.id} onClick={() => onRowClick(t)}
+              className={`cursor-pointer transition-colors ${t.id === selectedId ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}>
               <td className="px-4 py-3">
                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${TRANSFER_STATUS_COLORS[t.status]}`}>
                   {TRANSFER_STATUS_LABELS[t.status]}
@@ -194,21 +193,17 @@ function TransferTable({
 
 export default function TransferService() {
   const [transfers, setTransfers] = useState<InventoryTransfer[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [loading,   setLoading]   = useState(true)
+  const [error,     setError]     = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<TransferStatus | 'all'>('all')
-  const [sortConfig, setSortConfig] = useState<SortConfig<InventoryTransfer> | null>({
-    key: 'created_at', direction: 'desc',
-  })
-  const [selected, setSelected] = useState<InventoryTransfer | null>(null)
-  const [detail, setDetail] = useState<TransferDetail | null>(null)
-
-  const [showDispatchForm, setShowDispatchForm] = useState(false)
+  const [sortConfig, setSortConfig] = useState<SortConfig<InventoryTransfer> | null>({ key: 'created_at', direction: 'desc' })
+  const [selected,  setSelected]  = useState<InventoryTransfer | null>(null)
+  const [detail,    setDetail]    = useState<TransferDetail | null>(null)
+  const [showDispatchForm,   setShowDispatchForm]   = useState(false)
   const [receivingTransferId, setReceivingTransferId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+    setLoading(true); setError(null)
     try { setTransfers(await fetchTransfers({ limit: 200 })) }
     catch (e) { setError(e instanceof Error ? e.message : 'Failed to load transfers') }
     finally { setLoading(false) }
@@ -236,23 +231,24 @@ export default function TransferService() {
   }, [transfers, statusFilter, sortConfig])
 
   const STATUS_FILTERS: { key: TransferStatus | 'all'; label: string }[] = [
-    { key: 'all', label: 'All' },
-    { key: 'pending', label: 'Pending' },
+    { key: 'all',        label: 'All'        },
+    { key: 'pending',    label: 'Pending'    },
     { key: 'in_transit', label: 'In Transit' },
-    { key: 'partial', label: 'Partial' },
-    { key: 'received', label: 'Received' },
-    { key: 'cancelled', label: 'Cancelled' },
+    { key: 'partial',    label: 'Partial'    },
+    { key: 'received',   label: 'Received'   },
+    { key: 'cancelled',  label: 'Cancelled'  },
   ]
 
   return (
     <>
       <div className="space-y-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Transfers</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            {loading ? 'Loading…' : `${transfers.length} total transfers`}
-          </p>
-
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Transfers</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+              {loading ? 'Loading…' : `${transfers.length} total transfers`}
+            </p>
+          </div>
           <button
             onClick={() => setShowDispatchForm(true)}
             className="px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
@@ -262,20 +258,18 @@ export default function TransferService() {
         </div>
 
         {error && (
-          <div className="px-4 py-3 rounded-md bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">{error}</div>
+          <div className="px-4 py-3 rounded-md bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">
+            {error}
+          </div>
         )}
 
         <div className="flex gap-1 flex-wrap">
           {STATUS_FILTERS.map(f => (
-            <button
-              key={f.key}
-              onClick={() => setStatusFilter(f.key)}
+            <button key={f.key} onClick={() => setStatusFilter(f.key)}
               className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors whitespace-nowrap
                 ${statusFilter === f.key
                   ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'
-                }`}
-            >
+                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'}`}>
               {f.label}
             </button>
           ))}
@@ -305,10 +299,7 @@ export default function TransferService() {
           defaultFromLocationId="gid://shopify/Location/40052293765"
           defaultToLocationId="gid://shopify/Location/67668738181"
           onClose={() => setShowDispatchForm(false)}
-          onDispatched={async (transferId) => {
-            setShowDispatchForm(false)
-            await load()  // refresh the list
-          }}
+          onDispatched={async () => { setShowDispatchForm(false); await load() }}
         />
       )}
 
@@ -316,10 +307,7 @@ export default function TransferService() {
         <TransferReceivePanel
           transferId={receivingTransferId}
           onClose={() => setReceivingTransferId(null)}
-          onReceived={async () => {
-            setReceivingTransferId(null)
-            await load()  // refresh the list
-          }}
+          onReceived={async () => { setReceivingTransferId(null); await load() }}
         />
       )}
     </>

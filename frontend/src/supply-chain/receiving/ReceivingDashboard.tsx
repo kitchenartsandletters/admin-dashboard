@@ -1,15 +1,15 @@
 // ReceivingDashboard.tsx
 // Route: /receiving
 //
-// Receiving home page. Groups receipts by PO — a PO is the unit of work,
-// receipts are attempts against it. Applied receipt is canonical.
-// Failed/pending receipts shown as subordinate history within each PO group.
+// Groups receipts by PO — a PO is the unit of work, receipts are attempts.
+// Shows submitted/confirmed POs awaiting receipt above the history table.
+// Lines column shows completion breakdown: complete / partial / pending.
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PODetailSidebar from '../purchase-orders/PODetailSidebar'
-import { fetchPurchaseOrderDetail } from '../../api/supplyChainApi'
-import { PurchaseOrderDetail } from '../purchase-orders/purchaseOrderTypes'
+import { fetchPurchaseOrderDetail, fetchPurchaseOrders } from '../../api/supplyChainApi'
+import { PurchaseOrder, PurchaseOrderDetail } from '../purchase-orders/purchaseOrderTypes'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,7 +17,7 @@ import { PurchaseOrderDetail } from '../purchase-orders/purchaseOrderTypes'
 
 interface ReceiptAttempt {
   id: string
-  status: 'pending' | 'applied' | 'failed' | 'partial' | 'cancelled'
+  status: 'pending' | 'applied' | 'failed' | 'partial' | 'cancelled' | 'test_applied'
   received_at: string
   notes: string | null
   line_count: number
@@ -31,11 +31,34 @@ interface POReceivingGroup {
   informal_ref: string | null
   supplier_name: string
   account_label: string
-  canonical_status: string   // status of the applied receipt, or latest attempt
+  canonical_status: string
   canonical_receipt: ReceiptAttempt | null
   attempts: ReceiptAttempt[]
   total_units: number
   total_lines: number
+  lines_full:    number
+  lines_partial: number
+  lines_open:    number
+  lines_total:   number
+}
+
+interface RawReceiptRow {
+  id: string
+  status: string
+  received_at: string
+  notes: string | null
+  po_id: string
+  po_number: string
+  is_ad_hoc: boolean
+  informal_ref: string | null
+  supplier_name: string
+  account_label: string
+  line_count: number
+  units_received: number
+  lines_full?:    number
+  lines_partial?: number
+  lines_open?:    number
+  lines_total?:   number
 }
 
 // ---------------------------------------------------------------------------
@@ -43,12 +66,12 @@ interface POReceivingGroup {
 // ---------------------------------------------------------------------------
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
-  applied:   { label: 'Received',  color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',   dot: 'bg-green-500' },
-  partial:   { label: 'Partial',   color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',   dot: 'bg-amber-500' },
-  pending:   { label: 'Pending',   color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',       dot: 'bg-blue-400'  },
-  failed:    { label: 'Failed',    color: 'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400',           dot: 'bg-red-500'   },
-  cancelled: { label: 'Cancelled', color: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500',          dot: 'bg-gray-400'  },
-  test_applied: { label: 'Test run', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300', dot: 'bg-yellow-500' },
+  applied:      { label: 'Received',  color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',     dot: 'bg-green-500'  },
+  partial:      { label: 'Partial',   color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',     dot: 'bg-amber-500'  },
+  pending:      { label: 'Pending',   color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',         dot: 'bg-blue-400'   },
+  failed:       { label: 'Failed',    color: 'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400',             dot: 'bg-red-500'    },
+  cancelled:    { label: 'Cancelled', color: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500',            dot: 'bg-gray-400'   },
+  test_applied: { label: 'Test run',  color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300', dot: 'bg-yellow-500' },
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -64,7 +87,6 @@ function StatusBadge({ status }: { status: string }) {
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
-
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
@@ -73,75 +95,66 @@ function formatTime(iso: string) {
 // Group raw receipt rows by PO
 // ---------------------------------------------------------------------------
 
-interface RawReceiptRow {
-  id: string
-  status: string
-  received_at: string
-  notes: string | null
-  po_id: string
-  po_number: string
-  is_ad_hoc: boolean
-  informal_ref: string | null
-  supplier_name: string
-  account_label: string
-  line_count: number
-  units_received: number
-}
-
 function groupByPO(rows: RawReceiptRow[]): POReceivingGroup[] {
   const map = new Map<string, POReceivingGroup>()
 
   for (const row of rows) {
     if (!map.has(row.po_id)) {
       map.set(row.po_id, {
-        po_id: row.po_id,
-        po_number: row.po_number,
-        is_ad_hoc: row.is_ad_hoc,
-        informal_ref: row.informal_ref,
-        supplier_name: row.supplier_name,
-        account_label: row.account_label,
+        po_id:            row.po_id,
+        po_number:        row.po_number,
+        is_ad_hoc:        row.is_ad_hoc,
+        informal_ref:     row.informal_ref,
+        supplier_name:    row.supplier_name,
+        account_label:    row.account_label,
         canonical_status: 'pending',
         canonical_receipt: null,
-        attempts: [],
-        total_units: 0,
-        total_lines: 0,
+        attempts:         [],
+        total_units:      0,
+        total_lines:      0,
+        lines_full:       0,
+        lines_partial:    0,
+        lines_open:       0,
+        lines_total:      0,
       })
     }
 
     const group = map.get(row.po_id)!
     const attempt: ReceiptAttempt = {
-      id: row.id,
-      status: row.status as ReceiptAttempt['status'],
-      received_at: row.received_at,
-      notes: row.notes,
-      line_count: row.line_count,
+      id:             row.id,
+      status:         row.status as ReceiptAttempt['status'],
+      received_at:    row.received_at,
+      notes:          row.notes,
+      line_count:     row.line_count,
       units_received: row.units_received,
     }
     group.attempts.push(attempt)
 
-    // Applied receipt is always canonical; otherwise use latest
     if (row.status === 'applied' || row.status === 'partial' || row.status === 'test_applied') {
       group.canonical_receipt = attempt
-      group.canonical_status = row.status
-      group.total_units = row.units_received
-      group.total_lines = row.line_count
+      group.canonical_status  = row.status
+      group.total_units       = row.units_received
+      group.total_lines       = row.line_count
+      group.lines_full        = row.lines_full    ?? 0
+      group.lines_partial     = row.lines_partial ?? 0
+      group.lines_open        = row.lines_open    ?? 0
+      group.lines_total       = row.lines_total   ?? 0
     } else if (!group.canonical_receipt) {
       group.canonical_receipt = attempt
-      group.canonical_status = row.status
-      group.total_units = row.units_received
-      group.total_lines = row.line_count
+      group.canonical_status  = row.status
+      group.total_units       = row.units_received
+      group.total_lines       = row.line_count
     }
   }
 
-  // Sort: applied first, then by most recent date
   return Array.from(map.values()).sort((a, b) => {
-    const statusOrder: Record<string, number> = { applied: 0, partial: 1, pending: 2, failed: 3, cancelled: 4, test_applied: 5 }
-    const aOrder = statusOrder[a.canonical_status] ?? 9
-    const bOrder = statusOrder[b.canonical_status] ?? 9
-    if (aOrder !== bOrder) return aOrder - bOrder
-    const aDate = a.canonical_receipt?.received_at ?? ''
-    const bDate = b.canonical_receipt?.received_at ?? ''
-    return bDate.localeCompare(aDate)
+    const order: Record<string, number> = { applied: 0, partial: 1, test_applied: 2, pending: 3, failed: 4, cancelled: 5 }
+    const ao = order[a.canonical_status] ?? 9
+    const bo = order[b.canonical_status] ?? 9
+    if (ao !== bo) return ao - bo
+    const ad = a.canonical_receipt?.received_at ?? ''
+    const bd = b.canonical_receipt?.received_at ?? ''
+    return bd.localeCompare(ad)
   })
 }
 
@@ -149,11 +162,11 @@ function groupByPO(rows: RawReceiptRow[]): POReceivingGroup[] {
 // Stat card
 // ---------------------------------------------------------------------------
 
-function StatCard({ label, value, sub, alert }: {
-  label: string; value: string | number; sub?: string; alert?: boolean
-}) {
+function StatCard({ label, value, sub, alert }: { label: string; value: string | number; sub?: string; alert?: boolean }) {
   return (
-    <div className={`border rounded-lg px-4 py-3 ${alert ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900'}`}>
+    <div className={`border rounded-lg px-4 py-3 ${alert
+      ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10'
+      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900'}`}>
       <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-0.5">{label}</p>
       <p className={`text-2xl font-bold tabular-nums ${alert ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>{value}</p>
       {sub && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{sub}</p>}
@@ -167,22 +180,21 @@ function StatCard({ label, value, sub, alert }: {
 
 function POGroupRow({ group, onRowClick }: { group: POReceivingGroup; onRowClick: (poId: string) => void }) {
   const [expanded, setExpanded] = useState(false)
-  const hasMultipleAttempts = group.attempts.length > 1
+  const hasMultiple  = group.attempts.length > 1
   const nonCanonical = group.attempts.filter(a => a.id !== group.canonical_receipt?.id)
 
   return (
     <div className="border-b dark:border-gray-800 last:border-0">
-      {/* Main row */}
-      <div className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
+      <div
+        className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors cursor-pointer"
         onClick={() => onRowClick(group.po_id)}
       >
-
-        {/* Toggle — only shown when there are extra attempts */}
+        {/* Expand toggle */}
         <button
           type="button"
-          onClick={() => hasMultipleAttempts && setExpanded(v => !v)}
+          onClick={e => { e.stopPropagation(); hasMultiple && setExpanded(v => !v) }}
           className={`mt-0.5 w-4 shrink-0 text-gray-400 dark:text-gray-500 text-xs
-            ${hasMultipleAttempts ? 'cursor-pointer hover:text-gray-700 dark:hover:text-gray-200' : 'cursor-default opacity-0'}`}
+            ${hasMultiple ? 'cursor-pointer hover:text-gray-700 dark:hover:text-gray-200' : 'cursor-default opacity-0'}`}
         >
           {expanded ? '▾' : '▸'}
         </button>
@@ -199,9 +211,7 @@ function POGroupRow({ group, onRowClick }: { group: POReceivingGroup; onRowClick
 
         {/* Supplier */}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-            {group.supplier_name}
-          </p>
+          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{group.supplier_name}</p>
           <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{group.account_label}</p>
         </div>
 
@@ -212,30 +222,34 @@ function POGroupRow({ group, onRowClick }: { group: POReceivingGroup; onRowClick
             <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold uppercase tracking-wide">Ad hoc</span>
           )}
           {group.informal_ref && (
-            <p className="text-[11px] text-gray-400 dark:text-gray-500 font-mono truncate" title={group.informal_ref}>
-              {group.informal_ref}
-            </p>
+            <p className="text-[11px] text-gray-400 dark:text-gray-500 font-mono truncate">{group.informal_ref}</p>
           )}
         </div>
 
         {/* Status */}
         <div className="w-24 shrink-0 flex flex-col items-start gap-1">
           <StatusBadge status={group.canonical_status} />
-          {hasMultipleAttempts && (
-            <span className="text-[10px] text-gray-400 dark:text-gray-500">
-              {group.attempts.length} attempts
-            </span>
+          {hasMultiple && (
+            <span className="text-[10px] text-gray-400 dark:text-gray-500">{group.attempts.length} attempts</span>
           )}
         </div>
 
-        {/* Units */}
-        <div className="w-16 shrink-0 text-right">
-          <p className="font-semibold text-sm text-gray-900 dark:text-gray-100 tabular-nums">
-            {group.total_units}
-          </p>
-          <p className="text-[11px] text-gray-400 dark:text-gray-500">
-            {group.total_lines} line{group.total_lines !== 1 ? 's' : ''}
-          </p>
+        {/* Lines completion */}
+        <div className="w-24 shrink-0 text-right space-y-0.5">
+          {group.lines_full > 0 && (
+            <p className="text-[11px] text-green-600 dark:text-green-400 tabular-nums">{group.lines_full} complete</p>
+          )}
+          {group.lines_partial > 0 && (
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 tabular-nums">{group.lines_partial} partial</p>
+          )}
+          {group.lines_open > 0 && (
+            <p className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums">{group.lines_open} pending</p>
+          )}
+          {group.lines_total === 0 && (
+            <p className="text-[11px] text-gray-400 tabular-nums">
+              {group.total_lines} line{group.total_lines !== 1 ? 's' : ''}
+            </p>
+          )}
         </div>
       </div>
 
@@ -250,7 +264,7 @@ function POGroupRow({ group, onRowClick }: { group: POReceivingGroup; onRowClick
                 {formatDate(attempt.received_at)} {formatTime(attempt.received_at)}
               </span>
               {attempt.notes && (
-                <span className="text-xs text-gray-400 dark:text-gray-500 truncate flex-1" title={attempt.notes}>
+                <span className="text-xs text-gray-400 dark:text-gray-500 truncate flex-1">
                   {attempt.notes.slice(0, 100)}
                 </span>
               )}
@@ -263,7 +277,7 @@ function POGroupRow({ group, onRowClick }: { group: POReceivingGroup; onRowClick
 }
 
 // ---------------------------------------------------------------------------
-// Main dashboard
+// Data fetcher
 // ---------------------------------------------------------------------------
 
 async function fetchReceiptHistory(): Promise<RawReceiptRow[]> {
@@ -276,14 +290,19 @@ async function fetchReceiptHistory(): Promise<RawReceiptRow[]> {
   return res.json()
 }
 
+// ---------------------------------------------------------------------------
+// Main dashboard
+// ---------------------------------------------------------------------------
+
 export default function ReceivingDashboard() {
   const navigate = useNavigate()
-  const [groups, setGroups] = useState<POReceivingGroup[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [groups, setGroups]               = useState<POReceivingGroup[]>([])
+  const [loading, setLoading]             = useState(true)
+  const [error, setError]                 = useState<string | null>(null)
+  const [statusFilter, setStatusFilter]   = useState<string>('all')
   const [selectedPODetail, setSelectedPODetail] = useState<PurchaseOrderDetail | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
+  const [submittedPOs, setSubmittedPOs]   = useState<PurchaseOrder[]>([])
+  const [posLoading, setPosLoading]       = useState(true)
 
   useEffect(() => {
     fetchReceiptHistory()
@@ -292,13 +311,21 @@ export default function ReceivingDashboard() {
       .finally(() => setLoading(false))
   }, [])
 
-  const filtered = statusFilter === 'all'
-    ? groups
-    : groups.filter(g => g.canonical_status === statusFilter)
+  useEffect(() => {
+    fetchPurchaseOrders({ status: 'submitted,confirmed', limit: 20 })
+      .then(orders => setSubmittedPOs(orders))
+      .catch(() => {})
+      .finally(() => setPosLoading(false))
+  }, [])
 
-  const totalUnits   = groups.filter(g => g.canonical_status === 'applied' || g.canonical_status === 'partial')
-                              .reduce((s, g) => s + g.total_units, 0)
-  const failedGroups = groups.filter(g => g.canonical_status === 'failed')
+  const filtered = useMemo(() => (
+    statusFilter === 'all'
+      ? groups
+      : groups.filter(g => g.canonical_status === statusFilter)
+  ), [groups, statusFilter])
+
+  const totalUnits    = groups.filter(g => ['applied','partial'].includes(g.canonical_status)).reduce((s, g) => s + g.total_units, 0)
+  const failedGroups  = groups.filter(g => g.canonical_status === 'failed')
   const pendingGroups = groups.filter(g => g.canonical_status === 'pending')
 
   const counts = {
@@ -310,15 +337,10 @@ export default function ReceivingDashboard() {
   }
 
   const handleRowClick = async (poId: string) => {
-    setDetailLoading(true)
     try {
       const detail = await fetchPurchaseOrderDetail(poId)
       setSelectedPODetail(detail)
-    } catch {
-      // ignore
-    } finally {
-      setDetailLoading(false)
-    }
+    } catch { /* ignore */ }
   }
 
   return (
@@ -345,8 +367,8 @@ export default function ReceivingDashboard() {
       {!loading && !error && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard label="Orders received" value={counts.applied} />
-          <StatCard label="Units received" value={totalUnits.toLocaleString()} sub="applied only" />
-          <StatCard label="Failed" value={failedGroups.length}
+          <StatCard label="Units received"  value={totalUnits.toLocaleString()} sub="applied only" />
+          <StatCard label="Failed"  value={failedGroups.length}
             sub={failedGroups.length > 0 ? 'need attention' : 'all clear'} alert={failedGroups.length > 0} />
           <StatCard label="Pending" value={pendingGroups.length}
             sub={pendingGroups.length > 0 ? 'in progress' : 'none open'} />
@@ -367,6 +389,61 @@ export default function ReceivingDashboard() {
         </div>
       )}
 
+      {/* Awaiting receipt — submitted/confirmed POs */}
+      {(posLoading || submittedPOs.length > 0) && (
+        <div className="border dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-900">
+          <div className="px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700 flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              Awaiting receipt
+            </h3>
+            <span className="text-xs text-gray-400">{submittedPOs.length} PO{submittedPOs.length !== 1 ? 's' : ''}</span>
+          </div>
+          {posLoading ? (
+            <div className="p-4 space-y-2">
+              {[1,2,3].map(i => <div key={i} className="h-8 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />)}
+            </div>
+          ) : submittedPOs.length === 0 ? (
+            <p className="px-4 py-3 text-xs text-gray-400 dark:text-gray-500">No POs awaiting receipt.</p>
+          ) : (
+            <div className="divide-y dark:divide-gray-800">
+              {submittedPOs.map(po => (
+                <button
+                  key={po.id}
+                  onClick={() => navigate(`/receiving/new?po=${po.po_number}`)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors text-left"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase shrink-0
+                      ${po.status === 'confirmed'
+                        ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
+                        : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>
+                      {po.status}
+                    </span>
+                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                      {po.supplier_name ?? po.account_label}
+                    </span>
+                    {(po as any).is_test && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 uppercase shrink-0">
+                        Test
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0 ml-3">
+                    <span className="text-xs font-mono text-gray-400">{po.po_number}</span>
+                    {po.expected_at && (
+                      <span className="text-xs text-gray-400">
+                        due {new Date(po.expected_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </span>
+                    )}
+                    <span className="text-xs text-blue-500">Receive →</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Filter tabs */}
       <div className="flex gap-1 border-b dark:border-gray-800">
         {(['all', 'applied', 'pending', 'partial', 'failed'] as const).map(s => (
@@ -374,8 +451,7 @@ export default function ReceivingDashboard() {
             className={`px-3 py-1.5 text-xs font-semibold border-b-2 -mb-px transition-colors
               ${statusFilter === s
                 ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
+                : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
           >
             {s === 'all' ? `All (${counts.all})` : `${s.charAt(0).toUpperCase() + s.slice(1)} (${counts[s]})`}
           </button>
@@ -400,8 +476,7 @@ export default function ReceivingDashboard() {
       {!loading && !error && filtered.length === 0 && (
         <div className="py-16 text-center">
           <p className="text-gray-400 dark:text-gray-500 text-sm">No receipts found.</p>
-          <button onClick={() => navigate('/receiving/new')}
-            className="mt-3 text-sm text-blue-500 hover:underline">
+          <button onClick={() => navigate('/receiving/new')} className="mt-3 text-sm text-blue-500 hover:underline">
             Start your first receipt →
           </button>
         </div>
@@ -410,25 +485,25 @@ export default function ReceivingDashboard() {
       {/* PO-grouped receipt list */}
       {!loading && !error && filtered.length > 0 && (
         <div className="border dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-900">
-          {/* Table header */}
           <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
             <div className="w-4 shrink-0" />
             <div className="w-24 shrink-0 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Date</div>
             <div className="flex-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Supplier</div>
             <div className="w-52 shrink-0 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">PO</div>
             <div className="w-24 shrink-0 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Status</div>
-            <div className="w-16 shrink-0 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide text-right">Units</div>
+            <div className="w-24 shrink-0 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide text-right">Lines</div>
           </div>
           {filtered.map(group => (
             <POGroupRow key={group.po_id} group={group} onRowClick={handleRowClick} />
           ))}
         </div>
       )}
-         <PODetailSidebar
-          detail={detailLoading ? null : selectedPODetail}
-          onClose={() => setSelectedPODetail(null)}
-          onReceive={(poId) => navigate(`/receiving/new?po=${poId}`)}
-        />
+
+      <PODetailSidebar
+        detail={selectedPODetail}
+        onClose={() => setSelectedPODetail(null)}
+        onReceive={poId => navigate(`/receiving/new?po=${poId}`)}
+      />
     </div>
   )
 }
