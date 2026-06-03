@@ -40,6 +40,7 @@ interface POReceivingGroup {
   lines_partial: number
   lines_open:    number
   lines_total:   number
+  is_test:     boolean
 }
 
 interface RawReceiptRow {
@@ -59,6 +60,7 @@ interface RawReceiptRow {
   lines_partial?: number
   lines_open?:    number
   lines_total?:   number
+  is_test?:     boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -116,6 +118,7 @@ function groupByPO(rows: RawReceiptRow[]): POReceivingGroup[] {
         lines_partial:    0,
         lines_open:       0,
         lines_total:      0,
+        is_test:          false,
       })
     }
 
@@ -139,6 +142,7 @@ function groupByPO(rows: RawReceiptRow[]): POReceivingGroup[] {
       group.lines_partial     = row.lines_partial ?? 0
       group.lines_open        = row.lines_open    ?? 0
       group.lines_total       = row.lines_total   ?? 0
+      group.is_test           = row.is_test       ?? false
     } else if (!group.canonical_receipt) {
       group.canonical_receipt = attempt
       group.canonical_status  = row.status
@@ -229,6 +233,13 @@ function POGroupRow({ group, onRowClick }: { group: POReceivingGroup; onRowClick
         {/* Status */}
         <div className="w-24 shrink-0 flex flex-col items-start gap-1">
           <StatusBadge status={group.canonical_status} />
+          {group.is_test && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded
+                             bg-yellow-100 text-yellow-700
+                             dark:bg-yellow-900/30 dark:text-yellow-300 uppercase">
+              Test
+            </span>
+          )}
           {hasMultiple && (
             <span className="text-[10px] text-gray-400 dark:text-gray-500">{group.attempts.length} attempts</span>
           )}

@@ -776,13 +776,6 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
           {pdfDownloading ? 'Generating…' : 'Download PDF'}
         </button>
       )}
-          {order.status === 'submitted' && (
-            <button onClick={() => handleTransition('confirm')}
-              disabled={transitioning}
-              className="w-full px-3 py-2 rounded-md bg-green-600 hover:bg-green-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors">
-              {transitioning ? 'Confirming…' : 'Mark as Confirmed'}
-            </button>
-          )}
           {isDraft && localLines.length === 0 && (
             <p className="text-xs text-amber-600 dark:text-amber-400 text-center">Add lines before submitting</p>
           )}
