@@ -122,6 +122,9 @@ export default function ReceivingWizard() {
   const [phase,    setPhase]    = useState<Phase>('idle')
   const [poDetail, setPoDetail] = useState<PurchaseOrderDetail | null>(null)
   const [lines,    setLines]    = useState<WizardLine[]>([])
+  const [completedLines, setCompletedLines] = useState<Array<{
+    title: string; isbn: string | null; quantity_ordered: number; quantity_received: number
+  }>>([])
   const [locationId]            = useState(DEFAULT_LOCATION_ID)
   const [notes,    setNotes]    = useState('')
   const [loading,  setLoading]  = useState(false)
@@ -145,21 +148,29 @@ export default function ReceivingWizard() {
   }, [poId])
 
   function initLines(detail: PurchaseOrderDetail) {
-    setLines(
-      detail.lines
-        .filter(l => l.status !== 'cancelled' && l.status !== 'received')
-        .map(l => ({
-          purchase_order_line_id:       l.id,
-          inventory_item_id:            l.inventory_item_id,
-          variant_id:                   l.variant_id,
-          title:                        l.title ?? `Item ${l.inventory_item_id.split('/').pop()}`,
-          isbn:                         l.isbn ?? null,
-          quantity_ordered:             l.quantity_ordered,
-          quantity_previously_received: l.quantity_received,
-          quantity_received:            l.quantity_ordered - l.quantity_received,
-          notes_damaged:                null,
-        }))
+    const completed = detail.lines.filter(
+      l => l.status === 'received' || l.status === 'cancelled'
     )
+    const active = detail.lines.filter(
+      l => l.status !== 'cancelled' && l.status !== 'received'
+    )
+    setCompletedLines(completed.map(l => ({
+      title: l.title ?? `Item ${l.inventory_item_id.split('/').pop()}`,
+      isbn: l.isbn ?? null,
+      quantity_ordered: l.quantity_ordered,
+      quantity_received: l.quantity_received,
+    })))
+    setLines(active.map(l => ({
+      purchase_order_line_id:       l.id,
+      inventory_item_id:            l.inventory_item_id,
+      variant_id:                   l.variant_id,
+      title:                        l.title ?? `Item ${l.inventory_item_id.split('/').pop()}`,
+      isbn:                         l.isbn ?? null,
+      quantity_ordered:             l.quantity_ordered,
+      quantity_previously_received: l.quantity_received,
+      quantity_received:            l.quantity_ordered - l.quantity_received,
+      notes_damaged:                null,
+    })))
   }
 
   function handleQtyChange(lineId: string, value: number) {
@@ -304,9 +315,40 @@ export default function ReceivingWizard() {
                 onDamageNoteChange={handleDamageNoteChange}
               />
             ))}
-            {lines.length === 0 && (
+
+            {/* Completed lines — read-only summary */}
+            {completedLines.length > 0 && (
+              <div className="border dark:border-gray-700 rounded-md overflow-hidden">
+                <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
+                  <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500">
+                    Already received ({completedLines.length} line{completedLines.length !== 1 ? 's' : ''})
+                  </p>
+                </div>
+                {completedLines.map((l, i) => (
+                  <div key={i} className="flex items-center justify-between px-4 py-2.5
+                                          border-b dark:border-gray-800 last:border-0 opacity-60">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{l.title}</p>
+                      {l.isbn && (
+                        <p className="text-[10px] font-mono text-gray-400 dark:text-gray-500">{l.isbn}</p>
+                      )}
+                    </div>
+                    <span className="text-xs font-semibold text-green-600 dark:text-green-400 shrink-0 ml-3">
+                      ✓ {l.quantity_received}/{l.quantity_ordered}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {lines.length === 0 && completedLines.length === 0 && (
               <p className="text-sm text-gray-400 dark:text-gray-600 italic">
                 All lines on this order are already received or cancelled.
+              </p>
+            )}
+            {lines.length === 0 && completedLines.length > 0 && (
+              <p className="text-sm text-gray-400 dark:text-gray-600 italic">
+                All outstanding lines have been received.
               </p>
             )}
           </div>

@@ -502,7 +502,7 @@ export default function ReceivingDashboard() {
       <PODetailSidebar
         detail={selectedPODetail}
         onClose={() => setSelectedPODetail(null)}
-        onReceive={poId => navigate(`/receiving/new?po=${poId}`)}
+        onReceive={poId => navigate(`/receiving/wizard?po=${poId}`)}
         wide={true}
       />
     </div>
