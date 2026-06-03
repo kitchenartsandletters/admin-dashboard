@@ -267,7 +267,7 @@ export default function POService() {
       <PODetailSidebar
         detail={detail}
         onClose={() => setSelectedOrder(null)}
-        onReceive={poId => navigate(`/receiving/new?po=${poId}`)}
+        onReceive={poId => navigate(`/receiving/wizard?po=${poId}`)}
         onRefresh={async () => {
           if (!selectedOrder) return
           try {
