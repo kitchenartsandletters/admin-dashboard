@@ -35,6 +35,7 @@ interface LogEntry {
   notified_at: string | null;
   uploaded_at: string | null;
   created_at: string;
+  screenshot_b64: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -269,6 +270,17 @@ function LogPanel({ log, onRefresh, onRegenerate, onMarkUploaded }: { log: LogEn
                       className="text-xs text-amber-600 dark:text-amber-400 hover:underline"
                     >
                       Regen ↺
+                    </button>
+                  )}
+                  {entry.screenshot_b64 && (
+                    <button
+                      onClick={() => {
+                        const win = window.open()
+                        win?.document.write(`<img src="data:image/png;base64,${entry.screenshot_b64}" style="max-width:100%">`)
+                      }}
+                      className="text-xs text-green-600 dark:text-green-400 hover:underline ml-2"
+                    >
+                      Screenshot ↗
                     </button>
                   )}
                   {entry.upload_status === "fallback" && (
