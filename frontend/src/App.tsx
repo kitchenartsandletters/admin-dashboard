@@ -12,6 +12,10 @@ import WelcomePage from './pages/WelcomePage';
 import AccountPage from './pages/AccountPage';
 import ReportsPage from './reports/ReportsPage';
 import PreorderService from './services/preorder/PreorderService';
+<<<<<<< HEAD
+=======
+import BackorderService from './services/backorders/BackorderService';
+>>>>>>> 994aeed0c080f1353d5902637c084c2353a3f3b9
 import CampaignDashboard from './services/campaigns/CampaignService';
 import BusinessCalendarPage from './components/BusinessCalendarPage';
 import ReportJobPage from './components/ReportJobPage';
@@ -157,6 +161,14 @@ const App = () => {
                           <OrderTaggingPage />
                         </ProtectedRoute>
                       } />
+<<<<<<< HEAD
+=======
+                      <Route path="/backorders" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <BackorderService />
+                        </ProtectedRoute>
+                      } />
+>>>>>>> 994aeed0c080f1353d5902637c084c2353a3f3b9
                       <Route path="/campaigns" element={
                         <ProtectedRoute requiredRoles={['admin']}>
                           <CampaignDashboard />
