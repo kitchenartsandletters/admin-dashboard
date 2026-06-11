@@ -30,10 +30,7 @@ const navItems = [
       { label: 'Order Tagging', path: '/preorders/tagging', roles: ['admin', 'editor'] },
     ]
   },
-<<<<<<< HEAD
-=======
   { label: 'Backorders', path: '/backorders', roles: ['admin', 'editor'] },
->>>>>>> 994aeed0c080f1353d5902637c084c2353a3f3b9
   { label: 'Campaigns', path: '/campaigns', roles: ['admin', 'editor'] },
   {
     label: 'Supply Chain',
