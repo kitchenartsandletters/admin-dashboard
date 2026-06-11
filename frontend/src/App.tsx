@@ -4,6 +4,7 @@ import RequestService from './components/RequestService';
 import SystemStatusDashboard from './components/SystemStatusDashboard'; // placeholder for now
 import DamagedBooksTable from './components/DamagedBooksTable';
 import BlacklistManager from './components/BlackListManager';
+import BackorderService from './components/BackorderService';
 
 const App = () => {
   return (
@@ -22,6 +23,7 @@ const App = () => {
             <Route path="/requests" element={<RequestService />} />
             <Route path="/blacklist" element={<BlacklistManager />} />
             <Route path="/damaged" element={<DamagedBooksTable />} />
+            <Route path="/backorders" element={<BackorderService />} />
             <Route path="/status" element={<SystemStatusDashboard />} />
             <Route path="*" element={<Navigate to="/requests" replace />} />
           </Routes>
