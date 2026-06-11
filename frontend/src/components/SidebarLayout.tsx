@@ -1,162 +1,205 @@
-// SidebarLayout.tsx
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X } from 'lucide-react'; // optional, you can swap icons
-import DarkModeToggle from './DarkModeToggle';
-
-console.log('Initial window width:', window.innerWidth);
+import { Menu, ChevronDown, ChevronRight } from 'lucide-react'; 
+import { useAuth } from '../auth/AuthProvider';
 
 const navItems = [
   {
     label: 'Request Service',
     path: '/requests',
+    roles: ['admin', 'editor'],
     children: [
-      { label: 'Blacklist', path: '/blacklist' },
+      { label: 'Blacklist', path: '/blacklist', roles: ['admin', 'editor'] },
+    ],
+  },
+  {
+    label: 'Damaged Books',
+    path: '/damaged',
+    roles: ['admin', 'editor', 'user'],
+    children: [
+      { label: 'Bulk Create', path: '/damaged/bulk-create', roles: ['admin'] },
     ]
   },
-  { label: 'Damaged Books', path: '/damaged' },
-  { label: 'System Status', path: '/status' },
+  { 
+    label: 'Preorders',
+    path: '/preorders',
+    roles: ['admin', 'editor'],
+    children: [
+      { label: 'Release Management', path: '/preorders/release', roles: ['admin', 'editor'] },
+      { label: 'Shipping Profiles', path: '/preorders/shipping', roles: ['admin', 'editor'] },
+      { label: 'Order Tagging', path: '/preorders/tagging', roles: ['admin', 'editor'] },
+    ]
+  },
+  { label: 'Backorders', path: '/backorders', roles: ['admin', 'editor'] },
+  { label: 'Campaigns', path: '/campaigns', roles: ['admin', 'editor'] },
+  {
+    label: 'Supply Chain',
+    path: '/suppliers',
+    roles: ['admin'],
+    children: [
+      { label: 'Vendors/Publishers',       path: '/suppliers',       roles: ['admin','editor'] },
+      { label: 'Purchase Orders', path: '/purchase-orders', roles: ['admin','editor'] },
+      { label: 'Receiving',       path: '/receiving',       roles: ['admin','editor'] },
+      { label: 'Transfers',       path: '/transfers',       roles: ['admin','editor'] },
+      { label: 'Vendor Map',       path: '/supply-chain/cosmology', roles: ['admin', 'editor'] },
+    ],
+  },
+  {
+    label: 'Tools',
+    path: '/tools',
+    roles: ['admin', 'editor'],
+    children: [
+      { label: 'Edelweiss Lookup', path: '/tools/edelweiss-lookup', roles: ['admin', 'editor'] },
+    ],
+  },
+  { label: 'System Status', path: '/status', roles: ['admin'] },
+  {
+    label: 'Reports',
+    path: '/reports',
+    roles: ['admin', 'editor', 'user'],
+    children: [
+      { label: 'Business Calendar', path: '/reports/calendar', roles: ['admin', 'editor'] },
+      { label: 'Exclusions', path: '/reports/exclusions', roles: ['admin', 'editor'] },
+      { label: 'NYT Reporting', path: '/reports/nyt', roles: ['admin', 'editor'] },
+    ]
+  },
+  { label: 'Account', path: '/account', roles: ['admin', 'editor', 'user'] },
 ];
 
-const SidebarLayout = ({ children }: { children: React.ReactNode }) => {
+interface SidebarLayoutProps {
+  children: React.ReactNode;
+  dateTime?: { date: string; time: string };
+}
+
+const SidebarLayout = ({ children, dateTime }: SidebarLayoutProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [requestMenuOpen, setRequestMenuOpen] = useState(false);
+  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
+  
   const location = useLocation();
-
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    return localStorage.getItem('theme') === 'dark';
-  });
-
-  const toggleDarkMode = () => {
-    setIsDarkMode(prev => {
-      const newTheme = !prev;
-      localStorage.setItem('theme', newTheme ? 'dark' : 'light');
-      if (newTheme) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-      return newTheme;
-    });
-  };
-
-  const toggleSidebar = () => {
-    console.log('[Toggle] clicked');
-    setSidebarOpen(prev => {
-        const newState = !prev;
-        console.log('[Sidebar Toggle] sidebarOpen:', newState);
-        return newState;
-    });
-    };
-
-    useEffect(() => {
-        console.log('[SidebarEffect] sidebarOpen changed to:', sidebarOpen);
-    }, [sidebarOpen]);
+  const { role } = useAuth();
 
   const closeSidebar = () => setSidebarOpen(false);
+  const toggleSidebar = () => setSidebarOpen(prev => !prev);
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') {
-        closeSidebar();
+    const newExpandedState = { ...expandedMenus };
+    let changed = false;
+
+    navItems.forEach(item => {
+      if (item.children) {
+        const isChildActive = item.children.some(child => location.pathname === child.path);
+        const isParentActive = location.pathname === item.path;
+        if ((isChildActive || isParentActive) && !expandedMenus[item.path]) {
+          newExpandedState[item.path] = true;
+          changed = true;
         }
-    };
+      }
+    });
 
-    if (sidebarOpen) {
-        window.addEventListener('keydown', handleKeyDown);
-    }
-
-    return () => {
-        window.removeEventListener('keydown', handleKeyDown);
-    };
-    }, [sidebarOpen]);
-
-  useEffect(() => {
-    setRequestMenuOpen(
-      location.pathname.startsWith('/requests') || location.pathname.startsWith('/blacklist')
-    );
+    if (changed) setExpandedMenus(newExpandedState);
   }, [location.pathname]);
 
-    const sidebarClass = `
-        fixed z-40 top-0 left-0 h-full w-64 bg-white dark:bg-gray-800 shadow-lg transform transition-transform duration-300 ease-in-out min-w-64
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        md:relative md:translate-x-0 md:flex md:flex-col md:w-64 md:shadow-none md:z-auto
-    `;
+  const toggleMenu = (path: string) => {
+    setExpandedMenus(prev => ({ ...prev, [path]: !prev[path] }));
+  };
+
+  const visibleNavItems = navItems
+    .filter(item => role && item.roles.includes(role))
+    .map(item => ({
+      ...item,
+      children: item.children?.filter(child => role && child.roles.includes(role)),
+    }));
+
   return (
-    <div className="flex min-h-screen bg-white dark:bg-gray-900 text-black dark:text-white">
+    <div className="flex h-screen w-full overflow-hidden bg-white dark:bg-gray-900 text-black dark:text-white">
+      
       {/* Sidebar */}
-      <aside
-        className={sidebarClass}
-      >
-        <div className="flex items-center justify-between px-4 py-4 border-b dark:border-gray-700 md:hidden">
-          <h2 className="text-xl font-bold">Menu</h2>
-          <button onClick={closeSidebar}>
-            <X className="w-6 h-6" />
-          </button>
+      <aside className={`
+        fixed z-50 top-0 left-0 h-full w-64 bg-white dark:bg-gray-800 shadow-lg transform transition-transform duration-300 ease-in-out
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        md:relative md:translate-x-0 md:flex md:flex-col md:shadow-none
+      `}>
+        <div className="flex justify-center items-center py-6 border-b dark:border-gray-700 shrink-0">
+          <Link to="/welcome" onClick={closeSidebar}>
+            <img
+              src="https://rcrfakzdutwiuxsmsbkr.supabase.co/storage/v1/object/public/Images/KALInitialsOnly.png"
+              alt="Logo"
+              className="h-12 w-auto"
+            />
+          </Link>
         </div>
-        <nav className="flex flex-col p-4 gap-2">
-          {navItems.map(({ label, path, children }) => (
-            <div key={path}>
-              {label === 'Request Service' ? (
-                <div
-                  onClick={() => {
-                    // toggle submenu visibility only if not already on child route
-                    if (!location.pathname.startsWith('/blacklist')) {
-                      setRequestMenuOpen(prev => !prev);
-                    }
-                  }}
-                  className={`px-3 py-2 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all
-                    ${location.pathname === path || location.pathname.startsWith('/blacklist') ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
-                >
-                  <Link to={path}>
-                    {label}
+
+        <nav className="flex-1 overflow-y-auto p-4 gap-1">
+          {visibleNavItems.map((item) => {
+            const hasChildren = !!item.children?.length;
+            const isExpanded = !!expandedMenus[item.path];
+            const isActive = location.pathname === item.path || 
+                             item.children?.some(c => location.pathname === c.path);
+
+            return (
+              <div key={item.path} className="flex flex-col">
+                <div className="flex items-center">
+                  <Link
+                    to={item.path}
+                    onClick={closeSidebar}
+                    className={`flex-1 px-3 py-2 rounded transition-all hover:bg-gray-100 dark:hover:bg-gray-700
+                      ${isActive ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
+                  >
+                    {item.label}
                   </Link>
+                  {hasChildren && (
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleMenu(item.path);
+                      }}
+                      className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                    >
+                      {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    </button>
+                  )}
                 </div>
-              ) : (
-                <Link
-                  to={path}
-                  onClick={closeSidebar}
-                  className={`px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-all
-                    ${location.pathname === path ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
-                >
-                  {label}
-                </Link>
-              )}
-              {label === "Request Service" && requestMenuOpen && children?.map(child => (
-                <Link
-                  key={child.path}
-                  to={child.path}
-                  onClick={closeSidebar}
-                  className={`pl-6 py-2 block rounded text-sm transition-all transform duration-300 ease-in-out hover:bg-gray-100 dark:hover:bg-gray-700 
-                    ${location.pathname === child.path ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : ''}`}
-                >
-                  {child.label.replace("Form ", "")}
-                </Link>
-              ))}
-            </div>
-          ))}
+
+                {hasChildren && isExpanded && (
+                  <div className="flex flex-col mt-1 ml-4 border-l-2 border-gray-100 dark:border-gray-700">
+                    {item.children?.map(child => (
+                      <Link
+                        key={child.path}
+                        to={child.path}
+                        onClick={closeSidebar}
+                        className={`pl-4 py-2 block text-sm hover:text-blue-500 transition-colors
+                          ${location.pathname === child.path ? 'text-blue-600 font-bold' : 'text-gray-500'}`}
+                      >
+                        {child.label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </nav>
-        <div className="mt-auto p-4 border-t dark:border-gray-700">
-            <DarkModeToggle isDarkMode={isDarkMode} setIsDarkMode={toggleDarkMode} />
-        </div>
       </aside>
 
-      {/* Overlay for mobile */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black bg-opacity-50 md:hidden"
-          onClick={closeSidebar}
-        ></div>
-      )}
-      {/* Main content */}
-      <div className="flex-1 flex flex-col">
-        <header className="flex items-center justify-between px-4 py-3 border-b bg-white dark:bg-gray-900 md:hidden">
-          <button onClick={toggleSidebar}>
-            <Menu className="w-6 h-6" />
+      {/* Overlay */}
+      {sidebarOpen && <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={closeSidebar} />}
+      
+      {/* Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 h-full relative">
+        {/* Mobile Header */}
+        <header className="flex items-center justify-between px-4 py-3 border-b dark:border-gray-800 md:hidden shrink-0">
+          <button onClick={toggleSidebar} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">
+            <Menu />
           </button>
-            <div className="text-sm opacity-0 select-none">.</div>
+          {dateTime && (
+            <span className="font-mono text-sm font-bold text-gray-900 dark:text-white tabular-nums">
+              {dateTime.time}
+            </span>
+          )}
         </header>
-        <main className="flex-1 p-6 bg-white dark:bg-gray-900 overflow-y-auto">
+        
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 w-full">
           {children}
         </main>
       </div>
