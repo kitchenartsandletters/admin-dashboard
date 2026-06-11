@@ -148,7 +148,7 @@ function BackorderService() {
               Backorders
             </h1>
             <p className="hidden sm:block text-sm text-gray-500 dark:text-gray-400">
-              Quantities owed to customers \u2014 ordering status, ETAs, and customer notifications.
+              Quantities owed to customers -- ordering status, ETAs, and customer notifications.
             </p>
           </div>
 
