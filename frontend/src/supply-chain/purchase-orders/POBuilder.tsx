@@ -16,8 +16,17 @@
 //
 // Drop-ship POs (is_drop_ship=true) require a venue selection.
 // Ad hoc POs capture the source and an informal reference number.
+//
+// Multi-location accounts:
+//   A supplier party can hold more than one account, each optionally tied to a
+//   location (location_id). Some publishers (PRH, MPS) issue a distinct account
+//   number per ship-to location. Rather than binding an account at supplier-
+//   select time, we keep the party's full list of active accounts and derive
+//   the *effective* account from the chosen destination location — preferring a
+//   location_id match, then the primary, then the first active account. The
+//   effective account is recomputed whenever the destination location changes.
 
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLocations } from '../hooks/useLocations'
 import {
@@ -58,6 +67,29 @@ interface VariantSearchResult {
 }
 
 // ---------------------------------------------------------------------------
+// Account resolution
+//
+// Given the active accounts for a party and the chosen destination location,
+// return the account that should be used for the PO:
+//   1. an account whose location_id matches the destination location, else
+//   2. the primary account, else
+//   3. the first active account.
+// This is what seeds the correct account number (e.g. PRH 111 Broadway vs HQ).
+// ---------------------------------------------------------------------------
+
+function resolveAccountForLocation(
+  accounts: SupplierAccount[],
+  locationId: string | null,
+): SupplierAccount | null {
+  if (!accounts || accounts.length === 0) return null
+  if (locationId) {
+    const match = accounts.find(a => a.location_id === locationId)
+    if (match) return match
+  }
+  return accounts.find(a => a.is_primary) ?? accounts[0]
+}
+
+// ---------------------------------------------------------------------------
 // Shared field primitives
 // ---------------------------------------------------------------------------
 
@@ -95,10 +127,12 @@ const Textarea = (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
 
 function SupplierAccountPicker({
   value,
+  effectiveAccount,
   onChange,
 }: {
-  value: { party: SupplierParty; account: SupplierAccount } | null
-  onChange: (val: { party: SupplierParty; account: SupplierAccount } | null) => void
+  value: { party: SupplierParty; accounts: SupplierAccount[] } | null
+  effectiveAccount: SupplierAccount | null
+  onChange: (val: { party: SupplierParty; accounts: SupplierAccount[] } | null) => void
 }) {
   const [search, setSearch] = useState('')
   const [results, setResults] = useState<SupplierParty[]>([])
@@ -136,9 +170,10 @@ function SupplierAccountPicker({
         orderingParty = parentDetail.party
       }
 
-      const primary = accounts.find(a => a.is_primary) ?? accounts[0]
-      if (primary) {
-        onChange({ party: orderingParty, account: primary })
+      // Keep the full set of active accounts; the parent component derives the
+      // effective account from the chosen destination location.
+      if (accounts.length > 0) {
+        onChange({ party: orderingParty, accounts })
         setSearch(orderingParty.name)
       }
     } catch {
@@ -165,19 +200,24 @@ function SupplierAccountPicker({
       {loadingAccounts && (
         <p className="text-xs text-gray-400 mt-1">Loading accounts…</p>
       )}
-      {value && (
+      {value && effectiveAccount && (
         <div className="mt-1.5 px-3 py-2 rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-xs">
           <span className="font-semibold text-blue-800 dark:text-blue-200">
-            {value.account.label}
+            {effectiveAccount.label}
           </span>
-          {value.account.account_number && (
+          {effectiveAccount.account_number && (
             <span className="text-blue-600 dark:text-blue-300 ml-2">
-              #{value.account.account_number}
+              #{effectiveAccount.account_number}
             </span>
           )}
-          {value.account.ordering_method && (
+          {effectiveAccount.ordering_method && (
             <span className="text-blue-500 dark:text-blue-400 ml-2 capitalize">
-              via {value.account.ordering_method.replace('_', ' ')}
+              via {effectiveAccount.ordering_method.replace('_', ' ')}
+            </span>
+          )}
+          {value.accounts.length > 1 && (
+            <span className="block mt-1 text-blue-500 dark:text-blue-400">
+              Account auto-selected for the chosen receiving location.
             </span>
           )}
           <button
@@ -431,14 +471,15 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
   // Pre-load supplier from initialSupplier prop
   const getInitialSelection = () => {
     if (!initialSupplier) return null
-    const primary = initialSupplier.accounts.find(a => a.is_primary) ?? initialSupplier.accounts[0]
-    if (!primary) return null
-    return { party: initialSupplier.party, account: primary }
+    const active = initialSupplier.accounts.filter(a => a.is_active)
+    const accounts = active.length > 0 ? active : initialSupplier.accounts
+    if (accounts.length === 0) return null
+    return { party: initialSupplier.party, accounts }
   }
 
   const [supplierSelection, setSupplierSelection] = useState<{
     party: SupplierParty
-    account: SupplierAccount
+    accounts: SupplierAccount[]
   } | null>(getInitialSelection)
   const [destinationLocationId, setDestinationLocationId] = useState('')
   const [orderedAt, setOrderedAt] = useState('')
@@ -449,6 +490,17 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
   const [informalRef, setInformalRef] = useState('')
   const [isDropShip, setIsDropShip] = useState(false)
   const [dropShipAddress, setDropShipAddress] = useState('')
+
+  // The effective account is derived from the party's active accounts and the
+  // chosen destination location — this is what seeds the correct account number
+  // (e.g. PRH 111 Broadway vs PRH 1435 Lexington). Recomputes when either the
+  // supplier selection or the destination location changes.
+  const effectiveAccount = useMemo(
+    () => supplierSelection
+      ? resolveAccountForLocation(supplierSelection.accounts, destinationLocationId || null)
+      : null,
+    [supplierSelection, destinationLocationId],
+  )
 
   // Line items
   const [lines, setLines] = useState<LineItem[]>([])
@@ -478,16 +530,16 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
   }, [])
 
     useEffect(() => {
-    if (!supplierSelection) { setDraftPOs([]); return }
+    if (!supplierSelection || !effectiveAccount) { setDraftPOs([]); return }
     fetchPurchaseOrders({
-      supplierAccountId: supplierSelection.account.id,
+      supplierAccountId: effectiveAccount.id,
       status: 'draft',
       limit: 5,
     }).then(orders => {
       setDraftPOs(orders)
       if (orders.length > 0) setShowDraftPrompt(true)
     }).catch(() => {})
-  }, [supplierSelection?.account.id])
+  }, [effectiveAccount?.id])
 
   const handleClose = () => {
     setIsVisible(false)
@@ -495,7 +547,7 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
   }
 
   // Step 1 validation
-  const step1Valid = !!supplierSelection && !!destinationLocationId &&
+  const step1Valid = !!supplierSelection && !!effectiveAccount && !!destinationLocationId &&
     (!isDropShip || dropShipAddress.trim().length > 0)
 
   // Step 2 can proceed with zero lines (ad hoc POs sometimes have no lines at creation)
@@ -526,14 +578,14 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
   // ---------------------------------------------------------------------------
 
   const handleCreate = async (andSubmit: boolean) => {
-    if (!supplierSelection || !destinationLocationId) return
+    if (!supplierSelection || !effectiveAccount || !destinationLocationId) return
     setBusy(true)
     setError(null)
 
     try {
       // 1. Create the PO header
       const po = await createPurchaseOrder({
-        supplier_account_id:     supplierSelection.account.id,
+        supplier_account_id:     effectiveAccount.id,
         destination_location_id: destinationLocationId,
         ordered_at:              orderedAt  || undefined,
         expected_at:             expectedAt || undefined,
@@ -665,6 +717,7 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
 
                 <SupplierAccountPicker
                   value={supplierSelection}
+                  effectiveAccount={effectiveAccount}
                   onChange={setSupplierSelection}
                 />
 
@@ -876,7 +929,7 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-500">Account</span>
-                      <span>{supplierSelection?.account.label}</span>
+                      <span>{effectiveAccount?.label}{effectiveAccount?.account_number ? ` · #${effectiveAccount.account_number}` : ''}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-500">Receiving at</span>
