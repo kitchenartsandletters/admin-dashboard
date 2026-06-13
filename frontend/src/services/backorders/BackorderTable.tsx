@@ -55,7 +55,7 @@ export default function BackorderTable({ data, onRowClick }: Props) {
               <td className="px-4 py-3">
                 <div className="font-medium text-gray-900 dark:text-white">{row.title ?? '—'}</div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {row.sku ?? ''}{row.vendor ? ` ·${row.vendor}` : ''}
+                  {row.sku ?? ''}{row.vendor ? ` · ${row.vendor}` : ''}
                 </div>
               </td>
               <td className="px-4 py-3 tabular-nums font-semibold">{row.open_backorder_qty}</td>
@@ -86,7 +86,7 @@ export default function BackorderTable({ data, onRowClick }: Props) {
               <td className="px-4 py-3 whitespace-nowrap text-xs">{STATUS_LABELS[row.status] ?? row.status}</td>
               <td className="px-4 py-3 whitespace-nowrap">
                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium tabular-nums ${BADGE_STYLES[row.urgency_bucket]}`}>
-                  {row.urgency_bucket} ·{row.urgency_score}
+                  {row.urgency_bucket} · {row.urgency_score}
                 </span>
               </td>
             </tr>
