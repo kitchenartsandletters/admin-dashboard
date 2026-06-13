@@ -12,6 +12,10 @@
 // Important: once dispatched, Shopify decrements source immediately.
 // Stock appears at neither location until FiDi receives.
 // The in-transit warning surfaces this clearly.
+//
+// Test mode: when enabled, the transfer advances through dispatch/receive
+// exactly as normal but the backend makes NO Shopify inventory changes
+// (mirrors the PO test-mode toggle). Use it to rehearse the flow safely.
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -150,6 +154,7 @@ export default function TransferDispatchForm({
   const [toLocationId, setToLocationId] = useState(defaultToLocationId ?? '')
   const [lines, setLines] = useState<TransferLine[]>([])
   const [notes, setNotes] = useState('')
+  const [isTest, setIsTest] = useState(false)
   const [step, setStep] = useState<FormStep>('locations')
   const [error, setError] = useState<string | null>(null)
   const [resultId, setResultId] = useState<string | null>(null)
@@ -216,6 +221,7 @@ export default function TransferDispatchForm({
         from_location_id: fromLocationId,
         to_location_id:   toLocationId,
         notes:            notes || undefined,
+        is_test:          isTest,
         lines: lines.map(l => ({
           inventory_item_id: l.inventory_item_id,
           variant_id:        l.variant_id,
@@ -253,7 +259,14 @@ export default function TransferDispatchForm({
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b dark:border-gray-800 shrink-0">
             <div>
-              <h2 className="font-bold text-gray-900 dark:text-white">Dispatch Transfer</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="font-bold text-gray-900 dark:text-white">Dispatch Transfer</h2>
+                {isTest && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-200 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-200 font-bold uppercase tracking-wide">
+                    Test
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                 {step === 'locations' ? 'Select source and destination'
                 : step === 'lines'    ? `${fromLocation?.name ?? '?'} → ${toLocation?.name ?? '?'}`
@@ -332,17 +345,55 @@ export default function TransferDispatchForm({
                     className="w-full px-3 py-2 border rounded text-sm dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
                   />
                 </div>
+
+                {/* Test mode */}
+                <div className={`flex items-center justify-between rounded-md border px-3 py-2.5
+                  ${isTest
+                    ? 'border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-600'
+                    : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'}`}>
+                  <div>
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                      Test mode
+                      {isTest && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-200 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-200 font-bold uppercase tracking-wide">
+                          Beta
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      {isTest
+                        ? 'Dispatch and receive will run — but NO inventory changes in Shopify.'
+                        : 'Full production mode — all inventory changes apply to Shopify.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsTest(v => !v)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                      ${isTest ? 'bg-yellow-400' : 'bg-gray-300 dark:bg-gray-600'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow
+                      transition-transform ${isTest ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
               </>
             )}
 
             {/* Step: Lines */}
             {step === 'lines' && (
               <>
-                {/* In-transit warning */}
-                <div className="px-3 py-2.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-300">
-                  <p className="font-semibold mb-0.5">⚠ In-transit state</p>
-                  <p>Once dispatched, Shopify will decrement stock at <strong>{fromLocation?.name}</strong> immediately. Stock will not appear at <strong>{toLocation?.name}</strong> until received. Titles will temporarily show zero at both locations.</p>
-                </div>
+                {/* In-transit / test warning */}
+                {isTest ? (
+                  <div className="px-3 py-2.5 rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 text-xs text-yellow-800 dark:text-yellow-200">
+                    <p className="font-semibold mb-0.5">Test mode</p>
+                    <p>This transfer will move through dispatch and receive normally, but <strong>no Shopify inventory will change</strong> at either location.</p>
+                  </div>
+                ) : (
+                  <div className="px-3 py-2.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-300">
+                    <p className="font-semibold mb-0.5">⚠ In-transit state</p>
+                    <p>Once dispatched, Shopify will decrement stock at <strong>{fromLocation?.name}</strong> immediately. Stock will not appear at <strong>{toLocation?.name}</strong> until received. Titles will temporarily show zero at both locations.</p>
+                  </div>
+                )}
 
                 <LineSearch onAdd={addLine} />
 
@@ -405,10 +456,16 @@ export default function TransferDispatchForm({
                   </div>
                 </div>
 
-                <div className="px-3 py-2.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-300">
-                  Dispatching will immediately decrement <strong>{fromLocation?.name}</strong> in Shopify.
-                  Stock is in transit until <strong>{toLocation?.name}</strong> staff confirm receipt.
-                </div>
+                {isTest ? (
+                  <div className="px-3 py-2.5 rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 text-xs text-yellow-800 dark:text-yellow-200">
+                    <strong>Test mode:</strong> this creates the transfer and moves it to in-transit, but makes <strong>no</strong> Shopify inventory changes. Use the Receive panel to complete the rehearsal.
+                  </div>
+                ) : (
+                  <div className="px-3 py-2.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-300">
+                    Dispatching will immediately decrement <strong>{fromLocation?.name}</strong> in Shopify.
+                    Stock is in transit until <strong>{toLocation?.name}</strong> staff confirm receipt.
+                  </div>
+                )}
               </>
             )}
 
@@ -424,11 +481,13 @@ export default function TransferDispatchForm({
             {step === 'done' && resultId && (
               <div className="space-y-4">
                 <div className="px-4 py-3 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-sm text-green-700 dark:text-green-300">
-                  <p className="font-semibold">Transfer dispatched</p>
+                  <p className="font-semibold">Transfer dispatched{isTest ? ' (test)' : ''}</p>
                   <p className="font-mono text-xs mt-1">{resultId}</p>
                   <p className="mt-1 text-xs">
                     {totalUnits} unit{totalUnits !== 1 ? 's' : ''} are now in transit to <strong>{toLocation?.name}</strong>.
-                    Shopify has decremented <strong>{fromLocation?.name}</strong>.
+                    {isTest
+                      ? ' No Shopify inventory was changed (test mode).'
+                      : <> Shopify has decremented <strong>{fromLocation?.name}</strong>.</>}
                   </p>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -492,9 +551,10 @@ export default function TransferDispatchForm({
                 </button>
                 <button
                   onClick={handleDispatch}
-                  className="flex-1 px-4 py-2 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold transition-colors"
+                  className={`flex-1 px-4 py-2 rounded-md text-white text-sm font-semibold transition-colors
+                    ${isTest ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-amber-600 hover:bg-amber-700'}`}
                 >
-                  Dispatch transfer
+                  {isTest ? 'Dispatch test transfer' : 'Dispatch transfer'}
                 </button>
               </>
             )}
