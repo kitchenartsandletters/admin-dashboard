@@ -30,14 +30,14 @@ export default function BackorderHeatmap({ rows, onSelect }: Props) {
         <button
           key={p.product_id}
           onClick={() => onSelect(p)}
-          title={`${p.title ?? p.sku ?? p.product_id} \u2014 urgency ${p.urgency_score}`}
+          title={`${p.title ?? p.sku ?? p.product_id} — urgency ${p.urgency_score}`}
           className={`w-44 rounded-md px-3 py-2 text-left shadow-sm transition-colors ${TILE_STYLES[p.urgency_bucket]}`}
         >
           <div className="text-xs font-semibold truncate">
             {p.title ?? p.sku ?? p.product_id}
           </div>
           <div className="text-[10px] opacity-90 tabular-nums">
-            {p.open_backorder_qty} owed \u00b7 {p.days_open}d \u00b7{' '}
+            {p.open_backorder_qty} owed ·{p.days_open}d \u00b7{' '}
             {p.on_order_qty > 0 ? `${p.on_order_qty} on PO` : 'not ordered'}
           </div>
         </button>

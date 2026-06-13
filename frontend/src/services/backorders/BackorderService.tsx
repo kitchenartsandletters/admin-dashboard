@@ -21,7 +21,7 @@ import {
 type ViewMode = 'overview' | 'orders'
 
 const fmtDate = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleDateString() : '\u2014'
+  iso ? new Date(iso).toLocaleDateString() : '—'
 
 function TableSkeleton() {
   return (
@@ -69,7 +69,7 @@ function SummaryCards({ summary, loading }: { summary: BackorderSummary | null; 
             <div className="h-6 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mt-1" />
           ) : (
             <div className={`text-xl font-bold tabular-nums ${c.alert ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
-              {c.value ?? '\u2014'}
+              {c.value ?? '—'}
             </div>
           )}
         </div>
@@ -179,7 +179,7 @@ function BackorderService() {
 
         {error && (
           <div className="px-3 py-2 rounded-md border border-red-200 bg-red-50 text-red-700 text-sm dark:bg-red-950/40 dark:border-red-900 dark:text-red-300">
-            {error} \u2014 check VITE_BACKORDER_BASE_URL / VITE_BACKORDER_ADMIN_TOKEN.
+            {error} — check VITE_BACKORDER_BASE_URL / VITE_BACKORDER_ADMIN_TOKEN.
           </div>
         )}
 
@@ -192,7 +192,7 @@ function BackorderService() {
               <div className="flex items-baseline justify-between mb-2">
                 <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Urgency heatmap</h2>
                 <span className="text-[10px] text-gray-500 dark:text-gray-400">
-                  days open \u00b7 units owed \u00b7 on-order/overdue \u00b7 un-notified customers
+                  days open ·units owed ·on-order/overdue ·un-notified customers
                 </span>
               </div>
               {loading ? (
@@ -268,7 +268,7 @@ function BackorderService() {
                   {orders.map((o) => (
                     <tr key={o.order_id} className="even:bg-gray-50/50 dark:even:bg-gray-800/50">
                       <td className="px-4 py-3 font-medium whitespace-nowrap">{o.order_name ?? o.order_id}</td>
-                      <td className="px-4 py-3 max-w-[180px] truncate">{o.customer_email ?? '\u2014'}</td>
+                      <td className="px-4 py-3 max-w-[180px] truncate">{o.customer_email ?? '—'}</td>
                       <td className="px-4 py-3 tabular-nums">{o.backorder_lines}</td>
                       <td className="px-4 py-3 tabular-nums font-semibold">{o.open_qty}</td>
                       <td className="px-4 py-3 tabular-nums">{o.days_open}</td>

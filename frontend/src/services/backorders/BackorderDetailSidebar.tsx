@@ -11,7 +11,7 @@ import type {
 import { createBackorderAction, fetchProductOrders } from '../../api/backorderApi'
 
 const fmtDate = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleDateString() : '\u2014'
+  iso ? new Date(iso).toLocaleDateString() : '—'
 
 interface Props {
   row: BackorderProductRow | null
@@ -96,7 +96,7 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
               {row.title ?? row.sku ?? row.product_id}
             </h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-              {row.vendor ?? ''} {row.sku ? `\u00b7 ${row.sku}` : ''} \u00b7 available {row.available ?? '\u2014'}
+              {row.vendor ?? ''} {row.sku ? `·${row.sku}` : ''} ·available {row.available ?? '—'}
             </p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0">
@@ -127,7 +127,7 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
           {row.po_numbers?.length ? (
             <p className="text-xs text-gray-500 dark:text-gray-400 -mt-3">
               Open POs: {row.po_numbers.join(', ')}
-              {row.lead_time_days != null ? ` \u00b7 lead time ${row.lead_time_days}d` : ''}
+              {row.lead_time_days != null ? ` ·lead time ${row.lead_time_days}d` : ''}
             </p>
           ) : null}
 
@@ -176,7 +176,7 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
                     {lines.map((l) => (
                       <tr key={`${l.order_id}-${l.line_item_id}`} className="even:bg-gray-50/50 dark:even:bg-gray-800/50">
                         <td className="px-3 py-2 whitespace-nowrap font-medium">{l.order_name ?? l.order_id}</td>
-                        <td className="px-3 py-2 max-w-[120px] truncate">{l.customer_email ?? '\u2014'}</td>
+                        <td className="px-3 py-2 max-w-[120px] truncate">{l.customer_email ?? '—'}</td>
                         <td className="px-3 py-2 tabular-nums">{l.open_qty}/{l.qty_backordered}</td>
                         <td className="px-3 py-2">{l.status}</td>
                         <td className="px-3 py-2 whitespace-nowrap">{fmtDate(l.order_created_at)}</td>
@@ -218,10 +218,10 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
                     <span className="font-medium text-gray-900 dark:text-white">
                       {a.action_type.replace(/_/g, ' ')}
                     </span>
-                    {a.order_id ? ` \u00b7 order ${a.order_id}` : ''}
-                    {a.eta_date ? ` \u00b7 ETA ${a.eta_date}` : ''}
+                    {a.order_id ? ` ·order ${a.order_id}` : ''}
+                    {a.eta_date ? ` ·ETA ${a.eta_date}` : ''}
                     <span className="text-gray-500 dark:text-gray-400">
-                      {' '}\u2014 {new Date(a.created_at).toLocaleString()}
+                      {' '}— {new Date(a.created_at).toLocaleString()}
                       {a.actor ? ` by ${a.actor}` : ''}
                     </span>
                     {a.details && 'note' in a.details && (
