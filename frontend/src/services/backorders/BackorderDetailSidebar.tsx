@@ -96,7 +96,7 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
               {row.title ?? row.sku ?? row.product_id}
             </h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-              {row.vendor ?? ''} {row.sku ? `·${row.sku}` : ''} ·available {row.available ?? '—'}
+              {row.vendor ?? ''} {row.sku ? `· ${row.sku}` : ''} · available {row.available ?? '—'}
             </p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0">
@@ -221,7 +221,7 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
                     {a.order_id ? ` ·order ${a.order_id}` : ''}
                     {a.eta_date ? ` ·ETA ${a.eta_date}` : ''}
                     <span className="text-gray-500 dark:text-gray-400">
-                      {' '}— {new Date(a.created_at).toLocaleString()}
+                      {' '} — {new Date(a.created_at).toLocaleString()}
                       {a.actor ? ` by ${a.actor}` : ''}
                     </span>
                     {a.details && 'note' in a.details && (
