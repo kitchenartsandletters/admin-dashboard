@@ -192,7 +192,7 @@ function BackorderService() {
               <div className="flex items-baseline justify-between mb-2">
                 <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Urgency heatmap</h2>
                 <span className="text-[10px] text-gray-500 dark:text-gray-400">
-                  days open ·units owed ·on-order/overdue ·un-notified customers
+                  days open · units owed · on-order/overdue · un-notified customers
                 </span>
               </div>
               {loading ? (
