@@ -37,7 +37,7 @@ export default function BackorderHeatmap({ rows, onSelect }: Props) {
             {p.title ?? p.sku ?? p.product_id}
           </div>
           <div className="text-[10px] opacity-90 tabular-nums">
-            {p.open_backorder_qty} owed ·{p.days_open}d · {' '}
+            {p.open_backorder_qty} owed · {p.days_open}d · {' '}
             {p.on_order_qty > 0 ? `${p.on_order_qty} on PO` : 'not ordered'}
           </div>
         </button>
