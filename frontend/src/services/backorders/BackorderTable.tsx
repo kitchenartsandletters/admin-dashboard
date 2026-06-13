@@ -10,7 +10,7 @@ const BADGE_STYLES: Record<UrgencyBucket, string> = {
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  backorderable:   'Backorderable',
+  backorderable:   'Replenishable',
   temporarily_oos: 'Temporarily OOS',
   oop_suspect:     'OOP suspect',
   restock_pending: 'Restock pending',
