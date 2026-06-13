@@ -98,6 +98,11 @@ export interface SupplierAccount {
   party_id: string
   label: string
   account_number: string | null
+  // Optional Shopify location GID. When set, this account number is specific to
+  // that location (e.g. PRH 111 Broadway). null = location-agnostic; the PO
+  // ship-to dictates destination. POBuilder resolves the effective account from
+  // (party accounts + destination location).
+  location_id: string | null
   ordering_method: OrderingMethod | null
   ordering_email: string | null
   ordering_url: string | null
@@ -115,6 +120,7 @@ export interface SupplierAccountCreate {
   party_id: string
   label: string
   account_number?: string
+  location_id?: string
   ordering_method?: OrderingMethod
   ordering_email?: string
   ordering_url?: string
