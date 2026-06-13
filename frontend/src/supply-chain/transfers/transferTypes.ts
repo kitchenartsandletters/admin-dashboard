@@ -36,6 +36,8 @@ export interface InventoryTransfer {
   from_location_id: string
   to_location_id: string
   status: TransferStatus
+  // When true, the transfer advanced through dispatch/receive without creating
+  // inventory_events or mutating Shopify. Mirrors purchase_orders.is_test.
   is_test: boolean
   notes: string | null
   initiated_by: string | null

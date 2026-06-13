@@ -529,6 +529,7 @@ export async function receiveTransfer(
       transfer_line_id: string
       inventory_item_id: string
       quantity_received: number
+      quantity_damaged?: number
     }>
     notes?: string
   }
