@@ -36,10 +36,12 @@ export interface InventoryTransfer {
   from_location_id: string
   to_location_id: string
   status: TransferStatus
+  is_test: boolean
   notes: string | null
   initiated_by: string | null
   created_at: string
   received_at: string | null
+  archived_at: string | null
 }
 
 export interface InventoryTransferLine {

@@ -9,6 +9,13 @@ import { formatDate, SortConfig, SortIcon, nextSortDirection } from '../../utils
 import TransferDispatchForm from './TransferDispatchForm'
 import TransferReceivePanel from './TransferReceivePanel'
 
+// Small TEST pill shown next to test transfers' status.
+const TestBadge = () => (
+  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-yellow-200 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-200">
+    Test
+  </span>
+)
+
 // ---------------------------------------------------------------------------
 // Transfer detail sidebar
 // ---------------------------------------------------------------------------
@@ -57,15 +64,24 @@ function TransferDetailSidebar({ detail, onClose, onReceive }: {
         <div className="flex items-center justify-between p-4 border-b dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50">
           <div>
             <h3 className="font-bold text-lg text-gray-900 dark:text-white">Transfer</h3>
-            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold mt-1 ${TRANSFER_STATUS_COLORS[transfer.status]}`}>
-              {TRANSFER_STATUS_LABELS[transfer.status]}
-            </span>
+            <div className="flex items-center gap-2 mt-1">
+              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${TRANSFER_STATUS_COLORS[transfer.status]}`}>
+                {TRANSFER_STATUS_LABELS[transfer.status]}
+              </span>
+              {transfer.is_test && <TestBadge />}
+            </div>
           </div>
           <button onClick={handleClose} className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:underline">Close</button>
         </div>
 
         {/* Content */}
         <div className="p-5 text-sm space-y-6 overflow-y-auto h-[calc(100%-4.5rem)] pb-10">
+
+          {transfer.is_test && (
+            <div className="px-3 py-2 rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 text-xs text-yellow-800 dark:text-yellow-200">
+              Test transfer — statuses advance normally but no Shopify inventory was changed.
+            </div>
+          )}
 
           {/* Route */}
           <section>
@@ -170,9 +186,12 @@ function TransferTable({ transfers, sortConfig, onSort, onRowClick, selectedId }
             <tr key={t.id} onClick={() => onRowClick(t)}
               className={`cursor-pointer transition-colors ${t.id === selectedId ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}>
               <td className="px-4 py-3">
-                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${TRANSFER_STATUS_COLORS[t.status]}`}>
-                  {TRANSFER_STATUS_LABELS[t.status]}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${TRANSFER_STATUS_COLORS[t.status]}`}>
+                    {TRANSFER_STATUS_LABELS[t.status]}
+                  </span>
+                  {t.is_test && <TestBadge />}
+                </div>
               </td>
               <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDate(t.created_at)}</td>
               <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{t.received_at ? formatDate(t.received_at) : '—'}</td>
