@@ -33,13 +33,20 @@ export const TRANSFER_STATUS_COLORS: Record<TransferStatus, string> = {
 
 export interface InventoryTransfer {
   id: string
+  // Human-friendly reference (TR-YYYYMMDD-XXXX), generated at dispatch.
+  // Null for any rows created before transfer numbers existed.
+  transfer_number: string | null
   from_location_id: string
   to_location_id: string
   status: TransferStatus
+  // When true, the transfer advanced through dispatch/receive without creating
+  // inventory_events or mutating Shopify. Mirrors purchase_orders.is_test.
+  is_test: boolean
   notes: string | null
   initiated_by: string | null
   created_at: string
   received_at: string | null
+  archived_at: string | null
 }
 
 export interface InventoryTransferLine {

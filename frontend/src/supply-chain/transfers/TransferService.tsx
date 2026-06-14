@@ -1,20 +1,50 @@
 // TransferService.tsx
 // Transfer list, detail sidebar, and dispatch/receive orchestration.
-// quantity_damaged removed from detail sidebar display — not relevant for transfers.
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { InventoryTransfer, TransferDetail, TRANSFER_STATUS_LABELS, TRANSFER_STATUS_COLORS, TransferStatus } from './transferTypes'
-import { fetchTransfers, fetchTransferDetail } from '../../api/supplyChainApi'
+import {
+  InventoryTransfer, TransferDetail,
+  TRANSFER_STATUS_LABELS, TRANSFER_STATUS_COLORS, TransferStatus,
+} from './transferTypes'
+import { fetchTransfers, fetchTransferDetail, fetchLocations, Location } from '../../api/supplyChainApi'
 import { formatDate, SortConfig, SortIcon, nextSortDirection } from '../../utils/tableUtils'
 import TransferDispatchForm from './TransferDispatchForm'
 import TransferReceivePanel from './TransferReceivePanel'
+
+type LocMap = Record<string, Location>
+
+// Numeric tail of a Shopify location GID, e.g. .../Location/40052293765 -> 40052293765
+const idTail = (gid: string) => gid.split('/').pop() ?? gid
+// Short form of a transfer UUID, for rows created before transfer numbers existed.
+const shortId = (id: string) => id.slice(0, 8)
+// Reference shown to staff: prefer the human-friendly number, fall back to short UUID.
+const transferRef = (t: InventoryTransfer) => t.transfer_number ?? shortId(t.id)
+
+// Small TEST pill reused in the table and the detail sidebar.
+const TestBadge = () => (
+  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-yellow-200 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-200">
+    Test
+  </span>
+)
+
+// Location name prominent, numeric id small beneath.
+function LocationLabel({ id, locMap, align = 'left' }: { id: string; locMap: LocMap; align?: 'left' | 'center' }) {
+  const name = locMap[id]?.name
+  return (
+    <div className={align === 'center' ? 'text-center' : ''}>
+      <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{name ?? '—'}</p>
+      <p className="font-mono text-[10px] text-gray-400 dark:text-gray-500 truncate">{idTail(id)}</p>
+    </div>
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Transfer detail sidebar
 // ---------------------------------------------------------------------------
 
-function TransferDetailSidebar({ detail, onClose, onReceive }: {
+function TransferDetailSidebar({ detail, locMap, onClose, onReceive }: {
   detail: TransferDetail | null
+  locMap: LocMap
   onClose: () => void
   onReceive: (transferId: string) => void
 }) {
@@ -57,28 +87,38 @@ function TransferDetailSidebar({ detail, onClose, onReceive }: {
         <div className="flex items-center justify-between p-4 border-b dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50">
           <div>
             <h3 className="font-bold text-lg text-gray-900 dark:text-white">Transfer</h3>
-            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold mt-1 ${TRANSFER_STATUS_COLORS[transfer.status]}`}>
-              {TRANSFER_STATUS_LABELS[transfer.status]}
-            </span>
+            <p className="font-mono text-xs text-gray-500 dark:text-gray-400 mt-0.5">{transferRef(transfer)}</p>
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${TRANSFER_STATUS_COLORS[transfer.status]}`}>
+                {TRANSFER_STATUS_LABELS[transfer.status]}
+              </span>
+              {transfer.is_test && <TestBadge />}
+            </div>
           </div>
           <button onClick={handleClose} className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:underline">Close</button>
         </div>
 
         {/* Content */}
-        <div className="p-5 text-sm space-y-6 overflow-y-auto h-[calc(100%-4.5rem)] pb-10">
+        <div className="p-5 text-sm space-y-6 overflow-y-auto h-[calc(100%-5.5rem)] pb-10">
+
+          {transfer.is_test && (
+            <div className="px-3 py-2 rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 text-xs text-yellow-800 dark:text-yellow-200">
+              Test transfer — statuses advance for rehearsal, but no Shopify inventory is changed.
+            </div>
+          )}
 
           {/* Route */}
           <section>
             <h4 className="font-bold text-gray-900 dark:text-white uppercase text-[11px] tracking-widest border-l-2 border-blue-500 pl-2 mb-4">Route</h4>
             <div className="flex items-center gap-3 text-sm">
-              <div className="flex-1 rounded border dark:border-gray-700 px-3 py-2 text-center bg-gray-50 dark:bg-gray-800">
+              <div className="flex-1 rounded border dark:border-gray-700 px-3 py-2 bg-gray-50 dark:bg-gray-800">
                 <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold mb-0.5">From</p>
-                <p className="font-mono text-xs text-gray-700 dark:text-gray-300 truncate">{transfer.from_location_id.split('/').pop()}</p>
+                <LocationLabel id={transfer.from_location_id} locMap={locMap} />
               </div>
               <span className="text-gray-400">→</span>
-              <div className="flex-1 rounded border dark:border-gray-700 px-3 py-2 text-center bg-gray-50 dark:bg-gray-800">
+              <div className="flex-1 rounded border dark:border-gray-700 px-3 py-2 bg-gray-50 dark:bg-gray-800">
                 <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold mb-0.5">To</p>
-                <p className="font-mono text-xs text-gray-700 dark:text-gray-300 truncate">{transfer.to_location_id.split('/').pop()}</p>
+                <LocationLabel id={transfer.to_location_id} locMap={locMap} />
               </div>
             </div>
             <div className="mt-3 space-y-1 text-xs text-gray-500 dark:text-gray-400">
@@ -108,7 +148,7 @@ function TransferDetailSidebar({ detail, onClose, onReceive }: {
                 <div key={line.id} className="rounded border dark:border-gray-700 px-3 py-2.5 bg-gray-50/50 dark:bg-gray-900/50">
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
-                      {line.inventory_item_id.split('/').pop()}
+                      {idTail(line.inventory_item_id)}
                     </span>
                     <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
                       {line.status.replace('_', ' ')}
@@ -136,8 +176,9 @@ function TransferDetailSidebar({ detail, onClose, onReceive }: {
 // Transfer table
 // ---------------------------------------------------------------------------
 
-function TransferTable({ transfers, sortConfig, onSort, onRowClick, selectedId }: {
+function TransferTable({ transfers, locMap, sortConfig, onSort, onRowClick, selectedId }: {
   transfers:  InventoryTransfer[]
+  locMap:     LocMap
   sortConfig: SortConfig<InventoryTransfer> | null
   onSort:     (k: keyof InventoryTransfer) => void
   onRowClick: (t: InventoryTransfer) => void
@@ -155,6 +196,7 @@ function TransferTable({ transfers, sortConfig, onSort, onRowClick, selectedId }
       <table className="min-w-full border-collapse text-sm">
         <thead className="bg-gray-50 dark:bg-gray-800">
           <tr>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Transfer</th>
             {(['status','created_at','received_at'] as (keyof InventoryTransfer)[]).map(k => (
               <th key={k} onClick={() => onSort(k)}
                 className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200 whitespace-nowrap">
@@ -169,15 +211,31 @@ function TransferTable({ transfers, sortConfig, onSort, onRowClick, selectedId }
           {transfers.map(t => (
             <tr key={t.id} onClick={() => onRowClick(t)}
               className={`cursor-pointer transition-colors ${t.id === selectedId ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}>
+              <td className="px-4 py-3 whitespace-nowrap">
+                <span className="font-mono text-xs font-semibold text-gray-800 dark:text-gray-200">{transferRef(t)}</span>
+              </td>
               <td className="px-4 py-3">
-                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${TRANSFER_STATUS_COLORS[t.status]}`}>
-                  {TRANSFER_STATUS_LABELS[t.status]}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${TRANSFER_STATUS_COLORS[t.status]}`}>
+                    {TRANSFER_STATUS_LABELS[t.status]}
+                  </span>
+                  {t.is_test && <TestBadge />}
+                </div>
               </td>
               <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDate(t.created_at)}</td>
               <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{t.received_at ? formatDate(t.received_at) : '—'}</td>
-              <td className="px-4 py-3 text-xs font-mono text-gray-500 dark:text-gray-400">
-                {t.from_location_id.split('/').pop()} → {t.to_location_id.split('/').pop()}
+              <td className="px-4 py-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{locMap[t.from_location_id]?.name ?? '—'}</p>
+                    <p className="font-mono text-[10px] text-gray-400 truncate">{idTail(t.from_location_id)}</p>
+                  </div>
+                  <span className="text-gray-400 shrink-0">→</span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{locMap[t.to_location_id]?.name ?? '—'}</p>
+                    <p className="font-mono text-[10px] text-gray-400 truncate">{idTail(t.to_location_id)}</p>
+                  </div>
+                </div>
               </td>
             </tr>
           ))}
@@ -193,6 +251,7 @@ function TransferTable({ transfers, sortConfig, onSort, onRowClick, selectedId }
 
 export default function TransferService() {
   const [transfers, setTransfers] = useState<InventoryTransfer[]>([])
+  const [locMap,    setLocMap]    = useState<LocMap>({})
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<TransferStatus | 'all'>('all')
@@ -210,6 +269,12 @@ export default function TransferService() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    fetchLocations()
+      .then(locs => setLocMap(Object.fromEntries(locs.map(l => [l.id, l]))))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!selected) { setDetail(null); return }
@@ -280,6 +345,7 @@ export default function TransferService() {
         ) : (
           <TransferTable
             transfers={filtered}
+            locMap={locMap}
             sortConfig={sortConfig}
             onSort={k => setSortConfig(prev => ({ key: k, direction: nextSortDirection(prev, k) }))}
             onRowClick={t => setSelected(prev => prev?.id === t.id ? null : t)}
@@ -289,6 +355,7 @@ export default function TransferService() {
 
         <TransferDetailSidebar
           detail={detail}
+          locMap={locMap}
           onClose={() => setSelected(null)}
           onReceive={setReceivingTransferId}
         />

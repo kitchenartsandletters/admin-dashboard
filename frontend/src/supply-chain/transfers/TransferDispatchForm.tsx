@@ -12,6 +12,15 @@
 // Important: once dispatched, Shopify decrements source immediately.
 // Stock appears at neither location until FiDi receives.
 // The in-transit warning surfaces this clearly.
+//
+// Test mode: when enabled, the transfer advances through dispatch/receive
+// without creating inventory_events or mutating Shopify (mirrors PO test mode).
+// Used to rehearse the flow end-to-end with zero inventory impact.
+//
+// From/To selection: never disables options. Picking a location that is already
+// chosen in the opposite field auto-resolves the conflict — if only one other
+// location exists it swaps to it (clean 2-location swap); otherwise it clears
+// the opposite field so the user chooses deliberately.
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -34,6 +43,17 @@ interface TransferLine {
 }
 
 type FormStep = 'locations' | 'lines' | 'review' | 'executing' | 'done' | 'error'
+
+// Today as YYYY-MM-DD for seasonal-window comparison (string compare is safe for ISO dates).
+const TODAY_STR = new Date().toISOString().slice(0, 10)
+
+// A seasonal location only warrants an "opens …" note if it hasn't opened yet.
+// Once active_from is in the past, the location is open and the note is stale.
+function upcomingSeasonalNote(loc: Location): string | null {
+  if (!loc.is_seasonal) return null
+  if (loc.active_from && loc.active_from > TODAY_STR) return `Seasonal · opens ${loc.active_from}`
+  return null
+}
 
 // ---------------------------------------------------------------------------
 // Shared primitives
@@ -58,13 +78,14 @@ const SectionHeader = ({ label, color = 'blue' }: { label: string; color?: strin
 
 // ---------------------------------------------------------------------------
 // Line item search
+// Results render in normal flow (not absolutely positioned) so they are never
+// clipped by the modal's scroll container; the panel scrolls internally.
 // ---------------------------------------------------------------------------
 
 function LineSearch({ onAdd }: { onAdd: (line: Omit<TransferLine, '_key' | 'quantity_sent'>) => void }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<VariantSearchResult[]>([])
   const [searching, setSearching] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (query.length < 2) { setResults([]); return }
@@ -78,14 +99,6 @@ function LineSearch({ onAdd }: { onAdd: (line: Omit<TransferLine, '_key' | 'quan
     return () => clearTimeout(t)
   }, [query])
 
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setResults([])
-    }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [])
-
   const handleSelect = (r: VariantSearchResult) => {
     onAdd({
       inventory_item_id: r.inventory_item_id,
@@ -98,7 +111,7 @@ function LineSearch({ onAdd }: { onAdd: (line: Omit<TransferLine, '_key' | 'quan
   }
 
   return (
-    <div ref={ref} className="relative">
+    <div>
       <Label>Search by title or ISBN</Label>
       <input
         value={query}
@@ -110,12 +123,12 @@ function LineSearch({ onAdd }: { onAdd: (line: Omit<TransferLine, '_key' | 'quan
         <p className="text-xs text-gray-400 mt-1 animate-pulse">Searching…</p>
       )}
       {results.length > 0 && (
-        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-md shadow-xl overflow-hidden">
+        <div className="mt-1 bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-md shadow-sm overflow-hidden max-h-64 overflow-y-auto">
           {results.map(r => (
             <button
               key={r.inventory_item_id}
               type="button"
-              onMouseDown={() => handleSelect(r)}
+              onClick={() => handleSelect(r)}
               className="w-full text-left px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800 border-b dark:border-gray-800 last:border-0"
             >
               <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{r.title}</p>
@@ -150,6 +163,7 @@ export default function TransferDispatchForm({
   const [toLocationId, setToLocationId] = useState(defaultToLocationId ?? '')
   const [lines, setLines] = useState<TransferLine[]>([])
   const [notes, setNotes] = useState('')
+  const [isTest, setIsTest] = useState(false)
   const [step, setStep] = useState<FormStep>('locations')
   const [error, setError] = useState<string | null>(null)
   const [resultId, setResultId] = useState<string | null>(null)
@@ -162,7 +176,6 @@ export default function TransferDispatchForm({
     fetchLocations()
       .then(locs => {
         setLocations(locs.filter(l => l.is_active))
-        // Auto-select if defaults are provided and valid
         if (defaultFromLocationId) setFromLocationId(defaultFromLocationId)
         if (defaultToLocationId) setToLocationId(defaultToLocationId)
       })
@@ -185,9 +198,25 @@ export default function TransferDispatchForm({
   const fromLocation = locations.find(l => l.id === fromLocationId)
   const toLocation   = locations.find(l => l.id === toLocationId)
 
+  // Selecting a location auto-resolves a collision with the opposite field:
+  // one other location → swap to it; several → clear the opposite field.
+  const selectFrom = (id: string) => {
+    setFromLocationId(id)
+    if (toLocationId === id) {
+      const others = locations.filter(l => l.id !== id)
+      setToLocationId(others.length === 1 ? others[0].id : '')
+    }
+  }
+  const selectTo = (id: string) => {
+    setToLocationId(id)
+    if (fromLocationId === id) {
+      const others = locations.filter(l => l.id !== id)
+      setFromLocationId(others.length === 1 ? others[0].id : '')
+    }
+  }
+
   const addLine = useCallback((partial: Omit<TransferLine, '_key' | 'quantity_sent'>) => {
     setLines(prev => {
-      // If already in list, just bump qty
       const existing = prev.findIndex(l => l.inventory_item_id === partial.inventory_item_id)
       if (existing >= 0) {
         const next = [...prev]
@@ -216,6 +245,7 @@ export default function TransferDispatchForm({
         from_location_id: fromLocationId,
         to_location_id:   toLocationId,
         notes:            notes || undefined,
+        is_test:          isTest,
         lines: lines.map(l => ({
           inventory_item_id: l.inventory_item_id,
           variant_id:        l.variant_id,
@@ -253,7 +283,14 @@ export default function TransferDispatchForm({
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b dark:border-gray-800 shrink-0">
             <div>
-              <h2 className="font-bold text-gray-900 dark:text-white">Dispatch Transfer</h2>
+              <h2 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                Dispatch Transfer
+                {isTest && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-200 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-200 font-bold uppercase tracking-wide">
+                    Test
+                  </span>
+                )}
+              </h2>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                 {step === 'locations' ? 'Select source and destination'
                 : step === 'lines'    ? `${fromLocation?.name ?? '?'} → ${toLocation?.name ?? '?'}`
@@ -278,48 +315,52 @@ export default function TransferDispatchForm({
               <>
                 <SectionHeader label="From" color="blue" />
                 <div className="space-y-2">
-                  {locations.map(loc => (
-                    <button
-                      key={loc.id}
-                      type="button"
-                      onClick={() => setFromLocationId(loc.id)}
-                      disabled={loc.id === toLocationId}
-                      className={`w-full text-left px-4 py-3 rounded-lg border transition-colors disabled:opacity-40
-                        ${fromLocationId === loc.id
-                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                          : 'border-gray-200 dark:border-gray-700 hover:border-blue-300'}`}
-                    >
-                      <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{loc.name}</p>
-                      {loc.is_seasonal && (
-                        <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 uppercase tracking-wide font-semibold">
-                          Seasonal · opens {loc.active_from ?? '?'}
-                        </p>
-                      )}
-                    </button>
-                  ))}
+                  {locations.map(loc => {
+                    const note = upcomingSeasonalNote(loc)
+                    return (
+                      <button
+                        key={loc.id}
+                        type="button"
+                        onClick={() => selectFrom(loc.id)}
+                        className={`w-full text-left px-4 py-3 rounded-lg border transition-colors
+                          ${fromLocationId === loc.id
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                            : 'border-gray-200 dark:border-gray-700 hover:border-blue-300'}`}
+                      >
+                        <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{loc.name}</p>
+                        {note && (
+                          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 uppercase tracking-wide font-semibold">
+                            {note}
+                          </p>
+                        )}
+                      </button>
+                    )
+                  })}
                 </div>
 
                 <SectionHeader label="To" color="green" />
                 <div className="space-y-2">
-                  {locations.map(loc => (
-                    <button
-                      key={loc.id}
-                      type="button"
-                      onClick={() => setToLocationId(loc.id)}
-                      disabled={loc.id === fromLocationId}
-                      className={`w-full text-left px-4 py-3 rounded-lg border transition-colors disabled:opacity-40
-                        ${toLocationId === loc.id
-                          ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-                          : 'border-gray-200 dark:border-gray-700 hover:border-green-300'}`}
-                    >
-                      <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{loc.name}</p>
-                      {loc.is_seasonal && (
-                        <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 uppercase tracking-wide font-semibold">
-                          Seasonal · opens {loc.active_from ?? '?'}
-                        </p>
-                      )}
-                    </button>
-                  ))}
+                  {locations.map(loc => {
+                    const note = upcomingSeasonalNote(loc)
+                    return (
+                      <button
+                        key={loc.id}
+                        type="button"
+                        onClick={() => selectTo(loc.id)}
+                        className={`w-full text-left px-4 py-3 rounded-lg border transition-colors
+                          ${toLocationId === loc.id
+                            ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                            : 'border-gray-200 dark:border-gray-700 hover:border-green-300'}`}
+                      >
+                        <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{loc.name}</p>
+                        {note && (
+                          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 uppercase tracking-wide font-semibold">
+                            {note}
+                          </p>
+                        )}
+                      </button>
+                    )
+                  })}
                 </div>
 
                 <div>
@@ -332,17 +373,56 @@ export default function TransferDispatchForm({
                     className="w-full px-3 py-2 border rounded text-sm dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
                   />
                 </div>
+
+                {/* Test mode */}
+                <div className={`flex items-center justify-between rounded-md border px-3 py-2.5
+                  ${isTest
+                    ? 'border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-600'
+                    : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'
+                  }`}>
+                  <div>
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                      Test mode
+                      {isTest && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-200 dark:bg-yellow-800
+                                          text-yellow-800 dark:text-yellow-200 font-bold uppercase tracking-wide">
+                          Beta
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      {isTest
+                        ? 'Dispatch + receive will run, but NO inventory changes in Shopify.'
+                        : 'Full production mode — dispatch decrements Shopify immediately.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsTest(v => !v)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                      ${isTest ? 'bg-yellow-400' : 'bg-gray-300 dark:bg-gray-600'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow
+                      transition-transform ${isTest ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
               </>
             )}
 
             {/* Step: Lines */}
             {step === 'lines' && (
               <>
-                {/* In-transit warning */}
-                <div className="px-3 py-2.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-300">
-                  <p className="font-semibold mb-0.5">⚠ In-transit state</p>
-                  <p>Once dispatched, Shopify will decrement stock at <strong>{fromLocation?.name}</strong> immediately. Stock will not appear at <strong>{toLocation?.name}</strong> until received. Titles will temporarily show zero at both locations.</p>
-                </div>
+                {isTest ? (
+                  <div className="px-3 py-2.5 rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 text-xs text-yellow-800 dark:text-yellow-200">
+                    <p className="font-semibold mb-0.5">Test mode</p>
+                    <p>This transfer will move through dispatch and receive for rehearsal, but <strong>no Shopify inventory will change</strong> at either location.</p>
+                  </div>
+                ) : (
+                  <div className="px-3 py-2.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-300">
+                    <p className="font-semibold mb-0.5">⚠ In-transit state</p>
+                    <p>Once dispatched, Shopify will decrement stock at <strong>{fromLocation?.name}</strong> immediately. Stock will not appear at <strong>{toLocation?.name}</strong> until received. Titles will temporarily show zero at both locations.</p>
+                  </div>
+                )}
 
                 <LineSearch onAdd={addLine} />
 
@@ -405,10 +485,16 @@ export default function TransferDispatchForm({
                   </div>
                 </div>
 
-                <div className="px-3 py-2.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-300">
-                  Dispatching will immediately decrement <strong>{fromLocation?.name}</strong> in Shopify.
-                  Stock is in transit until <strong>{toLocation?.name}</strong> staff confirm receipt.
-                </div>
+                {isTest ? (
+                  <div className="px-3 py-2.5 rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 text-xs text-yellow-800 dark:text-yellow-200">
+                    <strong>Test mode</strong> — dispatching will move the transfer to in-transit for rehearsal, but will <strong>not</strong> change Shopify inventory at <strong>{fromLocation?.name}</strong> or <strong>{toLocation?.name}</strong>.
+                  </div>
+                ) : (
+                  <div className="px-3 py-2.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-300">
+                    Dispatching will immediately decrement <strong>{fromLocation?.name}</strong> in Shopify.
+                    Stock is in transit until <strong>{toLocation?.name}</strong> staff confirm receipt.
+                  </div>
+                )}
               </>
             )}
 
@@ -424,11 +510,12 @@ export default function TransferDispatchForm({
             {step === 'done' && resultId && (
               <div className="space-y-4">
                 <div className="px-4 py-3 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-sm text-green-700 dark:text-green-300">
-                  <p className="font-semibold">Transfer dispatched</p>
+                  <p className="font-semibold">Transfer dispatched{isTest ? ' (test)' : ''}</p>
                   <p className="font-mono text-xs mt-1">{resultId}</p>
                   <p className="mt-1 text-xs">
-                    {totalUnits} unit{totalUnits !== 1 ? 's' : ''} are now in transit to <strong>{toLocation?.name}</strong>.
-                    Shopify has decremented <strong>{fromLocation?.name}</strong>.
+                    {isTest
+                      ? <>{totalUnits} unit{totalUnits !== 1 ? 's' : ''} are marked in transit to <strong>{toLocation?.name}</strong>. No Shopify inventory was changed (test mode).</>
+                      : <>{totalUnits} unit{totalUnits !== 1 ? 's' : ''} are now in transit to <strong>{toLocation?.name}</strong>. Shopify has decremented <strong>{fromLocation?.name}</strong>.</>}
                   </p>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -492,9 +579,10 @@ export default function TransferDispatchForm({
                 </button>
                 <button
                   onClick={handleDispatch}
-                  className="flex-1 px-4 py-2 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold transition-colors"
+                  className={`flex-1 px-4 py-2 rounded-md text-white text-sm font-semibold transition-colors
+                    ${isTest ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-amber-600 hover:bg-amber-700'}`}
                 >
-                  Dispatch transfer
+                  {isTest ? 'Dispatch TEST transfer' : 'Dispatch transfer'}
                 </button>
               </>
             )}

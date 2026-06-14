@@ -494,6 +494,7 @@ export async function fetchTransfers(opts: {
   status?: string
   fromLocationId?: string
   toLocationId?: string
+  includeArchived?: boolean
   limit?: number
   offset?: number
 } = {}): Promise<InventoryTransfer[]> {
@@ -501,6 +502,7 @@ export async function fetchTransfers(opts: {
     status:           opts.status,
     from_location_id: opts.fromLocationId,
     to_location_id:   opts.toLocationId,
+    include_archived: opts.includeArchived,
     limit:            opts.limit ?? 100,
     offset:           opts.offset ?? 0,
   })}`)
@@ -515,6 +517,7 @@ export async function dispatchTransfer(body: {
   to_location_id: string
   lines: Array<{ inventory_item_id: string; variant_id: string; quantity_sent: number }>
   notes?: string
+  is_test?: boolean
 }): Promise<TransferResult> {
   return sc('/api/transfers', { method: 'POST', body: JSON.stringify(body) })
 }
@@ -526,6 +529,7 @@ export async function receiveTransfer(
       transfer_line_id: string
       inventory_item_id: string
       quantity_received: number
+      quantity_damaged?: number
     }>
     notes?: string
   }
@@ -538,6 +542,10 @@ export async function receiveTransfer(
 
 export async function cancelTransfer(transferId: string): Promise<void> {
   return sc(`/api/transfers/${transferId}`, { method: 'DELETE' })
+}
+
+export async function archiveTestTransfers(): Promise<{ archived_count: number }> {
+  return sc('/api/transfers/archive-test-transfers', { method: 'POST' })
 }
 
 // ===========================================================================
