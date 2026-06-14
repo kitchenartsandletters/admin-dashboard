@@ -16,6 +16,11 @@
 // Test mode: when enabled, the transfer advances through dispatch/receive
 // without creating inventory_events or mutating Shopify (mirrors PO test mode).
 // Used to rehearse the flow end-to-end with zero inventory impact.
+//
+// From/To selection: never disables options. Picking a location that is already
+// chosen in the opposite field auto-resolves the conflict — if only one other
+// location exists it swaps to it (clean 2-location swap); otherwise it clears
+// the opposite field so the user chooses deliberately.
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -171,7 +176,6 @@ export default function TransferDispatchForm({
     fetchLocations()
       .then(locs => {
         setLocations(locs.filter(l => l.is_active))
-        // Auto-select if defaults are provided and valid
         if (defaultFromLocationId) setFromLocationId(defaultFromLocationId)
         if (defaultToLocationId) setToLocationId(defaultToLocationId)
       })
@@ -194,9 +198,25 @@ export default function TransferDispatchForm({
   const fromLocation = locations.find(l => l.id === fromLocationId)
   const toLocation   = locations.find(l => l.id === toLocationId)
 
+  // Selecting a location auto-resolves a collision with the opposite field:
+  // one other location → swap to it; several → clear the opposite field.
+  const selectFrom = (id: string) => {
+    setFromLocationId(id)
+    if (toLocationId === id) {
+      const others = locations.filter(l => l.id !== id)
+      setToLocationId(others.length === 1 ? others[0].id : '')
+    }
+  }
+  const selectTo = (id: string) => {
+    setToLocationId(id)
+    if (fromLocationId === id) {
+      const others = locations.filter(l => l.id !== id)
+      setFromLocationId(others.length === 1 ? others[0].id : '')
+    }
+  }
+
   const addLine = useCallback((partial: Omit<TransferLine, '_key' | 'quantity_sent'>) => {
     setLines(prev => {
-      // If already in list, just bump qty
       const existing = prev.findIndex(l => l.inventory_item_id === partial.inventory_item_id)
       if (existing >= 0) {
         const next = [...prev]
@@ -301,9 +321,8 @@ export default function TransferDispatchForm({
                       <button
                         key={loc.id}
                         type="button"
-                        onClick={() => setFromLocationId(loc.id)}
-                        disabled={loc.id === toLocationId}
-                        className={`w-full text-left px-4 py-3 rounded-lg border transition-colors disabled:opacity-40
+                        onClick={() => selectFrom(loc.id)}
+                        className={`w-full text-left px-4 py-3 rounded-lg border transition-colors
                           ${fromLocationId === loc.id
                             ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                             : 'border-gray-200 dark:border-gray-700 hover:border-blue-300'}`}
@@ -327,9 +346,8 @@ export default function TransferDispatchForm({
                       <button
                         key={loc.id}
                         type="button"
-                        onClick={() => setToLocationId(loc.id)}
-                        disabled={loc.id === fromLocationId}
-                        className={`w-full text-left px-4 py-3 rounded-lg border transition-colors disabled:opacity-40
+                        onClick={() => selectTo(loc.id)}
+                        className={`w-full text-left px-4 py-3 rounded-lg border transition-colors
                           ${toLocationId === loc.id
                             ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
                             : 'border-gray-200 dark:border-gray-700 hover:border-green-300'}`}
@@ -394,7 +412,6 @@ export default function TransferDispatchForm({
             {/* Step: Lines */}
             {step === 'lines' && (
               <>
-                {/* In-transit warning (production) / test banner */}
                 {isTest ? (
                   <div className="px-3 py-2.5 rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 text-xs text-yellow-800 dark:text-yellow-200">
                     <p className="font-semibold mb-0.5">Test mode</p>

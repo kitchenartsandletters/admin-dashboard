@@ -33,6 +33,9 @@ export const TRANSFER_STATUS_COLORS: Record<TransferStatus, string> = {
 
 export interface InventoryTransfer {
   id: string
+  // Human-friendly reference (TR-YYYYMMDD-XXXX), generated at dispatch.
+  // Null for any rows created before transfer numbers existed.
+  transfer_number: string | null
   from_location_id: string
   to_location_id: string
   status: TransferStatus
