@@ -13,7 +13,7 @@ import TransferReceivePanel from './TransferReceivePanel'
 
 type LocMap = Record<string, Location>
 
-// Numeric tail of a Shopify location GID, e.g. .../Location/40052293765 -> 40052293765
+// Numeric tail of a Shopify GID, e.g. .../Location/40052293765 -> 40052293765
 const idTail = (gid: string) => gid.split('/').pop() ?? gid
 // Short form of a transfer UUID, for rows created before transfer numbers existed.
 const shortId = (id: string) => id.slice(0, 8)
@@ -28,10 +28,10 @@ const TestBadge = () => (
 )
 
 // Location name prominent, numeric id small beneath.
-function LocationLabel({ id, locMap, align = 'left' }: { id: string; locMap: LocMap; align?: 'left' | 'center' }) {
+function LocationLabel({ id, locMap }: { id: string; locMap: LocMap }) {
   const name = locMap[id]?.name
   return (
-    <div className={align === 'center' ? 'text-center' : ''}>
+    <div>
       <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{name ?? '—'}</p>
       <p className="font-mono text-[10px] text-gray-400 dark:text-gray-500 truncate">{idTail(id)}</p>
     </div>
@@ -146,11 +146,19 @@ function TransferDetailSidebar({ detail, locMap, onClose, onReceive }: {
             <div className="space-y-2">
               {lines.map(line => (
                 <div key={line.id} className="rounded border dark:border-gray-700 px-3 py-2.5 bg-gray-50/50 dark:bg-gray-900/50">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
-                      {idTail(line.inventory_item_id)}
-                    </span>
-                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
+                        {line.title ?? idTail(line.inventory_item_id)}
+                      </p>
+                      <p className="font-mono text-[10px] text-gray-400 dark:text-gray-500 truncate">
+                        {idTail(line.variant_id)}{line.isbn ? ` · ${line.isbn}` : ''}
+                      </p>
+                      {line.vendor && (
+                        <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate">{line.vendor}</p>
+                      )}
+                    </div>
+                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 shrink-0">
                       {line.status.replace('_', ' ')}
                     </span>
                   </div>
@@ -254,6 +262,7 @@ export default function TransferService() {
   const [locMap,    setLocMap]    = useState<LocMap>({})
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState<string | null>(null)
+  const [search,    setSearch]    = useState('')
   const [statusFilter, setStatusFilter] = useState<TransferStatus | 'all'>('all')
   const [sortConfig, setSortConfig] = useState<SortConfig<InventoryTransfer> | null>({ key: 'created_at', direction: 'desc' })
   const [selected,  setSelected]  = useState<InventoryTransfer | null>(null)
@@ -282,7 +291,19 @@ export default function TransferService() {
   }, [selected])
 
   const filtered = useMemo(() => {
-    let list = statusFilter === 'all' ? transfers : transfers.filter(t => t.status === statusFilter)
+    const q = search.trim().toLowerCase()
+    let list = transfers.filter(t => {
+      if (statusFilter !== 'all' && t.status !== statusFilter) return false
+      if (!q) return true
+      // search_blob (transfer #, titles, ISBNs, variant/item ids, vendor,
+      // supplier) comes from the server; location names are resolved here.
+      const hay = [
+        t.search_blob ?? '',
+        locMap[t.from_location_id]?.name ?? '',
+        locMap[t.to_location_id]?.name ?? '',
+      ].join(' ').toLowerCase()
+      return hay.includes(q)
+    })
     if (sortConfig) {
       list = [...list].sort((a, b) => {
         const av = a[sortConfig.key] as string | null
@@ -293,7 +314,7 @@ export default function TransferService() {
       })
     }
     return list
-  }, [transfers, statusFilter, sortConfig])
+  }, [transfers, statusFilter, search, sortConfig, locMap])
 
   const STATUS_FILTERS: { key: TransferStatus | 'all'; label: string }[] = [
     { key: 'all',        label: 'All'        },
@@ -327,6 +348,14 @@ export default function TransferService() {
             {error}
           </div>
         )}
+
+        {/* Search */}
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search transfer #, title, ISBN, variant, vendor, or location…"
+          className="w-full px-3 py-2 border rounded-md text-sm bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none"
+        />
 
         <div className="flex gap-1 flex-wrap">
           {STATUS_FILTERS.map(f => (
