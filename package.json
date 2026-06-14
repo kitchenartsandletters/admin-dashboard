@@ -5,7 +5,7 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@types/react-router-dom": "^5.3.3",
-    "vite": "^7.0.6"
+    "vite": "^8.0.16"
   },
   "scripts": {
     "dev": "vite",
