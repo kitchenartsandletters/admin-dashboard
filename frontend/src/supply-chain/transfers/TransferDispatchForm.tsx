@@ -39,6 +39,17 @@ interface TransferLine {
 
 type FormStep = 'locations' | 'lines' | 'review' | 'executing' | 'done' | 'error'
 
+// Today as YYYY-MM-DD for seasonal-window comparison (string compare is safe for ISO dates).
+const TODAY_STR = new Date().toISOString().slice(0, 10)
+
+// A seasonal location only warrants an "opens …" note if it hasn't opened yet.
+// Once active_from is in the past, the location is open and the note is stale.
+function upcomingSeasonalNote(loc: Location): string | null {
+  if (!loc.is_seasonal) return null
+  if (loc.active_from && loc.active_from > TODAY_STR) return `Seasonal · opens ${loc.active_from}`
+  return null
+}
+
 // ---------------------------------------------------------------------------
 // Shared primitives
 // ---------------------------------------------------------------------------
@@ -62,13 +73,14 @@ const SectionHeader = ({ label, color = 'blue' }: { label: string; color?: strin
 
 // ---------------------------------------------------------------------------
 // Line item search
+// Results render in normal flow (not absolutely positioned) so they are never
+// clipped by the modal's scroll container; the panel scrolls internally.
 // ---------------------------------------------------------------------------
 
 function LineSearch({ onAdd }: { onAdd: (line: Omit<TransferLine, '_key' | 'quantity_sent'>) => void }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<VariantSearchResult[]>([])
   const [searching, setSearching] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (query.length < 2) { setResults([]); return }
@@ -82,14 +94,6 @@ function LineSearch({ onAdd }: { onAdd: (line: Omit<TransferLine, '_key' | 'quan
     return () => clearTimeout(t)
   }, [query])
 
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setResults([])
-    }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [])
-
   const handleSelect = (r: VariantSearchResult) => {
     onAdd({
       inventory_item_id: r.inventory_item_id,
@@ -102,7 +106,7 @@ function LineSearch({ onAdd }: { onAdd: (line: Omit<TransferLine, '_key' | 'quan
   }
 
   return (
-    <div ref={ref} className="relative">
+    <div>
       <Label>Search by title or ISBN</Label>
       <input
         value={query}
@@ -114,12 +118,12 @@ function LineSearch({ onAdd }: { onAdd: (line: Omit<TransferLine, '_key' | 'quan
         <p className="text-xs text-gray-400 mt-1 animate-pulse">Searching…</p>
       )}
       {results.length > 0 && (
-        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-md shadow-xl overflow-hidden">
+        <div className="mt-1 bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-md shadow-sm overflow-hidden max-h-64 overflow-y-auto">
           {results.map(r => (
             <button
               key={r.inventory_item_id}
               type="button"
-              onMouseDown={() => handleSelect(r)}
+              onClick={() => handleSelect(r)}
               className="w-full text-left px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800 border-b dark:border-gray-800 last:border-0"
             >
               <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{r.title}</p>
@@ -291,48 +295,54 @@ export default function TransferDispatchForm({
               <>
                 <SectionHeader label="From" color="blue" />
                 <div className="space-y-2">
-                  {locations.map(loc => (
-                    <button
-                      key={loc.id}
-                      type="button"
-                      onClick={() => setFromLocationId(loc.id)}
-                      disabled={loc.id === toLocationId}
-                      className={`w-full text-left px-4 py-3 rounded-lg border transition-colors disabled:opacity-40
-                        ${fromLocationId === loc.id
-                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                          : 'border-gray-200 dark:border-gray-700 hover:border-blue-300'}`}
-                    >
-                      <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{loc.name}</p>
-                      {loc.is_seasonal && (
-                        <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 uppercase tracking-wide font-semibold">
-                          Seasonal · opens {loc.active_from ?? '?'}
-                        </p>
-                      )}
-                    </button>
-                  ))}
+                  {locations.map(loc => {
+                    const note = upcomingSeasonalNote(loc)
+                    return (
+                      <button
+                        key={loc.id}
+                        type="button"
+                        onClick={() => setFromLocationId(loc.id)}
+                        disabled={loc.id === toLocationId}
+                        className={`w-full text-left px-4 py-3 rounded-lg border transition-colors disabled:opacity-40
+                          ${fromLocationId === loc.id
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                            : 'border-gray-200 dark:border-gray-700 hover:border-blue-300'}`}
+                      >
+                        <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{loc.name}</p>
+                        {note && (
+                          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 uppercase tracking-wide font-semibold">
+                            {note}
+                          </p>
+                        )}
+                      </button>
+                    )
+                  })}
                 </div>
 
                 <SectionHeader label="To" color="green" />
                 <div className="space-y-2">
-                  {locations.map(loc => (
-                    <button
-                      key={loc.id}
-                      type="button"
-                      onClick={() => setToLocationId(loc.id)}
-                      disabled={loc.id === fromLocationId}
-                      className={`w-full text-left px-4 py-3 rounded-lg border transition-colors disabled:opacity-40
-                        ${toLocationId === loc.id
-                          ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-                          : 'border-gray-200 dark:border-gray-700 hover:border-green-300'}`}
-                    >
-                      <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{loc.name}</p>
-                      {loc.is_seasonal && (
-                        <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 uppercase tracking-wide font-semibold">
-                          Seasonal · opens {loc.active_from ?? '?'}
-                        </p>
-                      )}
-                    </button>
-                  ))}
+                  {locations.map(loc => {
+                    const note = upcomingSeasonalNote(loc)
+                    return (
+                      <button
+                        key={loc.id}
+                        type="button"
+                        onClick={() => setToLocationId(loc.id)}
+                        disabled={loc.id === fromLocationId}
+                        className={`w-full text-left px-4 py-3 rounded-lg border transition-colors disabled:opacity-40
+                          ${toLocationId === loc.id
+                            ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                            : 'border-gray-200 dark:border-gray-700 hover:border-green-300'}`}
+                      >
+                        <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{loc.name}</p>
+                        {note && (
+                          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 uppercase tracking-wide font-semibold">
+                            {note}
+                          </p>
+                        )}
+                      </button>
+                    )
+                  })}
                 </div>
 
                 <div>
