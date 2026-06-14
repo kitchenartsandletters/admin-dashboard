@@ -47,6 +47,9 @@ export interface InventoryTransfer {
   created_at: string
   received_at: string | null
   archived_at: string | null
+  // Server-built lowercase string (transfer number + per-line title/ISBN/
+  // variant/vendor/supplier) for client-side search. List responses only.
+  search_blob?: string | null
 }
 
 export interface InventoryTransferLine {
@@ -63,6 +66,12 @@ export interface InventoryTransferLine {
   increment_applied_at: string | null
   damage_applied_at: string | null
   status: TransferLineStatus
+  // Enriched on the detail endpoint from supplier_products (nullable when the
+  // item has no supplier_products row):
+  title?: string | null
+  isbn?: string | null
+  vendor?: string | null
+  supplier_name?: string | null
 }
 
 export interface TransferDetail {
