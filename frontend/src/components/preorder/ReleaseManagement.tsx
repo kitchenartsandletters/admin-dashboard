@@ -326,20 +326,26 @@ const ReleaseManagement = () => {
   // ── Loading ──
   if (loading) {
     return (
-      <div className="space-y-3 animate-pulse">
+      <div className="space-y-4 px-4 sm:px-0 animate-pulse mt-4">
         <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/3" />
         <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2" />
-        {[...Array(6)].map((_, i) => <div key={i} className="h-12 bg-gray-100 dark:bg-gray-800 rounded" />)}
+        <div className="space-y-3 pt-4">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="h-24 sm:h-12 bg-gray-100 dark:bg-gray-800 rounded-xl sm:rounded" />
+          ))}
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="text-red-600 dark:text-red-400 p-4">
+      <div className="text-red-600 dark:text-red-400 p-6 text-center sm:text-left">
         <p className="font-semibold">Error loading preorder products</p>
         <p className="text-sm mt-1">{error}</p>
-        <button onClick={fetchProducts} className="mt-3 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 text-sm">Retry</button>
+        <button onClick={fetchProducts} className="mt-4 w-full sm:w-auto px-6 py-2.5 bg-gray-600 text-white rounded-xl sm:rounded hover:bg-gray-700 text-sm font-medium">
+          Retry
+        </button>
       </div>
     );
   }
@@ -359,34 +365,47 @@ const ReleaseManagement = () => {
     return null;
   };
 
-  const renderActions = (product: PreorderProduct) => {
+  const renderActions = (product: PreorderProduct, isMobile = false) => {
     const cs = cleanupStates[product.product_id];
     const isLoading = actionLoading[product.product_id];
     const result = actionResults[product.product_id];
     const pastPub = isPastPubDate(product.pub_date);
 
+    const baseBtnCls = isMobile 
+      ? "w-full text-center px-4 py-2.5 text-xs font-semibold rounded-lg shadow-sm" 
+      : "px-2.5 py-1 text-xs rounded font-medium shadow-sm";
+
     return (
-      <div className="flex items-center gap-2">
+      <div className={`flex items-center ${isMobile ? 'w-full' : 'gap-2'}`}>
         {!cs && (
-          <button onClick={() => fetchCleanupState(product.product_id)}
-            className="px-2.5 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700">
-            Inspect
+          <button 
+            onClick={() => fetchCleanupState(product.product_id)}
+            className={`${baseBtnCls} border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 active:scale-[0.98] transition-transform`}
+          >
+            Inspect Status
           </button>
         )}
         {cs && pastPub && (cs.description_needs_cleaning || cs.in_preorder_collection) && (
           <button
             onClick={() => setConfirmModal({ open: true, productId: product.product_id, title: product.title, action: 'full' })}
             disabled={isLoading}
-            className="px-2.5 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
+            className={`${baseBtnCls} bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98] transition-transform`}
+          >
             {isLoading ? 'Running…' : 'Full Cleanup'}
           </button>
         )}
-        {cs && !pastPub && <span className="text-xs text-gray-400 dark:text-gray-500 italic">Not yet due</span>}
+        {cs && !pastPub && (
+          <span className={`text-xs text-gray-400 dark:text-gray-500 italic ${isMobile ? 'text-center w-full block bg-gray-50 dark:bg-gray-800/40 py-2 rounded-lg' : ''}`}>
+            Not yet due
+          </span>
+        )}
         {cs && pastPub && !cs.description_needs_cleaning && !cs.in_preorder_collection && (
-          <span className="text-xs text-green-600 dark:text-green-400">✓ Clean</span>
+          <span className={`text-xs font-semibold text-green-600 dark:text-green-400 ${isMobile ? 'text-center w-full block bg-green-50/50 dark:bg-green-900/10 py-2 rounded-lg border border-green-100 dark:border-green-900/30' : ''}`}>
+            ✓ Clean
+          </span>
         )}
         {result?.overall && (
-          <span className={`text-xs font-medium ${result.overall === 'success' ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+          <span className={`text-xs font-semibold ml-2 ${result.overall === 'success' ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
             {result.overall === 'success' ? '✓ Done' : '⚠ Partial'}
           </span>
         )}
@@ -395,18 +414,18 @@ const ReleaseManagement = () => {
   };
 
   return (
-    <div>
-      <div className="mb-6">
+    <div className="px-4 sm:px-0 py-4 sm:py-0 space-y-6">
+      <div>
         <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Release Management</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           {products.length} preorder products
-          {inspecting && <span className="ml-2 text-blue-500 dark:text-blue-400 animate-pulse">· Inspecting cleanup states…</span>}
+          {inspecting && <span className="ml-2 inline-block text-blue-500 dark:text-blue-400 text-xs font-medium animate-pulse">· Inspecting states…</span>}
         </p>
       </div>
 
       {/* ── Upcoming Releases ── */}
       {upcomingReleases.length > 0 && (
-        <div className="mb-6 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-4">
+        <div className="rounded-xl sm:rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-4">
           <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-200 mb-3">
             Upcoming — Next 7 Days ({upcomingReleases.length})
           </h3>
@@ -416,18 +435,18 @@ const ReleaseManagement = () => {
               const badge = classificationBadge(p.classification);
               return (
                 <div key={p.product_id}
-                  className="flex items-center justify-between gap-4 text-sm bg-white dark:bg-gray-800 rounded px-3 py-2 border border-blue-100 dark:border-blue-800/50">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="font-medium text-gray-900 dark:text-gray-100 truncate">{p.title}</span>
-                    <span className={`shrink-0 px-2 py-0.5 rounded text-xs font-medium ${badge.cls}`}>{badge.label}</span>
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm bg-white dark:bg-gray-800 rounded-xl sm:rounded p-3 sm:py-2 border border-blue-100 dark:border-blue-800/50">
+                  <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+                    <span className="font-semibold sm:font-medium text-gray-900 dark:text-gray-100 line-clamp-2 sm:truncate">{p.title}</span>
+                    <span className={`shrink-0 px-2 py-0.5 rounded text-[10px] sm:text-xs font-semibold sm:font-medium whitespace-nowrap mt-0.5 sm:mt-0 ${badge.cls}`}>{badge.label}</span>
                   </div>
-                  <div className="flex items-center gap-4 shrink-0">
-                    <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDate(p.pub_date)}</span>
+                  <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 dark:border-gray-700/60">
+                    <span className="text-xs font-mono sm:font-sans text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDate(p.pub_date)}</span>
                     <div className="flex items-center gap-2">
                       {cs ? (
                         <>
-                          <span className={`px-1.5 py-0.5 rounded text-xs ${descBadge(cs.description_status).cls}`}>{descBadge(cs.description_status).label}</span>
-                          <span className={`text-xs ${cs.in_preorder_collection ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] sm:text-xs font-medium ${descBadge(cs.description_status).cls}`}>{descBadge(cs.description_status).label}</span>
+                          <span className={`text-xs font-medium ${cs.in_preorder_collection ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>
                             {cs.in_preorder_collection ? 'In coll.' : 'Out'}
                           </span>
                         </>
@@ -453,43 +472,48 @@ const ReleaseManagement = () => {
         });
         if (historicalNeedsAttention.length === 0) return null;
         return (
-          <div className="mb-6 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-4">
-            <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200 mb-3">
+          <div className="rounded-xl sm:rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-4">
+            <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200 mb-2">
               Historical — Needs Attention ({historicalNeedsAttention.length})
             </h3>
-            <p className="text-xs text-amber-700 dark:text-amber-400 mb-3">
+            <p className="text-xs text-amber-700 dark:text-amber-400 mb-3 leading-relaxed">
               These titles have released but retain preorder residue (description, collection, or catch-all).
             </p>
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {historicalNeedsAttention.map((p) => {
                 const cs = cleanupStates[p.product_id];
                 const isLoading = actionLoading[p.product_id];
                 const result = actionResults[p.product_id];
                 return (
                   <div key={p.product_id}
-                    className="flex items-center justify-between gap-4 text-sm bg-white dark:bg-gray-800 rounded px-3 py-2 border border-amber-100 dark:border-amber-800/50">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className="font-medium text-gray-900 dark:text-gray-100 truncate">{p.title}</span>
-                      <span className="text-xs text-gray-400">{formatDate(p.pub_date)}</span>
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm bg-white dark:bg-gray-800 rounded-xl p-3 sm:py-2 border border-amber-100 dark:border-amber-800/50 shadow-sm">
+                    <div className="min-w-0 space-y-1">
+                      <div className="font-semibold text-gray-900 dark:text-gray-100 line-clamp-2 sm:truncate">{p.title}</div>
+                      <div className="text-xs font-mono text-gray-400">{formatDate(p.pub_date)}</div>
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      {cs.description_needs_cleaning && (
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Body</span>
-                      )}
-                      {cs.in_preorder_collection && (
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Collection</span>
-                      )}
-                      {result?.overall && (
-                        <span className={`text-xs font-medium ${result.overall === 'success' ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                          {result.overall === 'success' ? '✓ Done' : '⚠ Partial'}
-                        </span>
-                      )}
-                      <button
-                        onClick={() => setConfirmModal({ open: true, productId: p.product_id, title: p.title, action: 'full' })}
-                        disabled={isLoading}
-                        className="px-2.5 py-1 text-xs rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50">
-                        {isLoading ? 'Running…' : 'Full Cleanup'}
-                      </button>
+                    <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2.5 sm:pt-0 border-t sm:border-t-0 border-gray-100 dark:border-gray-700">
+                      <div className="flex gap-1.5">
+                        {cs.description_needs_cleaning && (
+                          <span className="text-[10px] sm:text-xs px-2 py-0.5 rounded-md font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Body</span>
+                        )}
+                        {cs.in_preorder_collection && (
+                          <span className="text-[10px] sm:text-xs px-2 py-0.5 rounded-md font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Collection</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {result?.overall && (
+                          <span className={`text-xs font-semibold ${result.overall === 'success' ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                            {result.overall === 'success' ? '✓ Done' : '⚠ Partial'}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => setConfirmModal({ open: true, productId: p.product_id, title: p.title, action: 'full' })}
+                          disabled={isLoading}
+                          className="px-3 py-1.5 sm:py-1 text-xs font-semibold sm:font-medium rounded-lg sm:rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 shadow-sm"
+                        >
+                          {isLoading ? 'Running…' : 'Full Cleanup'}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -499,37 +523,87 @@ const ReleaseManagement = () => {
         );
       })()}
 
-      {/* ── Controls ── */}
-      <div className="flex flex-wrap gap-3 items-center mb-4">
-        <input type="text" placeholder="Search by title, ISBN, or ID…" value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[240px]" />
-        <select value={filter} onChange={(e) => setFilter(e.target.value as FilterMode)}
-          className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
-          <option value="active">Active / Early Stock</option>
-          <option value="all">All Products</option>
-          <option value="needs_cleanup">Needs Cleanup</option>
-          <option value="historical">Historical Only</option>
-        </select>
-        <span className="text-xs text-gray-400 dark:text-gray-500">
+      {/* ── Controls Layout ── */}
+      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between bg-gray-50 dark:bg-gray-800/40 p-3 rounded-xl border border-gray-100 dark:border-gray-800/40">
+        <div className="flex flex-col sm:flex-row gap-2 flex-1">
+          <input type="text" placeholder="Search title, ISBN, or ID…" value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="px-3 py-2.5 sm:py-2 border border-gray-300 dark:border-gray-600 rounded-lg sm:rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:min-w-[260px]" />
+          
+          <select value={filter} onChange={(e) => setFilter(e.target.value as FilterMode)}
+            className="px-3 py-2.5 sm:py-2 border border-gray-300 dark:border-gray-600 rounded-lg sm:rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="active">Active / Early Stock</option>
+            <option value="all">All Products</option>
+            <option value="needs_cleanup">Needs Cleanup</option>
+            <option value="historical">Historical Only</option>
+          </select>
+        </div>
+        <span className="text-xs text-center sm:text-right text-gray-400 dark:text-gray-500 font-medium pt-1 sm:pt-0">
           Showing {filteredProducts.length} of {products.length}
         </span>
       </div>
 
-      {/* ── Table ── */}
-      <div className="overflow-x-auto rounded border border-gray-200 dark:border-gray-700">
+      {/* ── MOBILE VIEW: Card Stack Layout ── */}
+      <div className="block sm:hidden space-y-3">
+        {filteredProducts.map((product) => {
+          const badge = classificationBadge(product.classification);
+          const pastPub = isPastPubDate(product.pub_date);
+          return (
+            <div key={product.product_id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h4 className="font-semibold text-gray-900 dark:text-gray-100 leading-snug line-clamp-2">{product.title}</h4>
+                  <span className="text-xs font-mono text-gray-400 dark:text-gray-500 block mt-1">{product.isbn || product.product_id}</span>
+                </div>
+                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide whitespace-nowrap uppercase ${badge.cls}`}>{badge.label}</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs bg-gray-50 dark:bg-gray-800/40 p-2.5 rounded-lg border border-gray-100 dark:border-gray-700/30">
+                <div>
+                  <span className="text-gray-400 block font-medium mb-0.5">Pub Date</span>
+                  <span className={`font-medium ${pastPub ? 'text-amber-600 dark:text-amber-400' : 'text-gray-900 dark:text-gray-100'}`}>
+                    {formatDate(product.pub_date)} {pastPub && '(past)'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-1 border-l border-gray-200 dark:border-gray-700/60 pl-3">
+                  <div>
+                    <span className="text-gray-400 block font-medium mb-0.5">Body</span>
+                    {renderCleanupCell(product.product_id, 'description_status')}
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block font-medium mb-0.5">Collection</span>
+                    {renderCleanupCell(product.product_id, 'in_preorder_collection')}
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-1">
+                {renderActions(product, true)}
+              </div>
+            </div>
+          );
+        })}
+        {filteredProducts.length === 0 && (
+          <div className="p-8 text-center text-gray-400 dark:text-gray-500 text-sm bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
+            No products match the current filter.
+          </div>
+        )}
+      </div>
+
+      {/* ── DESKTOP VIEW: Data Table Layout ── */}
+      <div className="hidden sm:block overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-gray-50 dark:bg-gray-800 text-left">
               {([['title', 'Title'], ['pub_date', 'Pub Date'], ['classification', 'Status']] as [SortKey, string][]).map(([key, label]) => (
                 <th key={key} onClick={() => handleSort(key)}
-                  className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:text-gray-900 dark:hover:text-white whitespace-nowrap">
-                  {label} {sortIcon(key)}
+                  className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 cursor-pointer hover:text-gray-900 dark:hover:text-white whitespace-nowrap select-none">
+                  {label} <span className="ml-0.5 opacity-80">{sortIcon(key)}</span>
                 </th>
               ))}
-              <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Body HTML</th>
-              <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300 text-center">Collection</th>
-              <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Actions</th>
+              <th className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Body HTML</th>
+              <th className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 text-center">Collection</th>
+              <th className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -537,26 +611,26 @@ const ReleaseManagement = () => {
               const badge = classificationBadge(product.classification);
               const pastPub = isPastPubDate(product.pub_date);
               return (
-                <tr key={product.product_id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                <tr key={product.product_id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50/80 dark:hover:bg-gray-800/40 transition-colors">
                   <td className="px-4 py-3">
-                    <div className="font-medium text-gray-900 dark:text-gray-100 max-w-[300px] truncate">{product.title}</div>
-                    <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{product.isbn || product.product_id}</div>
+                    <div className="font-medium text-gray-900 dark:text-gray-100 max-w-[280px] lg:max-w-[360px] truncate">{product.title}</div>
+                    <div className="text-xs font-mono text-gray-400 dark:text-gray-500 mt-0.5">{product.isbn || product.product_id}</div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <span className={pastPub ? 'text-gray-500 dark:text-gray-400' : 'text-gray-900 dark:text-gray-100'}>{formatDate(product.pub_date)}</span>
-                    {pastPub && <span className="ml-1.5 text-xs text-amber-600 dark:text-amber-400">past</span>}
+                    <span className={pastPub ? 'text-gray-500 dark:text-gray-400 font-medium' : 'text-gray-900 dark:text-gray-100 font-medium'}>{formatDate(product.pub_date)}</span>
+                    {pastPub && <span className="ml-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/30 rounded">past</span>}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${badge.cls}`}>{badge.label}</span>
                   </td>
                   <td className="px-4 py-3">{renderCleanupCell(product.product_id, 'description_status')}</td>
                   <td className="px-4 py-3 text-center">{renderCleanupCell(product.product_id, 'in_preorder_collection')}</td>
-                  <td className="px-4 py-3">{renderActions(product)}</td>
+                  <td className="px-4 py-3">{renderActions(product, false)}</td>
                 </tr>
               );
             })}
             {filteredProducts.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400 dark:text-gray-500 text-sm">No products match the current filter.</td></tr>
+              <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-400 dark:text-gray-500 text-sm bg-white dark:bg-gray-800">No products match the current filter.</td></tr>
             )}
           </tbody>
         </table>
@@ -574,9 +648,9 @@ const ReleaseManagement = () => {
         variant="primary"
         confirmLabel="Run Cleanup"
       >
-        <p>This will clean the Body HTML, remove from Preorder collection, and unpublish from Catch All for:</p>
-        <p className="font-medium mt-2">{confirmModal.title}</p>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Each step is independent — already-clean steps will be skipped.</p>
+        <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">This will clean the Body HTML, remove from Preorder collection, and unpublish from Catch All for:</p>
+        <p className="font-semibold text-gray-900 dark:text-white mt-2 bg-gray-50 dark:bg-gray-800/60 p-2.5 border border-gray-100 dark:border-gray-700 rounded-lg">{confirmModal.title}</p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-3 leading-relaxed">Each step handles its mutation independent of failure context — already-clean attributes will be safely skipped.</p>
       </ConfirmModal>
     </div>
   );
