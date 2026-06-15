@@ -206,24 +206,29 @@ const ShippingProfiles = () => {
   // ── Loading ──
   if (loading) {
     return (
-      <div className="space-y-3 animate-pulse">
+      <div className="space-y-4 px-4 md:px-0 animate-pulse mt-4">
         <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/3" />
-        {[...Array(4)].map((_, i) => <div key={i} className="h-16 bg-gray-100 dark:bg-gray-800 rounded" />)}
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+          {[...Array(6)].map((_, i) => <div key={i} className="h-16 bg-gray-100 dark:bg-gray-800 rounded-xl" />)}
+        </div>
+        {[...Array(3)].map((_, i) => <div key={i} className="h-20 bg-gray-100 dark:bg-gray-800 rounded-xl" />)}
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="text-red-600 dark:text-red-400 p-4">
+      <div className="text-red-600 dark:text-red-400 p-6 text-center md:text-left">
         <p className="font-semibold">Error loading shipping profiles</p>
         <p className="text-sm mt-1">{error}</p>
-        <button onClick={fetchProfiles} className="mt-3 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 text-sm">Retry</button>
+        <button onClick={fetchProfiles} className="mt-4 w-full md:w-auto px-6 py-2.5 bg-gray-600 text-white rounded-xl md:rounded hover:bg-gray-700 text-sm font-medium">
+          Retry
+        </button>
       </div>
     );
   }
 
-  // ── Issue row renderer ──
+  // ── Issue container renderer ──
   const IssueRow = ({ item, variant, onAction, actionLabel }: {
     item: { product_id: number; title: string; pub_date?: string };
     variant: 'amber' | 'red' | 'blue';
@@ -233,17 +238,23 @@ const ShippingProfiles = () => {
     const borderCls = variant === 'amber' ? 'border-amber-100 dark:border-amber-800/50' : variant === 'red' ? 'border-red-100 dark:border-red-800/50' : 'border-blue-100 dark:border-blue-800/50';
     const btnCls = variant === 'amber' ? 'bg-amber-600 hover:bg-amber-700' : variant === 'red' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700';
     return (
-      <div className={`flex items-center justify-between gap-3 text-sm bg-white dark:bg-gray-800 rounded px-3 py-2 border ${borderCls}`}>
-        <div className="min-w-0">
-          <span className="text-gray-900 dark:text-gray-100 font-medium truncate">{item.title}</span>
-          {item.pub_date && <span className="ml-2 text-xs text-gray-400">{formatDate(item.pub_date)}</span>}
+      <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm bg-white dark:bg-gray-800 rounded-xl sm:rounded-lg px-4 py-3 sm:py-2 border ${borderCls} shadow-sm`}>
+        <div className="min-w-0 flex-1">
+          <span className="text-gray-900 dark:text-gray-100 font-semibold sm:font-medium block sm:inline truncate" title={item.title}>
+            {item.title}
+          </span>
+          {item.pub_date && (
+            <span className="text-xs text-gray-400 font-mono sm:font-sans mt-0.5 sm:mt-0 sm:ml-2 block sm:inline">
+              {formatDate(item.pub_date)}
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 dark:border-gray-700/60">
           {actionResults[item.product_id] && (
-            <span className="text-xs text-green-600 dark:text-green-400">{actionResults[item.product_id]}</span>
+            <span className="text-xs font-medium text-green-600 dark:text-green-400">{actionResults[item.product_id]}</span>
           )}
           <button onClick={onAction} disabled={!!actionLoading[item.product_id]}
-            className={`px-2.5 py-1 text-xs rounded text-white disabled:opacity-50 ${btnCls}`}>
+            className={`w-full sm:w-auto px-4 sm:px-2.5 py-2 sm:py-1 text-xs font-semibold sm:font-medium rounded-lg sm:rounded text-white disabled:opacity-50 active:scale-[0.99] transition-transform ${btnCls}`}>
             {actionLoading[item.product_id] ? 'Working…' : actionLabel}
           </button>
         </div>
@@ -252,9 +263,9 @@ const ShippingProfiles = () => {
   };
 
   return (
-    <div>
+    <div className="px-4 md:px-0 space-y-6">
       {/* Header */}
-      <div className="mb-6">
+      <div>
         <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Shipping Profiles</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           {dateProfiles.length} active · {nonStandardProfiles.length} non-standard · {emptyProfiles.length} reusable
@@ -263,48 +274,54 @@ const ShippingProfiles = () => {
 
       {/* ── Summary Cards ── */}
       {reconcile && (
-        <div className="mb-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {([
-            ['correctly_assigned', 'Correct', 'green'],
-            ['wrong_profile', 'Wrong Profile', 'amber'],
-            ['missing_from_profile', 'Missing', 'red'],
-            ['should_be_removed', 'Should Remove', 'blue'],
-            ['exempt', 'Exempt', 'purple'],
-            ['no_pub_date', 'No Date', 'gray'],
-          ] as [string, string, string][]).map(([key, label, color]) => (
-            <div key={key} className={`rounded-lg border border-${color}-200 dark:border-${color}-800 bg-${color}-50 dark:bg-${color}-900/20 p-3`}>
-              <div className={`text-2xl font-bold text-${color}-700 dark:text-${color}-300`}>{reconcile.summary[key] || 0}</div>
-              <div className={`text-xs text-${color}-600 dark:text-${color}-400 mt-0.5`}>{label}</div>
-            </div>
-          ))}
+            ['correctly_assigned', 'Correct', 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 text-green-600 dark:text-green-400'],
+            ['wrong_profile', 'Wrong Profile', 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-amber-600 dark:text-amber-400'],
+            ['missing_from_profile', 'Missing', 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-red-600 dark:text-red-400'],
+            ['should_be_removed', 'Should Remove', 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-blue-600 dark:text-blue-400'],
+            ['exempt', 'Exempt', 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 text-purple-600 dark:text-purple-400'],
+            ['no_pub_date', 'No Date', 'bg-gray-50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-gray-600 dark:text-gray-400'],
+          ] as [string, string, string][]).map(([key, label, clsConfig]) => {
+            const [bgCls, borderCls, textBoldCls, textLabelCls] = clsConfig.split(' ');
+            return (
+              <div key={key} className={`rounded-xl border ${borderCls} ${bgCls} p-3 shadow-sm`}>
+                <div className={`text-2xl font-bold ${textBoldCls}`}>{reconcile.summary[key] || 0}</div>
+                <div className={`text-xs font-medium ${textLabelCls} mt-0.5`}>{label}</div>
+              </div>
+            );
+          })}
         </div>
       )}
 
       {/* ── Wrong Profile ── */}
       {reconcile && reconcile.report.wrong_profile.length > 0 && (
-        <div className="mb-6 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 p-4">
+        <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 p-4">
           <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200 mb-3">
             Wrong Profile ({reconcile.report.wrong_profile.length})
           </h3>
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {reconcile.report.wrong_profile.map((item) => (
               <div key={item.product_id}
-                className="flex items-center justify-between gap-3 text-sm bg-white dark:bg-gray-800 rounded px-3 py-2 border border-amber-100 dark:border-amber-800/50">
-                <div className="min-w-0">
-                  <span className="text-gray-900 dark:text-gray-100 font-medium">{item.title}</span>
-                  <span className="ml-2 text-xs text-gray-400">{formatDate(item.pub_date)}</span>
-                  <span className="ml-2 text-xs">
-                    <span className="text-amber-700 dark:text-amber-300">{item.current_profile}</span>
-                    {' → '}
-                    <span className="text-green-700 dark:text-green-300">{item.expected_profile}</span>
-                  </span>
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm bg-white dark:bg-gray-800 rounded-xl sm:rounded-lg px-4 py-3 sm:py-2 border border-amber-100 dark:border-amber-800/50 shadow-sm">
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold sm:font-medium text-gray-900 dark:text-gray-100 truncate" title={item.title}>
+                    {item.title}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-2 text-xs mt-1 sm:mt-0.5">
+                    <span className="text-gray-400 font-mono sm:font-sans">{formatDate(item.pub_date)}</span>
+                    <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">•</span>
+                    <span className="font-medium bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded text-amber-700 dark:text-amber-300">{item.current_profile}</span>
+                    <span className="text-gray-400">→</span>
+                    <span className="font-medium bg-green-50 dark:bg-green-950/40 px-1.5 py-0.5 rounded text-green-700 dark:text-green-300">{item.expected_profile}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {actionResults[item.product_id] && <span className="text-xs text-green-600 dark:text-green-400">{actionResults[item.product_id]}</span>}
+                <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2.5 sm:pt-0 border-t sm:border-t-0 border-gray-100 dark:border-gray-700">
+                  {actionResults[item.product_id] && <span className="text-xs font-medium text-green-600 dark:text-green-400">{actionResults[item.product_id]}</span>}
                   <button
                     onClick={() => setConfirmModal({ open: true, productId: item.product_id, pubDate: item.pub_date, title: item.title, action: 'assign', profileName: item.expected_profile })}
                     disabled={!!actionLoading[item.product_id]}
-                    className="px-2.5 py-1 text-xs rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50">
+                    className="w-full sm:w-auto px-4 sm:px-3 py-2 sm:py-1 text-xs font-semibold sm:font-medium rounded-lg sm:rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 transition-transform active:scale-[0.99]">
                     {actionLoading[item.product_id] ? 'Moving…' : 'Fix'}
                   </button>
                 </div>
@@ -316,11 +333,11 @@ const ShippingProfiles = () => {
 
       {/* ── Missing from Profile ── */}
       {reconcile && reconcile.report.missing_from_profile.length > 0 && (
-        <div className="mb-6 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10 p-4">
+        <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10 p-4">
           <h3 className="text-sm font-semibold text-red-900 dark:text-red-200 mb-3">
             Missing from Profile ({reconcile.report.missing_from_profile.length})
           </h3>
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {reconcile.report.missing_from_profile.map((item) => (
               <IssueRow key={item.product_id} item={item} variant="red"
                 actionLabel="Assign"
@@ -332,11 +349,11 @@ const ShippingProfiles = () => {
 
       {/* ── Should Be Removed ── */}
       {reconcile && reconcile.report.should_be_removed.length > 0 && (
-        <div className="mb-6 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/10 p-4">
+        <div className="rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/10 p-4">
           <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-200 mb-3">
             Should Be Removed ({reconcile.report.should_be_removed.length})
           </h3>
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {reconcile.report.should_be_removed.map((item) => (
               <IssueRow key={item.product_id} item={item} variant="blue"
                 actionLabel="Remove"
@@ -348,45 +365,132 @@ const ShippingProfiles = () => {
 
       {/* ── Exempt (Early Stock) ── */}
       {reconcile && reconcile.report.exempt.length > 0 && (
-        <div className="mb-6 rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/10 p-4">
+        <div className="rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/10 p-4">
           <h3 className="text-sm font-semibold text-purple-900 dark:text-purple-200 mb-3">
             Exempt — Early Stock ({reconcile.report.exempt.length})
           </h3>
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {reconcile.report.exempt.map((item) => (
               <div key={item.product_id}
-                className="flex items-center justify-between gap-3 text-sm bg-white dark:bg-gray-800 rounded px-3 py-2 border border-purple-100 dark:border-purple-800/50">
-                <div className="min-w-0">
-                  <span className="text-gray-900 dark:text-gray-100 font-medium">{item.title}</span>
-                  <span className="ml-2 text-xs text-gray-400">{formatDate(item.pub_date)}</span>
-                  <span className="ml-2 text-xs text-purple-600 dark:text-purple-400">
-                    {item.inventory} in stock · {item.current_profile}
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm bg-white dark:bg-gray-800 rounded-xl sm:rounded-lg px-4 py-3 sm:py-2 border border-purple-100 dark:border-purple-800/50 shadow-sm">
+                <div className="min-w-0 flex-1">
+                  <span className="text-gray-900 dark:text-gray-100 font-semibold sm:font-medium block sm:inline truncate" title={item.title}>
+                    {item.title}
                   </span>
+                  <div className="flex flex-wrap items-center gap-x-2 text-xs text-purple-600 dark:text-purple-400 mt-1 sm:mt-0.5 sm:ml-2 sm:inline-flex">
+                    <span className="font-mono text-gray-400 sm:text-purple-600 dark:text-purple-400">{formatDate(item.pub_date)}</span>
+                    <span>•</span>
+                    <span>{item.inventory} in stock</span>
+                    <span>•</span>
+                    <span className="truncate max-w-[140px]">{item.current_profile}</span>
+                  </div>
                 </div>
-                <span className="text-xs text-purple-500 dark:text-purple-400 italic shrink-0">Fulfillable</span>
+                <span className="text-xs font-semibold sm:font-normal text-purple-500 dark:text-purple-400 italic shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-50 dark:border-gray-700/60 text-right">
+                  Fulfillable
+                </span>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* ── Active Profiles Table ── */}
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Date Profiles ({dateProfiles.length})</h3>
+      {/* ── Active Profiles Controls ── */}
+      <div className="flex items-center justify-between pt-2">
+        <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">Date Profiles ({dateProfiles.length})</h3>
         <button onClick={runReconcile} disabled={reconciling}
-          className="px-3 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50">
+          className="px-4 sm:px-3 py-2 sm:py-1.5 text-xs font-semibold sm:font-medium rounded-lg sm:rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-transform active:scale-[0.98]">
           {reconciling ? 'Reconciling…' : 'Re-Reconcile'}
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded border border-gray-200 dark:border-gray-700 mb-6">
+      {/* ── MOBILE VIEW: Active Profiles Grid ── */}
+      <div className="block md:hidden space-y-3">
+        {dateProfiles.map((profile) => {
+          const isExpanded = expandedProfile === profile.profile_id;
+          const upcoming = isUpcoming(profile.pub_date, 7);
+          const past = isPast(profile.pub_date);
+          return (
+            <div key={profile.profile_id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
+              <div 
+                onClick={() => setExpandedProfile(isExpanded ? null : profile.profile_id)}
+                className="p-4 flex items-start justify-between gap-3 active:bg-gray-50 dark:active:bg-gray-700/40 transition-colors"
+              >
+                <div className="min-w-0 space-y-1">
+                  <div className="font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                    <span className="text-gray-400 shrink-0">{isExpanded ? '▼' : '▶'}</span>
+                    <span className="truncate">{profile.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className={`font-mono ${past ? 'text-gray-400' : 'text-gray-900 dark:text-gray-100'}`}>{formatDate(profile.pub_date)}</span>
+                    {upcoming && <span className="px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-semibold text-[10px]">SOON</span>}
+                    {past && <span className="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 font-semibold text-[10px]">PAST</span>}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="inline-block px-2 py-1 rounded-md text-xs font-bold bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                    {profile.product_count} items
+                  </span>
+                  <span className={`block text-[10px] uppercase font-bold tracking-wider mt-1.5 ${past ? 'text-amber-500' : 'text-green-500'}`}>
+                    {past ? 'Needs Clean' : 'Active'}
+                  </span>
+                </div>
+              </div>
+
+              {isExpanded && (
+                <div className="bg-gray-50/70 dark:bg-gray-900/40 border-t border-gray-100 dark:border-gray-700/60 p-3 space-y-2.5">
+                  {profile.products.map((prod) => (
+                    <div key={prod.product_id} className="flex flex-col gap-2 bg-white dark:bg-gray-800 p-2.5 rounded-lg border border-gray-150 dark:border-gray-700/50 shadow-xs">
+                      <div className="text-xs font-semibold text-gray-900 dark:text-gray-100 line-clamp-2" title={prod.title}>
+                        {prod.title}
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-[11px] font-mono pt-1.5 border-t border-gray-50 dark:border-gray-700/40">
+                        <span className="text-gray-400">{prod.product_id}</span>
+                        <div className="flex items-center gap-2">
+                          {actionResults[prod.product_id] && (
+                            <span className="text-green-600 dark:text-green-400 font-sans font-medium">{actionResults[prod.product_id]}</span>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmModal({
+                                open: true,
+                                productId: prod.product_id,
+                                pubDate: profile.pub_date ?? '',
+                                title: prod.title,
+                                action: 'remove',
+                                profileName: profile.name,
+                              });
+                            }}
+                            disabled={!!actionLoading[prod.product_id]}
+                            className="px-2.5 py-1 rounded-md font-sans font-semibold border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 active:bg-red-50 dark:active:bg-red-950/40 disabled:opacity-40"
+                          >
+                            {actionLoading[prod.product_id] ? '…' : 'Remove'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {dateProfiles.length === 0 && (
+          <div className="p-8 text-center text-gray-400 text-sm bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+            No date-based profiles with products.
+          </div>
+        )}
+      </div>
+
+      {/* ── DESKTOP VIEW: Active Profiles Table ── */}
+      <div className="hidden md:block overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-gray-50 dark:bg-gray-800 text-left">
-              <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Profile</th>
-              <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Pub Date</th>
-              <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300 text-center">Products</th>
-              <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Status</th>
+              <th className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Profile</th>
+              <th className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Pub Date</th>
+              <th className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 text-center">Products</th>
+              <th className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -395,68 +499,72 @@ const ShippingProfiles = () => {
               const upcoming = isUpcoming(profile.pub_date, 7);
               const past = isPast(profile.pub_date);
               return (
-                <>{/* Fragment needed for expand row */}
-                  <tr key={profile.profile_id}
-                    onClick={() => setExpandedProfile(isExpanded ? null : profile.profile_id)}
-                    className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer transition-colors">
-                    <td className="px-4 py-3">
-                      <span className="text-xs text-gray-400 mr-1.5">{isExpanded ? '▾' : '▸'}</span>
-                      <span className="font-medium text-gray-900 dark:text-gray-100">{profile.name}</span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={past ? 'text-gray-400' : 'text-gray-900 dark:text-gray-100'}>{formatDate(profile.pub_date)}</span>
-                      {upcoming && <span className="ml-1.5 text-xs text-blue-600 dark:text-blue-400 font-medium">soon</span>}
-                      {past && <span className="ml-1.5 text-xs text-gray-400">past</span>}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">{profile.product_count}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {past ? <span className="text-xs text-amber-600 dark:text-amber-400">needs cleanup</span>
-                        : <span className="text-xs text-green-600 dark:text-green-400">active</span>}
-                    </td>
-                  </tr>
-                  {isExpanded && (
-                    <tr key={`${profile.profile_id}-exp`} className="bg-gray-50/50 dark:bg-gray-800/30">
-                      <td colSpan={4} className="px-8 py-3">
-                        <div className="space-y-1.5">
-                          {profile.products.map((prod) => (
-                            <div key={prod.product_id} className="flex items-center justify-between text-xs">
-                              <span className="text-gray-900 dark:text-gray-100">{prod.title}</span>
-                              <div className="flex items-center gap-3">
-                                <span className="text-gray-400">{prod.product_id}</span>
-                                {actionResults[prod.product_id] && (
-                                  <span className="text-green-600 dark:text-green-400">{actionResults[prod.product_id]}</span>
-                                )}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setConfirmModal({
-                                      open: true,
-                                      productId: prod.product_id,
-                                      pubDate: profile.pub_date ?? '',
-                                      title: prod.title,
-                                      action: 'remove',
-                                      profileName: profile.name,
-                                    });
-                                  }}
-                                  disabled={!!actionLoading[prod.product_id]}
-                                  className="px-2 py-0.5 rounded text-[10px] border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 disabled:opacity-40"
-                                >
-                                  {actionLoading[prod.product_id] ? '…' : 'Remove'}
-                                </button>
-                              </div>
-                            </div>
-                          ))}
+                <tr key={profile.profile_id} className="border-t border-gray-200 dark:border-gray-700">
+                  <td colSpan={4} className="p-0">
+                    <div 
+                      onClick={() => setExpandedProfile(isExpanded ? null : profile.profile_id)}
+                      className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/80 dark:hover:bg-gray-800/40 cursor-pointer transition-colors"
+                    >
+                      <div className="flex items-center min-w-[280px]">
+                        <span className="text-xs font-mono text-gray-400 mr-2 w-3">{isExpanded ? '▼' : '▶'}</span>
+                        <span className="font-medium text-gray-900 dark:text-gray-100 truncate">{profile.name}</span>
+                      </div>
+                      <div className="flex-1 grid grid-cols-3 items-center text-left">
+                        <div className="whitespace-nowrap pl-4">
+                          <span className={past ? 'text-gray-400 font-medium' : 'text-gray-900 dark:text-gray-100 font-medium'}>{formatDate(profile.pub_date)}</span>
+                          {upcoming && <span className="ml-1.5 text-xs text-blue-600 dark:text-blue-400 font-semibold px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/20 rounded">soon</span>}
+                          {past && <span className="ml-1.5 text-xs text-amber-600 dark:text-amber-400 font-semibold px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 rounded">past</span>}
                         </div>
-                      </td>
-                    </tr>
-                  )}
-                </>
+                        <div className="text-center">
+                          <span className="px-2.5 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">{profile.product_count}</span>
+                        </div>
+                        <div className="pl-4">
+                          {past ? <span className="text-xs font-medium text-amber-600 dark:text-amber-400">needs cleanup</span>
+                            : <span className="text-xs font-medium text-green-600 dark:text-green-400">active</span>}
+                        </div>
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="bg-gray-50/40 dark:bg-gray-800/20 border-t border-gray-100 dark:border-gray-800/40 px-10 py-3 space-y-2">
+                        {profile.products.map((prod) => (
+                          <div key={prod.product_id} className="flex items-center justify-between text-xs max-w-4xl py-0.5">
+                            <span className="text-gray-900 dark:text-gray-100 truncate pr-6 font-medium max-w-[500px]" title={prod.title}>
+                              {prod.title}
+                            </span>
+                            <div className="flex items-center gap-4 shrink-0 font-mono">
+                              <span className="text-gray-400 text-[11px]">{prod.product_id}</span>
+                              {actionResults[prod.product_id] && (
+                                <span className="text-green-600 dark:text-green-400 font-sans font-medium">{actionResults[prod.product_id]}</span>
+                              )}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConfirmModal({
+                                    open: true,
+                                    productId: prod.product_id,
+                                    pubDate: profile.pub_date ?? '',
+                                    title: prod.title,
+                                    action: 'remove',
+                                    profileName: profile.name,
+                                  });
+                                }}
+                                disabled={!!actionLoading[prod.product_id]}
+                                className="px-2 py-0.5 font-sans rounded text-[11px] font-medium border border-red-200 dark:border-red-800/60 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 disabled:opacity-40"
+                              >
+                                {actionLoading[prod.product_id] ? '…' : 'Remove'}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                </tr>
               );
             })}
             {dateProfiles.length === 0 && (
-              <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400 text-sm">No date-based profiles with products.</td></tr>
+              <tr><td colSpan={4} className="px-4 py-12 text-center text-gray-400 text-sm bg-white dark:bg-gray-800">No date-based profiles with products.</td></tr>
             )}
           </tbody>
         </table>
@@ -464,68 +572,66 @@ const ShippingProfiles = () => {
 
       {/* ── Non-Standard Profiles ── */}
       {nonStandardProfiles.length > 0 && (
-        <div className="mb-6">
-          <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2">
-            Non-Standard Profiles ({nonStandardProfiles.length})
-          </h3>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
-            These profiles use custom names — typically for oversized items, special packaging, or print-on-demand products. Tracked but not reconciled.
-          </p>
-          <div className="overflow-x-auto rounded border border-gray-200 dark:border-gray-700">
-            <table className="w-full text-sm border-collapse">
-              <tbody>
-                {nonStandardProfiles.map((profile) => {
-                  const isExpanded = expandedProfile === profile.profile_id;
-                  return (
-                    <>{/* Fragment needed for expand row */}
-                      <tr key={profile.profile_id}
-                        onClick={() => setExpandedProfile(isExpanded ? null : profile.profile_id)}
-                        className="border-t first:border-t-0 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer">
-                        <td className="px-4 py-2.5">
-                          <span className="text-xs text-gray-400 mr-1.5">{isExpanded ? '▾' : '▸'}</span>
-                          <span className="font-medium text-gray-700 dark:text-gray-300">{profile.name}</span>
-                          <span className="ml-2 px-1.5 py-0.5 rounded text-xs bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300">
-                            {profile.product_count} products
-                          </span>
-                        </td>
-                      </tr>
-                      {isExpanded && (
-                        <tr key={`${profile.profile_id}-exp`} className="bg-gray-50/50 dark:bg-gray-800/30">
-                          <td className="px-8 py-3">
-                            <div className="space-y-1.5">
-                              {profile.products.map((prod) => (
-                                <div key={prod.product_id} className="text-xs text-gray-700 dark:text-gray-300">{prod.title}</div>
-                              ))}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </>
-                  );
-                })}
-              </tbody>
-            </table>
+        <div className="space-y-2.5">
+          <div>
+            <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">
+              Non-Standard Profiles ({nonStandardProfiles.length})
+            </h3>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 leading-relaxed">
+              These profiles use custom names — typically for oversized items or special packaging rules. Tracked but skipped during automated reconciliation.
+            </p>
+          </div>
+          
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm bg-white dark:bg-gray-800">
+            {nonStandardProfiles.map((profile, idx) => {
+              const isExpanded = expandedProfile === profile.profile_id;
+              return (
+                <div key={profile.profile_id} className={`border-t first:border-t-0 border-gray-150 dark:border-gray-700`}>
+                  <div 
+                    onClick={() => setExpandedProfile(isExpanded ? null : profile.profile_id)}
+                    className="px-4 py-3 flex items-center justify-between active:bg-gray-50 dark:active:bg-gray-700/20 md:hover:bg-gray-50/60 md:dark:hover:bg-gray-700/20 cursor-pointer select-none"
+                  >
+                    <div className="min-w-0 flex items-center">
+                      <span className="text-xs font-mono text-gray-400 mr-2 w-3">{isExpanded ? '▼' : '▶'}</span>
+                      <span className="font-semibold md:font-medium text-gray-700 dark:text-gray-300 truncate">{profile.name}</span>
+                    </div>
+                    <span className="px-2 py-0.5 shrink-0 rounded-md text-xs font-bold sm:font-medium bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300">
+                      {profile.product_count} products
+                    </span>
+                  </div>
+                  {isExpanded && (
+                    <div className="bg-gray-50/50 dark:bg-gray-900/20 border-t border-gray-100 dark:border-gray-700/60 px-9 py-3 space-y-2">
+                      {profile.products.map((prod) => (
+                        <div key={prod.product_id} className="text-xs text-gray-700 dark:text-gray-300 truncate max-w-2xl font-medium line-clamp-1" title={prod.title}>
+                          {prod.title}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
 
       {/* ── Empty Profiles ── */}
       {emptyProfiles.length > 0 && (
-        <div className="mb-6">
-          <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2">
+        <div className="space-y-2">
+          <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">
             Empty Profiles — Reusable ({emptyProfiles.length})
           </h3>
           <div className="flex flex-wrap gap-2">
             {emptyProfiles.map((p) => (
               <button key={p.profile_id}
                 onClick={() => setRenameModal({ open: true, profileId: p.profile_id, currentName: p.name, newName: '' })}
-                className="px-2.5 py-1 rounded text-xs border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                title="Click to rename">
+                className="px-3 py-2 sm:py-1 rounded-lg sm:rounded border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 active:scale-[0.97] sm:active:scale-[0.99] transition-transform text-xs font-medium shadow-xs"
+                title="Click to rename profile">
                 {p.name}
               </button>
             ))}
           </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Click a profile to rename it for a new pub date.</p>
+          <p className="text-[11px] text-gray-400 dark:text-gray-500">Click a placeholder asset tag above to repurpose it for an alternate street date configuration.</p>
         </div>
       )}
 
@@ -543,36 +649,39 @@ const ShippingProfiles = () => {
         confirmLabel={confirmModal.action === 'assign' ? 'Assign' : 'Remove'}
       >
         {confirmModal.action === 'assign' ? (
-          <>
-            <p>Assign <span className="font-medium">{confirmModal.title}</span> to the <span className="font-medium">{confirmModal.profileName}</span> shipping profile.</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">If no profile exists for this date, an empty profile will be repurposed.</p>
-          </>
+          <div className="text-sm text-gray-600 dark:text-gray-300 space-y-2">
+            <p>Assigning item to the targeted scope profile:</p>
+            <p className="font-semibold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-800 p-2.5 rounded-lg border border-gray-150 dark:border-gray-700 line-clamp-2">{confirmModal.title}</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 pt-1">Target Profile: <span className="font-semibold text-gray-700 dark:text-gray-300">{confirmModal.profileName}</span>. If absent, an unoccupied placeholder profile will be automatically mapped.</p>
+          </div>
         ) : (
-          <>
-            <p>Remove <span className="font-medium">{confirmModal.title}</span> from <span className="font-medium">{confirmModal.profileName}</span>.</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">The product will fall back to the General shipping profile.</p>
-          </>
+          <div className="text-sm text-gray-600 dark:text-gray-300 space-y-2">
+            <p>Confirm extraction from current profile allocation boundary:</p>
+            <p className="font-semibold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-800 p-2.5 rounded-lg border border-gray-150 dark:border-gray-700 line-clamp-2">{confirmModal.title}</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 pt-1">Removing from <span className="font-semibold text-gray-700 dark:text-gray-300">{confirmModal.profileName}</span> will trigger fallback routing to the core General shipping template.</p>
+          </div>
         )}
       </ConfirmModal>
 
       {/* ── Rename Modal ── */}
       {renameModal.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Rename Profile</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              Current name: <span className="font-medium text-gray-700 dark:text-gray-300">{renameModal.currentName}</span>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-5 max-w-md w-full border border-gray-100 dark:border-gray-700 animate-in fade-in zoom-in-95 duration-150">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-1">Rename Profile</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              Modifying tag: <span className="font-semibold text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 px-1.5 py-0.5 rounded border border-gray-100 dark:border-gray-800">{renameModal.currentName}</span>
             </p>
             <input
               type="text"
               value={renameModal.newName}
               onChange={(e) => setRenameModal((p) => ({ ...p, newName: e.target.value }))}
               placeholder="e.g. October 15, 2026"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+              className="w-full px-3 py-2.5 sm:py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+              autoFocus
             />
-            <div className="flex justify-end gap-3">
+            <div className="flex items-center justify-end gap-2.5">
               <button onClick={() => setRenameModal((p) => ({ ...p, open: false }))}
-                className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">
+                className="px-4 py-2 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 rounded-lg">
                 Cancel
               </button>
               <button
@@ -582,7 +691,7 @@ const ShippingProfiles = () => {
                   await renameProfile(renameModal.profileId, renameModal.newName.trim());
                 }}
                 disabled={!renameModal.newName.trim()}
-                className="px-4 py-2 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
+                className="px-5 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 shadow-sm transition-transform active:scale-[0.98]">
                 Rename
               </button>
             </div>
