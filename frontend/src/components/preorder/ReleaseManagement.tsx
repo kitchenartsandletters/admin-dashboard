@@ -206,24 +206,24 @@ const ReleaseManagement = () => {
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
-  // ── Batch fetch cleanup states for non-historical products ──
+  // ── Batch fetch cleanup states for non-historical products (Safe Unmount) ──
   useEffect(() => {
     if (batchFetchedRef.current || products.length === 0) return;
     batchFetchedRef.current = true;
 
-    const eligible = products.filter(
-      (p) => p.classification !== 'not_a_preorder_product'
-    );
+    let isMounted = true;
+    const eligible = products.filter((p) => p.classification !== 'not_a_preorder_product');
 
     const fetchBatch = async () => {
       setInspecting(true);
       for (const p of eligible) {
+        if (!isMounted) break;
         try {
           const res = await fetch(
             `${PREORDER_SERVICE_URL}/admin/preorders/cleanup/state/${p.product_id}`,
             { headers: apiHeaders() }
           );
-          if (res.ok) {
+          if (res.ok && isMounted) {
             const data: CleanupState = await res.json();
             setCleanupStates((prev) => ({ ...prev, [p.product_id]: data }));
           }
@@ -232,10 +232,14 @@ const ReleaseManagement = () => {
         }
         await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
       }
-      setInspecting(false);
+      if (isMounted) setInspecting(false);
     };
 
     fetchBatch();
+
+    return () => {
+      isMounted = false;
+    };
   }, [products]);
 
   // ── Single fetch ──
@@ -358,10 +362,12 @@ const ReleaseManagement = () => {
       const b = descBadge(cs.description_status);
       return <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${b.cls}`}>{b.label}</span>;
     }
-    if (field === 'in_preorder_collection')
+    if (field === 'in_preorder_collection') {
+      // Pill structures now maintain identical widths and vertical balance across items
       return cs.in_preorder_collection
-        ? <span className="text-green-600 dark:text-green-400 text-xs font-medium">In</span>
-        : <span className="text-gray-400 dark:text-gray-500 text-xs">Out</span>;
+        ? <span className="inline-block min-w-[36px] text-center px-1.5 py-0.5 rounded text-xs font-semibold bg-green-50 dark:bg-green-950/30 text-green-600 dark:text-green-400">In</span>
+        : <span className="inline-block min-w-[36px] text-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-50 dark:bg-gray-800/40 text-gray-400 dark:text-gray-500">Out</span>;
+    }
     return null;
   };
 
@@ -446,9 +452,7 @@ const ReleaseManagement = () => {
                       {cs ? (
                         <>
                           <span className={`px-1.5 py-0.5 rounded text-[10px] sm:text-xs font-medium ${descBadge(cs.description_status).cls}`}>{descBadge(cs.description_status).label}</span>
-                          <span className={`text-xs font-medium ${cs.in_preorder_collection ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>
-                            {cs.in_preorder_collection ? 'In coll.' : 'Out'}
-                          </span>
+                          {renderCleanupCell(p.product_id, 'in_preorder_collection')}
                         </>
                       ) : (
                         <span className="text-xs text-gray-400 dark:text-gray-500 animate-pulse">Loading…</span>
@@ -602,6 +606,7 @@ const ReleaseManagement = () => {
                 </th>
               ))}
               <th className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Body HTML</th>
+              {/* Fixed: Both text-center layout settings are now explicitly coupled */}
               <th className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 text-center">Collection</th>
               <th className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Actions</th>
             </tr>
@@ -624,6 +629,7 @@ const ReleaseManagement = () => {
                     <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${badge.cls}`}>{badge.label}</span>
                   </td>
                   <td className="px-4 py-3">{renderCleanupCell(product.product_id, 'description_status')}</td>
+                  {/* Fixed: text-center handles content layout matching head column */}
                   <td className="px-4 py-3 text-center">{renderCleanupCell(product.product_id, 'in_preorder_collection')}</td>
                   <td className="px-4 py-3">{renderActions(product, false)}</td>
                 </tr>
