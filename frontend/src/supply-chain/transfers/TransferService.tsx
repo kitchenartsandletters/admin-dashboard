@@ -386,7 +386,7 @@ export default function TransferService() {
           detail={detail}
           locMap={locMap}
           onClose={() => setSelected(null)}
-          onReceive={setReceivingTransferId}
+          onReceive={(id) => { setSelected(null); setReceivingTransferId(id) }}
         />
       </div>
 
