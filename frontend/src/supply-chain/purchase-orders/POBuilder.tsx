@@ -594,7 +594,12 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
         ad_hoc_source:           (adHocSource || undefined) as AdHocSource | undefined,
         informal_ref:            informalRef.trim() || undefined,
         is_drop_ship:            isDropShip,
-        drop_ship_venue_id:      isDropShip ? 'default' : undefined,
+        // No venue picker exists yet — omit drop_ship_venue_id rather than
+        // sending a placeholder string (the column is a uuid; a non-uuid
+        // value like 'default' 500s the request once the backend actually
+        // accepts this field). Wire up real venue selection here when a
+        // venues table/picker exists.
+        drop_ship_venue_id:      undefined,
         drop_ship_address:       isDropShip ? dropShipAddress.trim() : undefined,
         is_test:                 isTest,
       })
