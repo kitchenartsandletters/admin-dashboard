@@ -2,6 +2,13 @@
 // Phase-based wizard: idle → review → confirming → result
 // Launched from /receiving/wizard?po={id}
 //
+// Location:
+//   - The receive is applied at the PO's destination_location_id.
+//   - DEFAULT_LOCATION_ID (HQ) is only a fallback for legacy POs that predate
+//     the destination_location_id column.
+//   - The resolved destination is shown in the review screen so the receiver
+//     always sees which store stock is being received into.
+//
 // Damage handling:
 //   - Staff enter a free-text damage note per line (notes_damaged: string | null)
 //   - This note is folded into the receipt-level notes field on submit
@@ -13,10 +20,12 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import { WizardLine, ReceiveResult } from './receivingTypes'
 import { PurchaseOrderDetail } from '../purchase-orders/purchaseOrderTypes'
 import { fetchPurchaseOrderDetail, receiveOrder } from '../../api/supplyChainApi'
+import { useLocations } from '../hooks/useLocations'
 import { formatDate } from '../../utils/tableUtils'
 
 type Phase = 'idle' | 'review' | 'confirming' | 'result'
 
+// Fallback only — used when a (legacy) PO has no destination_location_id.
 const DEFAULT_LOCATION_ID = 'gid://shopify/Location/40052293765'
 
 // ---------------------------------------------------------------------------
@@ -119,13 +128,16 @@ export default function ReceivingWizard() {
   const [searchParams] = useSearchParams()
   const poId = searchParams.get('po')
 
+  const { locationName } = useLocations()
+
   const [phase,    setPhase]    = useState<Phase>('idle')
   const [poDetail, setPoDetail] = useState<PurchaseOrderDetail | null>(null)
   const [lines,    setLines]    = useState<WizardLine[]>([])
   const [completedLines, setCompletedLines] = useState<Array<{
     title: string; isbn: string | null; quantity_ordered: number; quantity_received: number
   }>>([])
-  const [locationId]            = useState(DEFAULT_LOCATION_ID)
+  // Receive location follows the PO's destination; DEFAULT is a legacy fallback.
+  const [locationId, setLocationId] = useState(DEFAULT_LOCATION_ID)
   const [notes,    setNotes]    = useState('')
   const [loading,  setLoading]  = useState(false)
   const [busy,     setBusy]     = useState(false)
@@ -141,6 +153,10 @@ export default function ReceivingWizard() {
       .then(detail => {
         setPoDetail(detail)
         initLines(detail)
+        // Apply the receive at the PO's destination location. Fall back to HQ
+        // only for legacy POs created before destination_location_id existed.
+        const dest = (detail.order as any).destination_location_id
+        setLocationId(dest || DEFAULT_LOCATION_ID)
         setPhase('review')
       })
       .catch(e => setError(e instanceof Error ? e.message : 'Failed to load PO'))
@@ -303,6 +319,22 @@ export default function ReceivingWizard() {
               {order?.supplier_name ?? order?.account_label ?? ''}
               {poDetail.order.ordered_at ? ` · Ordered ${formatDate(poDetail.order.ordered_at)}` : ''}
             </p>
+          </div>
+
+          {/* Destination location — make the receiving store explicit */}
+          <div className="rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-blue-500 dark:text-blue-400 font-bold mb-0.5">
+                Receiving into
+              </p>
+              <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                {locationName(locationId)}
+              </p>
+              <p className="font-mono text-[10px] text-blue-400 dark:text-blue-500 mt-0.5">
+                {locationId.split('/').pop()}
+              </p>
+            </div>
+            <span className="text-[11px] text-blue-500 dark:text-blue-400">PO destination</span>
           </div>
 
           {/* Lines */}
