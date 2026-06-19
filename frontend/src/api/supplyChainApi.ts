@@ -411,7 +411,9 @@ export async function fetchReceipt(
   return sc(`/api/receiving/${receiptId}`)
 }
 
+// ---------------------------------------------------------------------------
 // Packing slip / invoice parsing
+// ---------------------------------------------------------------------------
 
 export interface ParsedSlipLine {
   isbn: string | null
@@ -419,6 +421,7 @@ export interface ParsedSlipLine {
   supplier_sku: string | null
   quantity: number | null
   unit_cost: number | null
+  extended_cost?: number | null
   confidence: number
   needs_review: boolean
 }
@@ -433,10 +436,32 @@ export interface SlipParseResult {
   confidence?: number
 }
 
-export async function parsePackingSlip(file: File): Promise<SlipParseResult> {
+/** A PO candidate returned by parse-and-lookup when po_reference_confidence is "high". */
+export interface POCandidate {
+  id: string
+  po_number: string
+  status: string
+  informal_ref: string | null
+  supplier_account_id: string
+  destination_location_id: string
+  supplier_name: string | null
+  account_label: string | null
+  /** "exact" = matched po_number; "informal_ref" = matched informal_ref field */
+  match_type: 'exact' | 'informal_ref'
+}
+
+export interface ParseAndLookupResult extends SlipParseResult {
+  po_reference: string | null
+  /** Only "high" triggers PO lookup. "medium"/"low" return po_candidates: [] */
+  po_reference_confidence: 'high' | 'medium' | 'low' | null
+  /** Populated only when po_reference_confidence === "high" and matches exist */
+  po_candidates: POCandidate[]
+}
+
+async function _multipartPost<T>(path: string, file: File): Promise<T> {
   const form = new FormData()
   form.append('file', file)
-  const res = await fetch(`${SC_BASE_URL}/api/receiving/parse-packing-slip`, {
+  const res = await fetch(`${SC_BASE_URL}${path}`, {
     method: 'POST',
     headers: { 'X-Admin-Token': SC_TOKEN },
     // Do NOT set Content-Type — browser sets it with multipart boundary
@@ -444,9 +469,34 @@ export async function parsePackingSlip(file: File): Promise<SlipParseResult> {
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail ?? `[${res.status}] Failed to parse packing slip`)
+    throw new Error(err.detail ?? `[${res.status}] Request failed`)
   }
   return res.json()
+}
+
+/**
+ * Parse a packing slip or invoice image — line items only, no PO lookup.
+ * Use parseAndLookup() when you also want PO candidate resolution.
+ */
+export async function parsePackingSlip(file: File): Promise<SlipParseResult> {
+  return _multipartPost('/api/receiving/parse-packing-slip', file)
+}
+
+/**
+ * Parse a packing slip or invoice AND attempt PO resolution in one call.
+ *
+ * Returns all fields from SlipParseResult plus:
+ *   - po_reference: PO number found on the document (null if absent)
+ *   - po_reference_confidence: "high" | "medium" | "low" | null
+ *   - po_candidates: matching POs — only populated when confidence is "high"
+ *
+ * The caller should:
+ *   - If po_candidates.length === 1 and confidence is "high": auto-navigate to wizard
+ *   - If po_candidates.length > 1: show the fuzzy-confirm step for the user to pick
+ *   - If po_candidates.length === 0: fall through to manual PO entry or ad hoc flow
+ */
+export async function parseAndLookup(file: File): Promise<ParseAndLookupResult> {
+  return _multipartPost('/api/receiving/parse-and-lookup', file)
 }
 
 // Receipt detail records

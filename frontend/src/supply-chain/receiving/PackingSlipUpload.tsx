@@ -1,43 +1,52 @@
 // PackingSlipUpload.tsx
-// Packing slip / invoice scanner component for ReceivingEntryFlow.
+// Packing slip / invoice scanner component.
 //
-// Mounted at the TOP of the LineEntryStep (Step 3), before the manual ISBN entry form.
-// Staff can photograph or upload the packing slip → system pre-fills line items.
-// Manual entry remains available as fallback.
+// Used in two contexts:
+//   1. ReceivingEntryFlow — po_lookup step (top of page, before PO number entry)
+//      Here onPOCandidatesFound drives navigation: high-confidence match → wizard,
+//      multiple matches → fuzzy confirm, no match → manual entry or ad hoc.
+//   2. ReceivingEntryFlow — lines step (ad hoc path, before manual ISBN entry)
+//      Here only onLinesAccepted is used; PO candidates are irrelevant.
 //
 // Flow:
 //   1. Staff taps "Scan packing slip" → file input opens (camera or file browser)
-//   2. Image uploaded to POST /api/receiving/parse-packing-slip
-//   3. Results shown with confidence badges
-//   4. Staff review, adjust qty if needed, then "Use these lines"
-//   5. Lines are injected into ReceivingEntryFlow's line state for ISBN resolution
+//   2. File uploaded to POST /api/receiving/parse-and-lookup
+//   3. PO candidates surfaced immediately if confidence is high
+//   4. Lines shown with confidence badges for review / qty adjustment
+//   5. Staff tap "Use these lines" → onLinesAccepted fires with accepted lines
+//
+// Mobile note: <input capture="environment"> opens the rear camera directly on
+// iOS and Android without requiring an app install.
 
 import { useState, useRef } from 'react'
-import { parsePackingSlip } from '../../api/supplyChainApi'
+import { parseAndLookup, POCandidate, ParsedSlipLine } from '../../api/supplyChainApi'
+
+export type { ParsedSlipLine }
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-export interface ParsedSlipLine {
-  isbn: string | null
-  title: string | null
-  supplier_sku: string | null
-  quantity: number | null
-  unit_cost: number | null
-  confidence: number
-  needs_review: boolean
-}
 
 interface ParseResult {
   lines: ParsedSlipLine[]
   stub: boolean
   invoice_number?: string | null
   supplier_name?: string | null
+  po_reference?: string | null
+  po_reference_confidence?: 'high' | 'medium' | 'low' | null
+  po_candidates: POCandidate[]
 }
 
 interface Props {
+  /** Called when the user accepts the extracted lines for ISBN resolution. */
   onLinesAccepted: (lines: ParsedSlipLine[]) => void
+  /**
+   * Called when the backend returns PO candidates for the scanned document.
+   * Only fires when po_reference_confidence === "high" and candidates exist.
+   * The parent decides whether to auto-navigate or show a confirm step.
+   * Optional — callers that only care about line pre-fill can omit this.
+   */
+  onPOCandidatesFound?: (candidates: POCandidate[], poReference: string) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -63,10 +72,54 @@ function ConfidenceBadge({ confidence }: { confidence: number }) {
 }
 
 // ---------------------------------------------------------------------------
+// PO candidate card — shown in the review header when candidates are found
+// ---------------------------------------------------------------------------
+
+function POCandidateCard({
+  candidate,
+  onSelect,
+}: {
+  candidate: POCandidate
+  onSelect: (candidate: POCandidate) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(candidate)}
+      className="w-full text-left px-3 py-2.5 rounded-md border border-blue-300 dark:border-blue-700
+                 bg-blue-50 dark:bg-blue-900/20 hover:border-blue-500 dark:hover:border-blue-500
+                 transition-colors"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-mono text-sm font-semibold text-blue-900 dark:text-blue-100">
+          {candidate.po_number}
+        </span>
+        <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase
+          ${candidate.status === 'partial'
+            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+            : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+          }`}>
+          {candidate.status}
+        </span>
+      </div>
+      <p className="text-xs text-blue-700 dark:text-blue-300 mt-0.5">
+        {candidate.supplier_name ?? candidate.account_label}
+        {candidate.informal_ref && (
+          <span className="text-blue-400 dark:text-blue-500 ml-1">· {candidate.informal_ref}</span>
+        )}
+      </p>
+      <p className="text-[11px] text-blue-500 dark:text-blue-400 mt-1">
+        Tap to open receiving wizard →
+      </p>
+    </button>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function PackingSlipUpload({ onLinesAccepted }: Props) {
+export default function PackingSlipUpload({ onLinesAccepted, onPOCandidatesFound }: Props) {
   const [state, setState] = useState<'idle' | 'uploading' | 'reviewing' | 'done'>('idle')
   const [result, setResult] = useState<ParseResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -78,22 +131,32 @@ export default function PackingSlipUpload({ onLinesAccepted }: Props) {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // Show preview
     setPreviewUrl(URL.createObjectURL(file))
     setState('uploading')
     setError(null)
 
     try {
-      const parsed = await parsePackingSlip(file)
+      const parsed = await parseAndLookup(file)
       setResult(parsed)
       setEditedLines(parsed.lines.map(l => ({ ...l })))
       setState('reviewing')
+
+      // If we got high-confidence PO candidates, notify the parent immediately —
+      // don't wait for line acceptance since PO resolution is higher priority.
+      if (
+        parsed.po_reference &&
+        parsed.po_reference_confidence === 'high' &&
+        parsed.po_candidates.length > 0 &&
+        onPOCandidatesFound
+      ) {
+        onPOCandidatesFound(parsed.po_candidates, parsed.po_reference)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
       setState('idle')
     }
 
-    // Reset input so same file can be re-uploaded if needed
+    // Reset so the same file can be re-uploaded if needed
     if (inputRef.current) inputRef.current.value = ''
   }
 
@@ -108,7 +171,6 @@ export default function PackingSlipUpload({ onLinesAccepted }: Props) {
   }
 
   const handleAccept = () => {
-    // Filter out lines with no ISBN and no usable data
     const usable = editedLines.filter(l => l.isbn || l.title)
     onLinesAccepted(usable)
     setState('done')
@@ -123,7 +185,6 @@ export default function PackingSlipUpload({ onLinesAccepted }: Props) {
   }
 
   const reviewLines = editedLines.filter(l => l.needs_review)
-  const goodLines   = editedLines.filter(l => !l.needs_review)
 
   // ── Idle ──────────────────────────────────────────────────────────────────
   if (state === 'idle') {
@@ -176,7 +237,7 @@ export default function PackingSlipUpload({ onLinesAccepted }: Props) {
             Reading packing slip…
           </p>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-            Extracting ISBNs and quantities. This takes about 10 seconds.
+            Extracting ISBNs, quantities, and PO reference. This takes about 10 seconds.
           </p>
         </div>
         <div className="w-6 h-6 rounded-full border-2 border-blue-500 border-t-transparent animate-spin shrink-0" />
@@ -207,30 +268,64 @@ export default function PackingSlipUpload({ onLinesAccepted }: Props) {
       <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
 
         {/* Header */}
-        <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700 flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              {result.lines.length} line{result.lines.length !== 1 ? 's' : ''} found
-              {result.supplier_name && ` · ${result.supplier_name}`}
-              {result.invoice_number && ` · ${result.invoice_number}`}
-            </p>
-            {reviewLines.length > 0 && (
-              <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
-                ⚠ {reviewLines.length} line{reviewLines.length !== 1 ? 's' : ''} need review — check quantities
+        <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700 space-y-2">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                {result.lines.length} line{result.lines.length !== 1 ? 's' : ''} found
+                {result.supplier_name && ` · ${result.supplier_name}`}
+                {result.invoice_number && ` · ${result.invoice_number}`}
               </p>
-            )}
+              {/* PO reference — shown even when no candidates, useful for manual entry */}
+              {result.po_reference && (
+                <p className={`text-xs mt-0.5 font-mono ${
+                  result.po_reference_confidence === 'high'
+                    ? 'text-blue-600 dark:text-blue-400'
+                    : 'text-gray-500 dark:text-gray-400'
+                }`}>
+                  PO ref: {result.po_reference}
+                  {result.po_reference_confidence === 'medium' && (
+                    <span className="ml-1 font-sans not-italic text-amber-500">(handwritten — verify)</span>
+                  )}
+                </p>
+              )}
+              {reviewLines.length > 0 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                  ⚠ {reviewLines.length} line{reviewLines.length !== 1 ? 's' : ''} need review — check quantities
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2 shrink-0">
+              {previewUrl && (
+                <a href={previewUrl} target="_blank" rel="noopener noreferrer"
+                  className="text-xs text-gray-400 hover:underline">
+                  View image
+                </a>
+              )}
+              <button type="button" onClick={handleReset} className="text-xs text-gray-400 hover:underline">
+                Rescan
+              </button>
+            </div>
           </div>
-          <div className="flex gap-2">
-            {previewUrl && (
-              <a href={previewUrl} target="_blank" rel="noopener noreferrer"
-                className="text-xs text-gray-400 hover:underline">
-                View image
-              </a>
-            )}
-            <button type="button" onClick={handleReset} className="text-xs text-gray-400 hover:underline">
-              Rescan
-            </button>
-          </div>
+
+          {/* PO candidates — shown inline so user can jump to wizard without scrolling */}
+          {result.po_candidates.length > 0 && (
+            <div className="space-y-1.5 pt-1">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                PO found in system
+              </p>
+              {result.po_candidates.map(c => (
+                <POCandidateCard
+                  key={c.id}
+                  candidate={c}
+                  onSelect={c => onPOCandidatesFound?.([c], result.po_reference ?? '')}
+                />
+              ))}
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 pt-0.5">
+                Or scroll down to review lines first, then accept.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Lines */}

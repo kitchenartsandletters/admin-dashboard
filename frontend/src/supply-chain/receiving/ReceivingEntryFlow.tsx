@@ -5,26 +5,23 @@
 //
 // Flow:
 //   Step 1: PO Resolution
-//     - Staff enter PO number from packing slip (or skip if not present)
-//     - System looks up against PO registry
-//     - Exact match → proceed to standard ReceivingWizard
-//     - Fuzzy match → staff confirm which PO
-//     - No match → ad hoc path
+//     - Staff scan a packing slip OR enter PO number manually
+//     - Scan path: parse-and-lookup extracts lines + resolves PO in one call
+//       - High-confidence single match → wizard directly
+//       - Multiple matches → fuzzy confirm step
+//       - No match → lines accepted, fall through to ad hoc supplier step
+//     - Manual path: lookup by PO number → same branch logic as above
+//     - "No PO number" → ad hoc path
 //
 //   Step 2 (ad hoc only): Supplier identification
-//     - Staff search for supplier or create new
 //
 //   Step 3: Line item entry
-//     - Staff enter ISBNs one by one (or will be populated from packing slip scan)
-//     - Each ISBN is resolved: existing product or new
+//     - Lines pre-filled from scan (if scan was used) or entered manually
+//     - Each ISBN resolved: existing product or new
 //     - New products trigger NewProductWizard inline
 //
 //   Step 4: Session summary
-//     - All lines shown with resolution status
-//     - Missing fields flagged per new product
-//     - Staff confirm → execute (create PO + add lines)
-//     - After PO is created and lines added, redirect to ReceivingWizard
-//       to fire the actual inventory adjustments
+//     - Staff confirm → create PO + add lines → redirect to ReceivingWizard
 
 import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -32,7 +29,7 @@ import {
   lookupPurchaseOrders, lookupProductByISBN,
   fetchSuppliers, fetchSupplierDetail,
   createPurchaseOrder, createPOLine,
-  POLookupResult, VariantSearchResult,
+  POLookupResult, VariantSearchResult, POCandidate,
 } from '../../api/supplyChainApi'
 import { SupplierParty, SupplierDetail } from '../suppliers/supplierTypes'
 import { PurchaseOrder } from '../purchase-orders/purchaseOrderTypes'
@@ -53,7 +50,6 @@ interface SessionLine {
   unit_cost: string
   title_from_slip: string
   resolution: LineResolution
-  // Populated after resolution
   existing_product?: VariantSearchResult & { current_stock?: number }
   new_product?: {
     shopify_product_id: string
@@ -62,19 +58,19 @@ interface SessionLine {
     title: string
     missing_fields: string[]
   }
-  po_line_id?: string // set after PO line is created
+  po_line_id?: string
 }
 
 type FlowStep =
-  | 'po_lookup'        // Step 1: Enter/lookup PO number
-  | 'po_fuzzy'         // Step 1b: Staff confirms fuzzy match
-  | 'po_received'      // Step 1c: PO already received (new step for feedback)`
-  | 'supplier'         // Step 2: Identify supplier (ad hoc path)
-  | 'lines'            // Step 3: Add line items
-  | 'new_product'      // Step 3b: Create new product (inline)
-  | 'summary'          // Step 4: Review and confirm
-  | 'executing'        // Executing PO creation + lines
-  | 'done'             // All done, redirect to receiving
+  | 'po_lookup'
+  | 'po_fuzzy'
+  | 'po_received'
+  | 'supplier'
+  | 'lines'
+  | 'new_product'
+  | 'summary'
+  | 'executing'
+  | 'done'
 
 // ---------------------------------------------------------------------------
 // Small shared components
@@ -108,21 +104,28 @@ function StepHeader({ step, label, sub }: { step: number; label: string; sub?: s
 }
 
 // ---------------------------------------------------------------------------
-// Step 1: PO lookup
+// Step 1: PO lookup — scan OR manual entry
 // ---------------------------------------------------------------------------
 
 function POLookupStep({
   onExactMatch,
   onFuzzyMatches,
   onNoMatch,
+  onSlipLinesReady,
+  onCandidatesFound,
 }: {
   onExactMatch: (po: PurchaseOrder) => void
   onFuzzyMatches: (pos: POLookupResult[]) => void
   onNoMatch: (poNumber: string) => void
+  /** Called when a scan produces lines but no high-confidence PO match */
+  onSlipLinesReady: (lines: ParsedSlipLine[]) => void
+  /** Called when scan produces high-confidence PO candidates */
+  onCandidatesFound: (candidates: POCandidate[], poReference: string) => void
 }) {
   const [poNumber, setPoNumber] = useState('')
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showScanner, setShowScanner] = useState(false)
 
   const handleLookup = async () => {
     if (!poNumber.trim()) { onNoMatch(''); return }
@@ -147,14 +150,67 @@ function POLookupStep({
     }
   }
 
+  // Called by PackingSlipUpload when candidates are found at high confidence
+  const handleCandidatesFound = useCallback((candidates: POCandidate[], poRef: string) => {
+    onCandidatesFound(candidates, poRef)
+  }, [onCandidatesFound])
+
+  // Called by PackingSlipUpload when lines are accepted but no PO candidate matched
+  const handleSlipLinesAccepted = useCallback((lines: ParsedSlipLine[]) => {
+    onSlipLinesReady(lines)
+  }, [onSlipLinesReady])
+
   return (
     <div className="space-y-5">
       <StepHeader
         step={1}
         label="PO Resolution"
-        sub="Enter the PO number from the packing slip, or skip if none is present."
+        sub="Scan the packing slip to auto-identify the PO and pre-fill lines, or enter the PO number manually."
       />
 
+      {/* Scan path — shown by default, collapsible */}
+      <div className="space-y-3">
+        {!showScanner ? (
+          <button
+            type="button"
+            onClick={() => setShowScanner(true)}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed
+                       border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300
+                       hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20
+                       text-sm font-semibold transition-colors"
+          >
+            📷 Scan packing slip
+          </button>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                Scan document
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowScanner(false)}
+                className="text-xs text-gray-400 hover:underline"
+              >
+                Hide
+              </button>
+            </div>
+            <PackingSlipUpload
+              onLinesAccepted={handleSlipLinesAccepted}
+              onPOCandidatesFound={handleCandidatesFound}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Divider */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+        <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide">or</span>
+        <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+      </div>
+
+      {/* Manual entry path */}
       <div className="space-y-3">
         <div>
           <Label>PO number from packing slip</Label>
@@ -163,7 +219,6 @@ function POLookupStep({
             onChange={e => setPoNumber(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleLookup()}
             placeholder="PO-20260515-7D4B or supplier reference"
-            autoFocus
           />
         </div>
 
@@ -193,6 +248,7 @@ function POLookupStep({
 
 // ---------------------------------------------------------------------------
 // Step 1b: Fuzzy match confirmation
+// (also used when scan returns multiple high-confidence candidates)
 // ---------------------------------------------------------------------------
 
 function POFuzzyStep({
@@ -314,7 +370,6 @@ function SupplierStep({
     if (selected) onSelect(selected)
   }
 
-  // Derive ordering pathway from selected detail
   const primaryAccount = selected?.accounts.find(a => a.is_primary && a.is_active)
     ?? selected?.accounts[0]
 
@@ -338,7 +393,6 @@ function SupplierStep({
           />
         </div>
 
-        {/* Ordering pathway confirmation — shown after selection */}
         {selected && (
           <div className="px-4 py-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 space-y-2">
             <div className="flex items-start justify-between">
@@ -346,7 +400,6 @@ function SupplierStep({
                 <p className="font-semibold text-blue-900 dark:text-blue-100 text-sm">
                   {selected.party.name}
                 </p>
-                {/* Show distributor relationship if this is an imprint/distribution client */}
                 {selected.party.parent_id && (
                   <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
                     ↳ Orders via parent distributor
@@ -467,7 +520,6 @@ function LineEntryStep({
         sub="Enter each ISBN from the packing slip. The system will resolve it to an existing product or prompt you to create a new one."
       />
 
-      {/* Add line form */}
       <div className="border dark:border-gray-700 rounded-lg p-4 space-y-3 bg-gray-50/50 dark:bg-gray-900/30">
         <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Add line item</p>
         <div className="grid grid-cols-3 gap-3">
@@ -522,7 +574,6 @@ function LineEntryStep({
         </button>
       </div>
 
-      {/* Line list */}
       {lines.length > 0 && (
         <div className="space-y-2">
           {lines.map(line => (
@@ -585,7 +636,6 @@ function LineItemRow({
             <span className="font-mono text-sm font-medium text-gray-900 dark:text-gray-100">
               {line.isbn}
             </span>
-            {/* Resolution badge */}
             {line.resolution === 'resolving' && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-semibold">
                 Resolving…
@@ -608,7 +658,6 @@ function LineItemRow({
             )}
           </div>
 
-          {/* Title */}
           <p className="text-sm text-gray-700 dark:text-gray-300 mt-0.5 truncate">
             {line.existing_product?.title
               ?? line.new_product?.title
@@ -616,7 +665,6 @@ function LineItemRow({
               ?? '—'}
           </p>
 
-          {/* Missing fields warning for new products */}
           {line.resolution === 'new' && line.new_product?.missing_fields?.length ? (
             <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
               ⚠ Missing: {line.new_product.missing_fields.join(', ')}
@@ -624,7 +672,6 @@ function LineItemRow({
           ) : null}
         </div>
 
-        {/* Qty and actions */}
         <div className="flex items-center gap-2 shrink-0">
           <input
             type="number"
@@ -642,7 +689,6 @@ function LineItemRow({
         </div>
       </div>
 
-      {/* Actions for unresolved lines */}
       {line.resolution === 'pending' && (
         <div className="flex gap-2 mt-2 pt-2 border-t dark:border-gray-700">
           <button
@@ -701,7 +747,6 @@ function SummaryStep({
         sub="Review the session before creating the PO and lines."
       />
 
-      {/* PO info */}
       <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
         <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
           <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Purchase Order</p>
@@ -739,7 +784,6 @@ function SummaryStep({
         </div>
       </div>
 
-      {/* Existing products */}
       {existing.length > 0 && (
         <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
           <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700 flex justify-between">
@@ -765,7 +809,6 @@ function SummaryStep({
         </div>
       )}
 
-      {/* New products */}
       {newProducts.length > 0 && (
         <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
           <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700 flex justify-between">
@@ -792,7 +835,6 @@ function SummaryStep({
         </div>
       )}
 
-      {/* Skipped */}
       {skipped.length > 0 && (
         <p className="text-xs text-gray-400 dark:text-gray-500">
           {skipped.length} line{skipped.length !== 1 ? 's' : ''} skipped
@@ -849,12 +891,10 @@ export default function ReceivingEntryFlow() {
 
   const handleExactMatch = useCallback((po: PurchaseOrder) => {
     if (po.status === 'received') {
-      // Don't navigate — show feedback in the flow
-      setStep('po_received')  // new step
+      setStep('po_received')
       setExistingPO(po)
       return
     }
-    // For receivable POs, navigate to ReceivingWizard directly
     navigate(`/receiving/wizard?po=${po.id}`)
   }, [navigate])
 
@@ -886,12 +926,66 @@ export default function ReceivingEntryFlow() {
     setStep('lines')
   }, [])
 
+  // ── Scan-driven PO resolution ────────────────────────────────────────────
+  // Called by PackingSlipUpload when parse-and-lookup returns high-confidence
+  // PO candidates. We coerce them to POLookupResult[] so the existing
+  // fuzzy-confirm step can render them without changes.
+
+  const handleCandidatesFound = useCallback((candidates: POCandidate[], poRef: string) => {
+    setSlipPoNumber(poRef)
+
+    if (candidates.length === 1) {
+      // Single high-confidence match — treat as exact and navigate directly
+      const c = candidates[0]
+      if (c.status === 'received') {
+        // Reconstruct minimal PurchaseOrder shape for po_received step
+        setExistingPO({ id: c.id, po_number: c.po_number, status: c.status } as PurchaseOrder)
+        setStep('po_received')
+      } else {
+        navigate(`/receiving/wizard?po=${c.id}`)
+      }
+    } else {
+      // Multiple candidates — show fuzzy confirm step
+      // Coerce POCandidate[] → POLookupResult[] (match_type maps cleanly)
+      const asLookupResults: POLookupResult[] = candidates.map(c => ({
+        id: c.id,
+        po_number: c.po_number,
+        status: c.status,
+        informal_ref: c.informal_ref,
+        supplier_name: c.supplier_name,
+        account_label: c.account_label,
+        supplier_account_id: c.supplier_account_id,
+        destination_location_id: c.destination_location_id,
+        // POLookupResult uses 'exact' | 'fuzzy' but we have 'exact' | 'informal_ref'
+        // Map informal_ref → fuzzy so the confirmation UI labels it appropriately
+        match_type: c.match_type === 'exact' ? 'exact' : 'fuzzy',
+      } as POLookupResult))
+      setFuzzyMatches(asLookupResults)
+      setStep('po_fuzzy')
+    }
+  }, [navigate])
+
+  // Called when scan produces lines but no PO match — go straight to supplier step
+  // with pre-loaded lines waiting in state
+  const handleSlipLinesReady = useCallback(async (slipLines: ParsedSlipLine[]) => {
+    // Load lines into state before transitioning so they're visible on the lines step
+    for (const sl of slipLines) {
+      if (!sl.isbn && !sl.title) continue
+      await addLine(
+        sl.isbn ?? '',
+        sl.quantity ?? 1,
+        sl.unit_cost ? String(sl.unit_cost) : '',
+        sl.title ?? '',
+      )
+    }
+    setStep('supplier')
+  }, []) // addLine added below
+
   // ── Line management ──────────────────────────────────────────────────────
 
   const addLine = useCallback(async (isbn: string, qty: number, cost: string, titleFromSlip: string) => {
     const key = crypto.randomUUID()
 
-    // Add as pending immediately
     const pendingLine: SessionLine = {
       _key: key,
       isbn,
@@ -905,7 +999,6 @@ export default function ReceivingEntryFlow() {
     try {
       const results = await lookupProductByISBN(isbn)
       if (results.length > 0) {
-        // Found in catalog
         setLines(prev => prev.map(l => l._key === key ? {
           ...l,
           resolution: 'existing',
@@ -913,7 +1006,6 @@ export default function ReceivingEntryFlow() {
           title_from_slip: titleFromSlip || results[0].title,
         } : l))
       } else {
-        // Not found — needs new product creation
         setLines(prev => prev.map(l => l._key === key ? {
           ...l,
           resolution: 'pending',
@@ -926,6 +1018,21 @@ export default function ReceivingEntryFlow() {
       } : l))
     }
   }, [])
+
+  // Wire addLine into handleSlipLinesReady (defined before addLine above,
+  // so we use a ref-style workaround: re-assign with a stable callback)
+  const handleSlipLinesReadyFull = useCallback(async (slipLines: ParsedSlipLine[]) => {
+    for (const sl of slipLines) {
+      if (!sl.isbn && !sl.title) continue
+      await addLine(
+        sl.isbn ?? '',
+        sl.quantity ?? 1,
+        sl.unit_cost ? String(sl.unit_cost) : '',
+        sl.title ?? '',
+      )
+    }
+    setStep('supplier')
+  }, [addLine])
 
   const updateLine = useCallback((key: string, patch: Partial<SessionLine>) => {
     setLines(prev => prev.map(l => l._key === key ? { ...l, ...patch } : l))
@@ -940,22 +1047,18 @@ export default function ReceivingEntryFlow() {
     setStep('new_product')
   }, [])
 
-  // Called when NewProductWizard creates a product successfully
   const handleSlipLinesAccepted = useCallback(async (slipLines: ParsedSlipLine[]) => {
-     // Each accepted slip line goes through the same ISBN resolution as manual entry.
-     // We fire them sequentially so the resolving state is visible per line.
-     for (const sl of slipLines) {
-       if (!sl.isbn && !sl.title) continue
-       await addLine(
-         sl.isbn ?? '',
-         sl.quantity ?? 1,
-         sl.unit_cost ? String(sl.unit_cost) : '',
-         sl.title ?? '',
-       )
-     }
-   }, [addLine])
+    for (const sl of slipLines) {
+      if (!sl.isbn && !sl.title) continue
+      await addLine(
+        sl.isbn ?? '',
+        sl.quantity ?? 1,
+        sl.unit_cost ? String(sl.unit_cost) : '',
+        sl.title ?? '',
+      )
+    }
+  }, [addLine])
 
-  // Called when NewProductWizard creates a product successfully
   const handleNewProductCreated = useCallback((
     productId: string,
     inventoryItemId: string,
@@ -994,7 +1097,6 @@ export default function ReceivingEntryFlow() {
         throw new Error('No supplier account available — cannot create PO')
       }
 
-      // 1. Create ad hoc PO if needed
       let poId = existingPO?.id ?? null
       if (!poId) {
         const po = await createPurchaseOrder({
@@ -1008,7 +1110,6 @@ export default function ReceivingEntryFlow() {
         poId = po.id
       }
 
-      // 2. Add lines — existing products and newly created products
       for (const line of activeLines) {
         const inventoryItemId = line.existing_product?.inventory_item_id
           ?? line.new_product?.inventory_item_id
@@ -1025,7 +1126,6 @@ export default function ReceivingEntryFlow() {
         })
       }
 
-      // 3. Navigate to receiving wizard with the PO pre-loaded
       navigate(`/receiving/wizard?po=${poId}`)
     } catch (e) {
       setExecError(e instanceof Error ? e.message : 'Failed to create PO')
@@ -1035,7 +1135,6 @@ export default function ReceivingEntryFlow() {
 
   // ── Render ───────────────────────────────────────────────────────────────
 
-  // NewProductWizard inline — needs the line's prefill data
   if (step === 'new_product' && newProductTargetKey) {
     const targetLine = lines.find(l => l._key === newProductTargetKey)
     if (!targetLine) { setStep('lines'); return null }
@@ -1058,7 +1157,6 @@ export default function ReceivingEntryFlow() {
 
   return (
     <div className="max-w-2xl mx-auto py-8 px-4">
-      {/* Back to Receiving */}
       <div className="mb-4">
         <button
           onClick={() => navigate('/receiving')}
@@ -1068,7 +1166,6 @@ export default function ReceivingEntryFlow() {
           Receiving
         </button>
       </div>
-      {/* Page header */}
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">New Receipt</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -1081,6 +1178,8 @@ export default function ReceivingEntryFlow() {
           onExactMatch={handleExactMatch}
           onFuzzyMatches={handleFuzzyMatches}
           onNoMatch={handleNoMatch}
+          onSlipLinesReady={handleSlipLinesReadyFull}
+          onCandidatesFound={handleCandidatesFound}
         />
       )}
 
@@ -1103,12 +1202,8 @@ export default function ReceivingEntryFlow() {
           <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
             <div className="px-4 py-3 bg-green-50 dark:bg-green-900/20 border-b dark:border-gray-700">
               <div className="flex items-center gap-2">
-                <span className="text-green-600 dark:text-green-400 font-semibold text-sm">
-                  ✓ Received
-                </span>
-                <span className="font-mono text-sm text-gray-700 dark:text-gray-300">
-                  {existingPO.po_number}
-                </span>
+                <span className="text-green-600 dark:text-green-400 font-semibold text-sm">✓ Received</span>
+                <span className="font-mono text-sm text-gray-700 dark:text-gray-300">{existingPO.po_number}</span>
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 {existingPO.supplier_name ?? existingPO.account_label}
@@ -1142,7 +1237,6 @@ export default function ReceivingEntryFlow() {
 
       {step === 'lines' && (
         <>
-          {/* Supplier/PO context bar */}
           <div className="mb-5 px-3 py-2.5 rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-sm flex items-center justify-between">
             <span className="text-blue-800 dark:text-blue-200 font-medium">
               {supplierDetail?.party.name ?? existingPO?.supplier_name}
@@ -1153,7 +1247,6 @@ export default function ReceivingEntryFlow() {
               </span>
             )}
           </div>
-          {/* Packing slip scanner — shown before manual entry */}
           {lines.length === 0 && (
             <div className="mb-6">
               <PackingSlipUpload onLinesAccepted={handleSlipLinesAccepted} />
