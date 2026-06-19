@@ -17,7 +17,7 @@ const navItems = [
     path: '/damaged',
     roles: ['admin', 'editor', 'user'],
     children: [
-      { label: 'Bulk Create', path: '/damaged/bulk-create', roles: ['admin'] },
+      { label: 'Bulk Create', path: '/damaged/bulk-create', roles: ['admin', 'editor'] },
     ]
   },
   { 
@@ -30,7 +30,7 @@ const navItems = [
       { label: 'Order Tagging', path: '/preorders/tagging', roles: ['admin', 'editor'] },
     ]
   },
-  { label: 'Backorders', path: '/backorders', roles: ['admin', 'editor'] },
+  { label: 'Backorders', path: '/backorders', roles: ['admin', 'editor', 'user'] },
   { label: 'Campaigns', path: '/campaigns', roles: ['admin'] },
   {
     label: 'Supply Chain',
@@ -49,7 +49,7 @@ const navItems = [
     path: '/tools',
     roles: ['admin', 'editor'],
     children: [
-      { label: 'Edelweiss Lookup', path: '/tools/edelweiss-lookup', roles: ['admin', 'editor'] },
+      { label: 'Edelweiss Lookup', path: '/tools/edelweiss-lookup', roles: ['admin', 'editor', 'user'] },
     ],
   },
   { label: 'System Status', path: '/status', roles: ['admin'] },

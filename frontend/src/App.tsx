@@ -104,17 +104,17 @@ const App = () => {
                         </ProtectedRoute>
                       } />
                       <Route path="/damaged" element={
-                        <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
                           <DamagedBooksTable />
                         </ProtectedRoute>
                       } />
                       <Route path="/damaged/bulk-create" element={
-                        <ProtectedRoute requiredRoles={['admin']}>
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
                           <DamagedBooksWizard />
                         </ProtectedRoute>
                       } />
                       <Route path="/reports" element={
-                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                        <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
                           <ReportsPage />
                         </ProtectedRoute>
                       } />
@@ -159,58 +159,58 @@ const App = () => {
                         </ProtectedRoute>
                       } />
                       <Route path="/backorders" element={
-                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                        <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
                           <BackorderService />
                         </ProtectedRoute>
                       } />
                       <Route path="/campaigns" element={
-                        <ProtectedRoute requiredRoles={['admin']}>
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
                           <CampaignDashboard />
                         </ProtectedRoute>
                       } />
                       <Route path="/suppliers" element={
-                        <ProtectedRoute requiredRoles={['admin']}>
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
                           <SupplierService />
                         </ProtectedRoute>
                       } />
                       <Route path="/purchase-orders" element={
-                        <ProtectedRoute requiredRoles={['admin']}>
+                        <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
                           <POService />
                         </ProtectedRoute>
                       } />
                       <Route path="/receiving" element={
-                        <ProtectedRoute requiredRoles={['admin']}>
+                        <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
                           <ReceivingDashboard />
                         </ProtectedRoute>
                       } />
                       <Route path="/receiving/new"
                         element={
-                          <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
                             <ReceivingEntryFlow />
                           </ProtectedRoute>
                         }
                       />
                       <Route path="/receiving/wizard" element={
-                        <ProtectedRoute requiredRoles={['admin']}>
+                        <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
                           <ReceivingWizard />
                         </ProtectedRoute>
                       } />
                       <Route path="/transfers" element={
-                        <ProtectedRoute requiredRoles={['admin']}>
+                        <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
                           <TransferService />
                         </ProtectedRoute>
                       } />
                       <Route
                         path="/supply-chain/cosmology"
                         element={
-                          <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
                             <SupplierCosmologyMap />
                           </ProtectedRoute>
                         }
                       />
                       {/* ── Tools ── */}
                       <Route path="/tools/edelweiss-lookup" element={
-                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                        <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
                           <EdelweissLookup />
                         </ProtectedRoute>
                       } />
