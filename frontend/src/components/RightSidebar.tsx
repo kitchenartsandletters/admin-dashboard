@@ -1,5 +1,6 @@
 // src/components/RightSidebar.tsx
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom'; // 1. Import createPortal
 import DocViewer from './DocViewer';
 
 type Props = {
@@ -57,8 +58,10 @@ export default function RightSidebar({ title, onClose, row, renderRowContent, do
 
   if (!shouldRender) return null;
 
-  return (
+  // 2. Use createPortal to target document.body
+  return createPortal(
     <>
+      {/* Backdrop overlay */}
       <div
         className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40"
         onClick={() => {
@@ -66,8 +69,9 @@ export default function RightSidebar({ title, onClose, row, renderRowContent, do
           setTimeout(onClose, 300);
         }}
       />
+      {/* Sidebar Container */}
       <div
-        className={`fixed top-0 right-0 h-full w-full sm:w-[28rem] bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 shadow-xl z-50 transition-transform duration-300 transform ${isVisible ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed top-0 right-0 h-screen w-full sm:w-[28rem] bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 shadow-xl z-50 transition-transform duration-300 transform ${isVisible ? 'translate-x-0' : 'translate-x-full'}`}
       >
         <div className="flex items-center justify-between p-3 border-b dark:border-gray-700">
           <h3 className="font-semibold text-lg">
@@ -110,6 +114,7 @@ export default function RightSidebar({ title, onClose, row, renderRowContent, do
           )}
         </div>
       </div>
-    </>
+    </>,
+    document.body // Appends directly to the <body> tag
   );
 }
