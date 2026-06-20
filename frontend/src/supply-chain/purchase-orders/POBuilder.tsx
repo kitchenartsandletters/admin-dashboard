@@ -26,35 +26,34 @@
 //   location_id match, then the primary, then the first active account. The
 //   effective account is recomputed whenever the destination location changes.
 
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLocations } from '../hooks/useLocations'
 import {
-  fetchSuppliers,
-  fetchSupplierDetail,
   createPurchaseOrder,
   createPOLine,
   searchVariants,
   submitPurchaseOrder,
-  downloadPOPdf
+  downloadPOPdf,
+  fetchPurchaseOrders,
 } from '../../api/supplyChainApi'
 import { SupplierParty, SupplierAccount } from '../suppliers/supplierTypes'
 import type { SupplierDetail } from '../suppliers/supplierTypes'
 import { AdHocSource, PurchaseOrder } from '../purchase-orders/purchaseOrderTypes'
-import { fetchPurchaseOrders } from '../../api/supplyChainApi'
+import SupplierAccountPicker, { resolveAccountForLocation } from '../suppliers/SupplierAccountPicker'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 interface LineItem {
-  _key: string                // local temp key for React list
+  _key: string
   inventory_item_id: string
   variant_id: string
   title: string
   isbn: string
   quantity_ordered: number
-  unit_cost: string           // string for input control; parsed on save
+  unit_cost: string
   notes: string
 }
 
@@ -64,29 +63,6 @@ interface VariantSearchResult {
   title: string
   isbn: string
   vendor: string
-}
-
-// ---------------------------------------------------------------------------
-// Account resolution
-//
-// Given the active accounts for a party and the chosen destination location,
-// return the account that should be used for the PO:
-//   1. an account whose location_id matches the destination location, else
-//   2. the primary account, else
-//   3. the first active account.
-// This is what seeds the correct account number (e.g. PRH 111 Broadway vs HQ).
-// ---------------------------------------------------------------------------
-
-function resolveAccountForLocation(
-  accounts: SupplierAccount[],
-  locationId: string | null,
-): SupplierAccount | null {
-  if (!accounts || accounts.length === 0) return null
-  if (locationId) {
-    const match = accounts.find(a => a.location_id === locationId)
-    if (match) return match
-  }
-  return accounts.find(a => a.is_primary) ?? accounts[0]
 }
 
 // ---------------------------------------------------------------------------
@@ -120,135 +96,6 @@ const Textarea = (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
     className={`w-full px-3 py-2 border rounded text-sm bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50 resize-none ${props.className ?? ''}`}
   />
 )
-
-// ---------------------------------------------------------------------------
-// Supplier account picker
-// ---------------------------------------------------------------------------
-
-function SupplierAccountPicker({
-  value,
-  effectiveAccount,
-  onChange,
-}: {
-  value: { party: SupplierParty; accounts: SupplierAccount[] } | null
-  effectiveAccount: SupplierAccount | null
-  onChange: (val: { party: SupplierParty; accounts: SupplierAccount[] } | null) => void
-}) {
-  const [search, setSearch] = useState('')
-  const [results, setResults] = useState<SupplierParty[]>([])
-  const [open, setOpen] = useState(false)
-  const [loadingAccounts, setLoadingAccounts] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
-  useEffect(() => {
-    if (search.length < 2) { setResults([]); return }
-    fetchSuppliers({ search, activeOnly: true })
-      .then(r => setResults(r.slice(0, 8)))
-      .catch(() => {})
-  }, [search])
-
-  const selectParty = async (party: SupplierParty) => {
-    setLoadingAccounts(true)
-    setOpen(false)
-    try {
-    const detail = await fetchSupplierDetail(party.id)
-    let accounts = detail.accounts.filter(a => a.is_active)
-    let orderingParty = party
-    // If this party has no active accounts, walk up to the parent
-      // (e.g. Ten Speed Press → Penguin Random House)
-      if (accounts.length === 0 && detail.party.parent_id) {
-        const parentDetail = await fetchSupplierDetail(detail.party.parent_id)
-        accounts = parentDetail.accounts.filter(a => a.is_active)
-        orderingParty = parentDetail.party
-      }
-
-      // Keep the full set of active accounts; the parent component derives the
-      // effective account from the chosen destination location.
-      if (accounts.length > 0) {
-        onChange({ party: orderingParty, accounts })
-        setSearch(orderingParty.name)
-      }
-    } catch {
-      // ignore
-    } finally {
-      setLoadingAccounts(false)
-    }
-  };
-
-  return (
-    <div ref={ref} className="relative">
-      <Label required>Supplier</Label>
-      <Input
-        value={value ? value.party.name : search}
-        onChange={e => {
-          setSearch(e.target.value)
-          onChange(null)
-          setOpen(true)
-        }}
-        onFocus={() => setOpen(true)}
-        placeholder="Search active suppliers…"
-        disabled={loadingAccounts}
-      />
-      {loadingAccounts && (
-        <p className="text-xs text-gray-400 mt-1">Loading accounts…</p>
-      )}
-      {value && effectiveAccount && (
-        <div className="mt-1.5 px-3 py-2 rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-xs">
-          <span className="font-semibold text-blue-800 dark:text-blue-200">
-            {effectiveAccount.label}
-          </span>
-          {effectiveAccount.account_number && (
-            <span className="text-blue-600 dark:text-blue-300 ml-2">
-              #{effectiveAccount.account_number}
-            </span>
-          )}
-          {effectiveAccount.ordering_method && (
-            <span className="text-blue-500 dark:text-blue-400 ml-2 capitalize">
-              via {effectiveAccount.ordering_method.replace('_', ' ')}
-            </span>
-          )}
-          {value.accounts.length > 1 && (
-            <span className="block mt-1 text-blue-500 dark:text-blue-400">
-              Account auto-selected for the chosen receiving location.
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => { onChange(null); setSearch('') }}
-            className="ml-2 text-blue-400 hover:text-red-500"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-      {open && results.length > 0 && !value && (
-        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-md shadow-xl overflow-hidden">
-          {results.map(party => (
-            <button
-              key={party.id}
-              type="button"
-              onMouseDown={() => selectParty(party)}
-              className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 border-b dark:border-gray-800 last:border-0"
-            >
-              <span className="font-medium text-gray-900 dark:text-gray-100">{party.name}</span>
-              {party.roles.length > 0 && (
-                <span className="text-xs text-gray-400 ml-2">{party.roles[0]}</span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Variant / line item search
@@ -445,7 +292,7 @@ function StepBar({ step }: { step: 1 | 2 | 3 }) {
 // ---------------------------------------------------------------------------
 
 interface Props {
-  initialSupplier?: SupplierDetail  // pre-loads supplier when opened from sidebar
+  initialSupplier?: SupplierDetail
   onClose: () => void
   onCreated: (poId: string) => void
 }
@@ -467,8 +314,6 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
 
   const navigate = useNavigate()
 
-  // Header fields
-  // Pre-load supplier from initialSupplier prop
   const getInitialSelection = () => {
     if (!initialSupplier) return null
     const active = initialSupplier.accounts.filter(a => a.is_active)
@@ -491,10 +336,6 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
   const [isDropShip, setIsDropShip] = useState(false)
   const [dropShipAddress, setDropShipAddress] = useState('')
 
-  // The effective account is derived from the party's active accounts and the
-  // chosen destination location — this is what seeds the correct account number
-  // (e.g. PRH 111 Broadway vs PRH 1435 Lexington). Recomputes when either the
-  // supplier selection or the destination location changes.
   const effectiveAccount = useMemo(
     () => supplierSelection
       ? resolveAccountForLocation(supplierSelection.accounts, destinationLocationId || null)
@@ -502,15 +343,10 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
     [supplierSelection, destinationLocationId],
   )
 
-  // Line items
   const [lines, setLines] = useState<LineItem[]>([])
 
-  // Slide in on mount
-  useEffect(() => {
-    setTimeout(() => setIsVisible(true), 10)
-  }, [])
+  useEffect(() => { setTimeout(() => setIsVisible(true), 10) }, [])
 
-  // Default destination to HQ (first active non-seasonal location)
   useEffect(() => {
     if (locations.length > 0 && !destinationLocationId) {
       const hq = locations.find(l => l.is_active && !l.is_seasonal) ?? locations[0]
@@ -520,16 +356,13 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()   // prevents sidebar from also closing
-        handleClose()
-      }
+      if (e.key === 'Escape') { e.stopPropagation(); handleClose() }
     }
-    window.addEventListener('keydown', handleEsc, true)  // capture phase
+    window.addEventListener('keydown', handleEsc, true)
     return () => window.removeEventListener('keydown', handleEsc, true)
   }, [])
 
-    useEffect(() => {
+  useEffect(() => {
     if (!supplierSelection || !effectiveAccount) { setDraftPOs([]); return }
     fetchPurchaseOrders({
       supplierAccountId: effectiveAccount.id,
@@ -541,49 +374,25 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
     }).catch(() => {})
   }, [effectiveAccount?.id])
 
-  const handleClose = () => {
-    setIsVisible(false)
-    setTimeout(onClose, 300)
-  }
+  const handleClose = () => { setIsVisible(false); setTimeout(onClose, 300) }
 
-  // Step 1 validation
   const step1Valid = !!supplierSelection && !!effectiveAccount && !!destinationLocationId &&
     (!isDropShip || dropShipAddress.trim().length > 0)
 
-  // Step 2 can proceed with zero lines (ad hoc POs sometimes have no lines at creation)
-  const step2Valid = true
-
   const addLine = (item: Omit<LineItem, '_key' | 'quantity_ordered' | 'unit_cost' | 'notes'>) => {
-    setLines(prev => [...prev, {
-      ...item,
-      _key: crypto.randomUUID(),
-      quantity_ordered: 1,
-      unit_cost: '',
-      notes: '',
-    }])
+    setLines(prev => [...prev, { ...item, _key: crypto.randomUUID(), quantity_ordered: 1, unit_cost: '', notes: '' }])
   }
-
   const updateLine = (key: string, patch: Partial<LineItem>) => {
     setLines(prev => prev.map(l => l._key === key ? { ...l, ...patch } : l))
   }
-
-  const removeLine = (key: string) => {
-    setLines(prev => prev.filter(l => l._key !== key))
-  }
-
+  const removeLine = (key: string) => setLines(prev => prev.filter(l => l._key !== key))
   const existingItemIds = new Set(lines.map(l => l.inventory_item_id))
-
-  // ---------------------------------------------------------------------------
-  // Save
-  // ---------------------------------------------------------------------------
 
   const handleCreate = async (andSubmit: boolean) => {
     if (!supplierSelection || !effectiveAccount || !destinationLocationId) return
     setBusy(true)
     setError(null)
-
     try {
-      // 1. Create the PO header
       const po = await createPurchaseOrder({
         supplier_account_id:     effectiveAccount.id,
         destination_location_id: destinationLocationId,
@@ -594,17 +403,10 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
         ad_hoc_source:           (adHocSource || undefined) as AdHocSource | undefined,
         informal_ref:            informalRef.trim() || undefined,
         is_drop_ship:            isDropShip,
-        // No venue picker exists yet — omit drop_ship_venue_id rather than
-        // sending a placeholder string (the column is a uuid; a non-uuid
-        // value like 'default' 500s the request once the backend actually
-        // accepts this field). Wire up real venue selection here when a
-        // venues table/picker exists.
         drop_ship_venue_id:      undefined,
         drop_ship_address:       isDropShip ? dropShipAddress.trim() : undefined,
         is_test:                 isTest,
       })
-
-      // 2. Add lines sequentially
       for (const line of lines) {
         await createPOLine(po.id, {
           inventory_item_id: line.inventory_item_id,
@@ -614,16 +416,10 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
           notes:             line.notes.trim() || undefined,
         })
       }
-
-      // 3. Submit and download PDF
       if (andSubmit) {
         await submitPurchaseOrder(po.id)
-        // Download PDF after successful submit — best effort, don't block onCreated
-        downloadPOPdf(po.id, po.po_number).catch(e => {
-          console.warn('PDF download failed after submit:', e)
-        })
+        downloadPOPdf(po.id, po.po_number).catch(e => console.warn('PDF download failed:', e))
       }
-
       onCreated(po.id)
       handleClose()
     } catch (e) {
@@ -633,106 +429,76 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Render helpers
-  // ---------------------------------------------------------------------------
-
   const totalLines = lines.length
-  const totalQty = lines.reduce((s, l) => s + l.quantity_ordered, 0)
-  const totalCost = lines.reduce((s, l) => s + (parseFloat(l.unit_cost) || 0) * l.quantity_ordered, 0)
+  const totalQty   = lines.reduce((s, l) => s + l.quantity_ordered, 0)
+  const totalCost  = lines.reduce((s, l) => s + (parseFloat(l.unit_cost) || 0) * l.quantity_ordered, 0)
 
   return (
     <>
-      {/* Backdrop */}
       <div
         className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`}
         onClick={handleClose}
       />
-
-      {/* Modal */}
       <div className={`fixed inset-0 z-50 flex items-start justify-center pt-6 px-4 pb-6 transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`}>
         <div className="w-full max-w-2xl bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 shadow-2xl flex flex-col max-h-[92vh]">
 
-          {/* Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b dark:border-gray-800 shrink-0">
             <h2 className="font-bold text-gray-900 dark:text-white text-lg">New Purchase Order</h2>
-            <button onClick={handleClose} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
-              Cancel
-            </button>
+            <button onClick={handleClose} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">Cancel</button>
           </div>
 
-          {/* Step bar */}
           <StepBar step={step} />
 
-         {/* Draft PO prompt */}
+          {showDraftPrompt && draftPOs.length > 0 && step === 1 && supplierSelection && (
+            <div className="mx-5 mb-4 px-4 py-3 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-2">
+                {draftPOs.length} open draft PO{draftPOs.length !== 1 ? 's' : ''} for {supplierSelection.party.name}
+              </p>
+              <div className="space-y-1 mb-3">
+                {draftPOs.map(po => (
+                  <label key={po.id} className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="draft_po" value={po.id}
+                      checked={selectedDraftPO === po.id}
+                      onChange={() => setSelectedDraftPO(po.id)}
+                      className="accent-amber-600"
+                    />
+                    <span className="text-xs font-mono text-amber-700 dark:text-amber-300">{po.po_number}</span>
+                    {po.informal_ref && (
+                      <span className="text-xs text-amber-600 dark:text-amber-400">· {po.informal_ref}</span>
+                    )}
+                  </label>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { if (selectedDraftPO) { onClose(); navigate(`/receiving?po=${selectedDraftPO}`) } }}
+                  disabled={!selectedDraftPO}
+                  className="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold disabled:opacity-50"
+                >
+                  Add lines to selected PO
+                </button>
+                <button onClick={() => setShowDraftPrompt(false)}
+                  className="px-3 py-1.5 rounded border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 text-xs">
+                  Create new PO instead
+                </button>
+              </div>
+            </div>
+          )}
 
-         {showDraftPrompt && draftPOs.length > 0 && step === 1 && supplierSelection && (
-           <div className="mx-5 mb-4 px-4 py-3 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-             <p className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-2">
-               {draftPOs.length} open draft PO{draftPOs.length !== 1 ? 's' : ''} for {supplierSelection.party.name}
-             </p>
-             <div className="space-y-1 mb-3">
-               {draftPOs.map(po => (
-                 <label key={po.id} className="flex items-center gap-2 cursor-pointer">
-                   <input
-                     type="radio"
-                     name="draft_po"
-                     value={po.id}
-                     checked={selectedDraftPO === po.id}
-                     onChange={() => setSelectedDraftPO(po.id)}
-                     className="accent-amber-600"
-                   />
-                   <span className="text-xs font-mono text-amber-700 dark:text-amber-300">{po.po_number}</span>
-                   {po.informal_ref && (
-                     <span className="text-xs text-amber-600 dark:text-amber-400">· {po.informal_ref}</span>
-                   )}
-                 </label>
-               ))}
-             </div>
-             <div className="flex gap-2">
-               <button
-                 onClick={() => {
-                   if (selectedDraftPO) {
-                     // Navigate to receiving flow with the selected draft PO
-                     onClose()
-                     navigate(`/receiving?po=${selectedDraftPO}`)
-                   }
-                 }}
-                 disabled={!selectedDraftPO}
-                 className="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold disabled:opacity-50"
-               >
-                 Add lines to selected PO
-               </button>
-               <button
-                 onClick={() => setShowDraftPrompt(false)}
-                 className="px-3 py-1.5 rounded border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 text-xs"
-               >
-                 Create new PO instead
-               </button>
-             </div>
-           </div>
-         )}
-
-          {/* Content */}
           <div ref={contentRef} className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
 
-            {/* ── STEP 1: Header ── */}
             {step === 1 && (
               <div className="space-y-5">
-
+                {/* Shared SupplierAccountPicker — same behaviour as before, now from shared file */}
                 <SupplierAccountPicker
                   value={supplierSelection}
                   effectiveAccount={effectiveAccount}
                   onChange={setSupplierSelection}
                 />
 
-                {/* Destination location */}
                 <div>
                   <Label required>Receiving location</Label>
-                  <Select
-                    value={destinationLocationId}
-                    onChange={e => setDestinationLocationId(e.target.value)}
-                  >
+                  <Select value={destinationLocationId} onChange={e => setDestinationLocationId(e.target.value)}>
                     <option value="">— select location —</option>
                     {locations.filter(l => l.is_active).map(l => (
                       <option key={l.id} value={l.id}>{l.name}</option>
@@ -745,7 +511,6 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                   )}
                 </div>
 
-                {/* Dates */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label>Order date</Label>
@@ -757,20 +522,14 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                   </div>
                 </div>
 
-                {/* Flags */}
                 <div className="space-y-3">
-                  {/* Ad hoc */}
                   <div className="flex items-center justify-between rounded-md border dark:border-gray-700 px-3 py-2.5 bg-gray-50 dark:bg-gray-800/50">
                     <div>
                       <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Ad hoc order</p>
                       <p className="text-[11px] text-gray-400">Order placed outside standard purchasing workflow</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setIsAdHoc(v => !v)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none
-                        ${isAdHoc ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
-                    >
+                    <button type="button" onClick={() => setIsAdHoc(v => !v)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isAdHoc ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}>
                       <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${isAdHoc ? 'translate-x-6' : 'translate-x-1'}`} />
                     </button>
                   </div>
@@ -791,27 +550,18 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                       </div>
                       <div>
                         <Label>Supplier ref / invoice #</Label>
-                        <Input
-                          value={informalRef}
-                          onChange={e => setInformalRef(e.target.value)}
-                          placeholder="INV-12345"
-                        />
+                        <Input value={informalRef} onChange={e => setInformalRef(e.target.value)} placeholder="INV-12345" />
                       </div>
                     </div>
                   )}
 
-                  {/* Drop-ship */}
                   <div className="flex items-center justify-between rounded-md border dark:border-gray-700 px-3 py-2.5 bg-gray-50 dark:bg-gray-800/50">
                     <div>
                       <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Drop-ship</p>
                       <p className="text-[11px] text-gray-400">Supplier ships directly to an event venue — HQ will not receive</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setIsDropShip(v => !v)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none
-                        ${isDropShip ? 'bg-amber-500' : 'bg-gray-300 dark:bg-gray-600'}`}
-                    >
+                    <button type="button" onClick={() => setIsDropShip(v => !v)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isDropShip ? 'bg-amber-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
                       <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${isDropShip ? 'translate-x-6' : 'translate-x-1'}`} />
                     </button>
                   </div>
@@ -819,94 +569,64 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                   {isDropShip && (
                     <div className="pl-2">
                       <Label required>Ship-to address</Label>
-                      <Textarea
-                        value={dropShipAddress}
-                        onChange={e => setDropShipAddress(e.target.value)}
-                        placeholder="Museum of Food and Drink&#10;62 Bayard Street, Brooklyn NY 11222"
-                      />
+                      <Textarea value={dropShipAddress} onChange={e => setDropShipAddress(e.target.value)}
+                        placeholder="Museum of Food and Drink&#10;62 Bayard Street, Brooklyn NY 11222" />
                     </div>
                   )}
                 </div>
 
-                {/* Test mode */}
                 <div className={`flex items-center justify-between rounded-md border px-3 py-2.5
-                  ${isTest
-                    ? 'border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-600'
-                    : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'
-                  }`}>
+                  ${isTest ? 'border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-600'
+                           : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'}`}>
                   <div>
                     <p className="text-sm font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2">
                       Test mode
                       {isTest && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-200 dark:bg-yellow-800
-                                          text-yellow-800 dark:text-yellow-200 font-bold uppercase tracking-wide">
-                          Beta
-                        </span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-200 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-200 font-bold uppercase tracking-wide">Beta</span>
                       )}
                     </p>
                     <p className="text-[11px] text-gray-400 mt-0.5">
-                      {isTest
-                        ? 'PO will be created and receiving will run — but NO inventory changes in Shopify.'
-                        : 'Full production mode — all inventory changes apply to Shopify.'}
+                      {isTest ? 'PO will be created and receiving will run — but NO inventory changes in Shopify.'
+                               : 'Full production mode — all inventory changes apply to Shopify.'}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsTest(v => !v)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors
-                      ${isTest ? 'bg-yellow-400' : 'bg-gray-300 dark:bg-gray-600'}`}
-                  >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow
-                      transition-transform ${isTest ? 'translate-x-6' : 'translate-x-1'}`} />
+                  <button type="button" onClick={() => setIsTest(v => !v)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isTest ? 'bg-yellow-400' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${isTest ? 'translate-x-6' : 'translate-x-1'}`} />
                   </button>
                 </div>
 
-                {/* Notes */}
                 <div>
                   <Label>PO notes</Label>
-                  <Textarea
-                    value={poNotes}
-                    onChange={e => setPoNotes(e.target.value)}
-                    placeholder="Special instructions, catalog notes, publisher contact…"
-                  />
+                  <Textarea value={poNotes} onChange={e => setPoNotes(e.target.value)}
+                    placeholder="Special instructions, catalog notes, publisher contact…" />
                 </div>
               </div>
             )}
 
-            {/* ── STEP 2: Lines ── */}
             {step === 2 && (
               <div className="flex flex-col h-full -mx-5 -my-5">
-                {/* Sticky search header */}
-                <div className="px-5 pt-5 pb-3 border-b dark:border-gray-800
-                                bg-white dark:bg-gray-950 shrink-0">
+                <div className="px-5 pt-5 pb-3 border-b dark:border-gray-800 bg-white dark:bg-gray-950 shrink-0">
                   <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                    Add line items by searching ISBN or title. You can also save
-                    the PO as draft now and add lines later.
+                    Add line items by searching ISBN or title. You can also save the PO as draft now and add lines later.
                   </p>
                   <VariantSearchRow onAdd={addLine} existingItemIds={existingItemIds} />
                 </div>
-                {/* Scrollable line list */}
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
                   {lines.length === 0 ? (
-                    <div className="text-center py-8 text-sm text-gray-400 dark:text-gray-500
-                                    border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg">
-                      No lines added yet.
-                      <br />
+                    <div className="text-center py-8 text-sm text-gray-400 dark:text-gray-500 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg">
+                      No lines added yet.<br />
                       <span className="text-xs">Search above or save as draft and add lines later.</span>
                     </div>
                   ) : (
                     <>
                       {lines.map(line => (
-                        <LineRow
-                          key={line._key}
-                          line={line}
+                        <LineRow key={line._key} line={line}
                           onChange={patch => updateLine(line._key, patch)}
-                          onRemove={() => removeLine(line._key)}
-                        />
+                          onRemove={() => removeLine(line._key)} />
                       ))}
                       {lines.length > 0 && (
-                        <div className="flex items-center justify-between text-xs
-                                        text-gray-400 dark:text-gray-500 px-1 pt-1">
+                        <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500 px-1 pt-1">
                           <span>{totalLines} line{totalLines !== 1 ? 's' : ''} · {totalQty} units</span>
                           {totalCost > 0 && <span>Est. cost: ${totalCost.toFixed(2)}</span>}
                         </div>
@@ -917,77 +637,33 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
               </div>
             )}
 
-            {/* ── STEP 3: Review ── */}
             {step === 3 && (
               <div className="space-y-4">
-                {/* PO summary */}
                 <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
                   <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                      Order header
-                    </h4>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Order header</h4>
                   </div>
                   <div className="px-4 py-3 space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Supplier</span>
-                      <span className="font-medium">{supplierSelection?.party.name}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Account</span>
-                      <span>{effectiveAccount?.label}{effectiveAccount?.account_number ? ` · #${effectiveAccount.account_number}` : ''}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Receiving at</span>
-                      <span>{locationName(destinationLocationId)}</span>
-                    </div>
-                    {orderedAt && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Order date</span>
-                        <span>{orderedAt}</span>
-                      </div>
-                    )}
-                    {expectedAt && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Expected</span>
-                        <span>{expectedAt}</span>
-                      </div>
-                    )}
-                    {isAdHoc && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Type</span>
-                        <span className="text-amber-600 dark:text-amber-400 font-medium">Ad hoc</span>
-                      </div>
-                    )}
-                    {isDropShip && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Drop-ship to</span>
-                        <span className="text-right max-w-[60%] text-xs">{dropShipAddress}</span>
-                      </div>
-                    )}
-                    {poNotes && (
-                      <div className="flex justify-between gap-4">
-                        <span className="text-gray-500 shrink-0">Notes</span>
-                        <span className="text-right text-xs text-gray-600 dark:text-gray-400">{poNotes}</span>
-                      </div>
-                    )}
+                    <div className="flex justify-between"><span className="text-gray-500">Supplier</span><span className="font-medium">{supplierSelection?.party.name}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">Account</span><span>{effectiveAccount?.label}{effectiveAccount?.account_number ? ` · #${effectiveAccount.account_number}` : ''}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">Receiving at</span><span>{locationName(destinationLocationId)}</span></div>
+                    {orderedAt && <div className="flex justify-between"><span className="text-gray-500">Order date</span><span>{orderedAt}</span></div>}
+                    {expectedAt && <div className="flex justify-between"><span className="text-gray-500">Expected</span><span>{expectedAt}</span></div>}
+                    {isAdHoc && <div className="flex justify-between"><span className="text-gray-500">Type</span><span className="text-amber-600 dark:text-amber-400 font-medium">Ad hoc</span></div>}
+                    {isDropShip && <div className="flex justify-between"><span className="text-gray-500">Drop-ship to</span><span className="text-right max-w-[60%] text-xs">{dropShipAddress}</span></div>}
+                    {poNotes && <div className="flex justify-between gap-4"><span className="text-gray-500 shrink-0">Notes</span><span className="text-right text-xs text-gray-600 dark:text-gray-400">{poNotes}</span></div>}
                   </div>
                 </div>
 
-                {/* Lines summary */}
                 <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
                   <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700 flex items-center justify-between">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                      Line items
-                    </h4>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Line items</h4>
                     <span className="text-xs text-gray-400">
-                      {totalLines} line{totalLines !== 1 ? 's' : ''} · {totalQty} units
-                      {totalCost > 0 && ` · $${totalCost.toFixed(2)}`}
+                      {totalLines} line{totalLines !== 1 ? 's' : ''} · {totalQty} units{totalCost > 0 ? ` · $${totalCost.toFixed(2)}` : ''}
                     </span>
                   </div>
                   {lines.length === 0 ? (
-                    <div className="px-4 py-3 text-sm text-gray-400 dark:text-gray-500 italic">
-                      No lines — PO will be saved as draft for line entry later.
-                    </div>
+                    <div className="px-4 py-3 text-sm text-gray-400 dark:text-gray-500 italic">No lines — PO will be saved as draft for line entry later.</div>
                   ) : (
                     <div className="divide-y dark:divide-gray-800">
                       {lines.map(line => (
@@ -1007,70 +683,48 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                 </div>
 
                 {isTest && (
-                  <div className="px-3 py-2.5 rounded-md bg-yellow-50 dark:bg-yellow-900/20
-                                  border border-yellow-300 dark:border-yellow-700 text-sm
-                                  text-yellow-800 dark:text-yellow-200">
+                  <div className="px-3 py-2.5 rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 text-sm text-yellow-800 dark:text-yellow-200">
                     ⚠ Test mode active — this PO will NOT update Shopify inventory when received.
-                    All other steps (PO creation, line management, receiving flow) run normally.
                   </div>
                 )}
 
                 {error && (
-                  <div className="px-3 py-2.5 rounded-md bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">
-                    {error}
-                  </div>
+                  <div className="px-3 py-2.5 rounded-md bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">{error}</div>
                 )}
               </div>
             )}
           </div>
 
-          {/* Footer */}
           <div className="px-5 py-4 border-t dark:border-gray-800 flex items-center justify-between shrink-0 bg-gray-50/50 dark:bg-gray-900/30">
-            {/* Back */}
-            <button
-              type="button"
+            <button type="button"
               onClick={() => setStep(s => Math.max(1, s - 1) as 1 | 2 | 3)}
               disabled={step === 1 || busy}
-              className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-30 transition-colors"
-            >
+              className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-30 transition-colors">
               Back
             </button>
-
             <div className="flex gap-2">
               {step < 3 && (
-                <button
-                  type="button"
+                <button type="button"
                   onClick={() => setStep(s => Math.min(3, s + 1) as 1 | 2 | 3)}
                   disabled={(step === 1 && !step1Valid) || busy}
-                  className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors active:scale-[0.98]"
-                >
+                  className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors active:scale-[0.98]">
                   Next
                 </button>
               )}
-
               {step === 3 && (
                 <>
-                  <button
-                    type="button"
-                    onClick={() => handleCreate(false)}
-                    disabled={busy}
-                    className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
-                  >
+                  <button type="button" onClick={() => handleCreate(false)} disabled={busy}
+                    className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors">
                     {busy ? 'Saving…' : 'Save as draft'}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => handleCreate(true)}
-                    disabled={busy}
-                    className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors active:scale-[0.98]"
-                  >
+                  <button type="button" onClick={() => handleCreate(true)} disabled={busy}
+                    className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors active:scale-[0.98]">
                     {busy ? 'Submitting…' : 'Save, submit + download PDF'}
                   </button>
                 </>
               )}
             </div>
           </div>
-
         </div>
       </div>
     </>
