@@ -12,12 +12,16 @@
 //   expanded attempt rows — the top-level badge always reflects PO state so
 //   a partially-received PO always shows "Partial", never "Received".
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PODetailSidebar from '../purchase-orders/PODetailSidebar'
-import { fetchPurchaseOrderDetail, fetchPurchaseOrders } from '../../api/supplyChainApi'
+import {
+  fetchPurchaseOrderDetail,
+  fetchPurchaseOrders,
+  fetchReceiptHistory,
+} from '../../api/supplyChainApi'
 import { PurchaseOrder, PurchaseOrderDetail } from '../purchase-orders/purchaseOrderTypes'
-import { SortConfig, SortIcon, nextSortDirection } from '../../utils/tableUtils'
+import { SortConfig, SortIcon } from '../../utils/tableUtils'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -25,7 +29,6 @@ import { SortConfig, SortIcon, nextSortDirection } from '../../utils/tableUtils'
 
 interface ReceiptAttempt {
   id: string
-  /** Receipt-level status — used for expanded attempt rows only */
   status: 'pending' | 'applied' | 'failed' | 'partial' | 'cancelled' | 'test_applied'
   received_at: string
   notes: string | null
@@ -40,7 +43,6 @@ interface POReceivingGroup {
   informal_ref: string | null
   supplier_name: string
   account_label: string
-  /** PO-level status — drives the Status column badge */
   canonical_status: string
   canonical_receipt: ReceiptAttempt | null
   attempts: ReceiptAttempt[]
@@ -74,7 +76,6 @@ interface RawReceiptRow {
   is_test?: boolean
 }
 
-// Sortable keys on POReceivingGroup
 type SortKey = 'received_at' | 'supplier_name' | 'po_number' | 'canonical_status'
 
 // ---------------------------------------------------------------------------
@@ -210,27 +211,19 @@ function StatCard({ label, value, sub, alert }: { label: string; value: string |
 // ---------------------------------------------------------------------------
 
 function ThSortable({
-  label,
-  sortKey,
-  sortConfig,
-  onSort,
-  align = 'left',
+  label, sortKey, sortConfig, onSort, align = 'left',
 }: {
-  label: string
-  sortKey: SortKey
+  label: string; sortKey: SortKey
   sortConfig: SortConfig<POReceivingGroup> | null
   onSort: (key: SortKey) => void
   align?: 'left' | 'right'
 }) {
   const active = sortConfig?.key === sortKey
   return (
-    <button
-      type="button"
-      onClick={() => onSort(sortKey)}
+    <button type="button" onClick={() => onSort(sortKey)}
       className={`text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide
         hover:text-gray-700 dark:hover:text-gray-200 transition-colors select-none
-        ${align === 'right' ? 'text-right w-full block' : ''}`}
-    >
+        ${align === 'right' ? 'text-right w-full block' : ''}`}>
       {label}
       <SortIcon active={active} direction={sortConfig?.direction ?? 'asc'} />
     </button>
@@ -252,17 +245,13 @@ function POGroupRow({ group, onRowClick }: { group: POReceivingGroup; onRowClick
         className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors cursor-pointer"
         onClick={() => onRowClick(group.po_id)}
       >
-        {/* Expand toggle */}
-        <button
-          type="button"
+        <button type="button"
           onClick={e => { e.stopPropagation(); hasMultiple && setExpanded(v => !v) }}
           className={`mt-0.5 w-4 shrink-0 text-gray-400 dark:text-gray-500 text-xs
-            ${hasMultiple ? 'cursor-pointer hover:text-gray-700 dark:hover:text-gray-200' : 'cursor-default opacity-0'}`}
-        >
+            ${hasMultiple ? 'cursor-pointer hover:text-gray-700 dark:hover:text-gray-200' : 'cursor-default opacity-0'}`}>
           {expanded ? '▾' : '▸'}
         </button>
 
-        {/* Date */}
         <div className="w-24 shrink-0">
           <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
             {group.canonical_receipt ? formatDate(group.canonical_receipt.received_at) : '—'}
@@ -272,13 +261,11 @@ function POGroupRow({ group, onRowClick }: { group: POReceivingGroup; onRowClick
           </p>
         </div>
 
-        {/* Supplier */}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{group.supplier_name}</p>
           <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{group.account_label}</p>
         </div>
 
-        {/* PO */}
         <div className="w-52 shrink-0 min-w-0">
           <p className="text-xs font-mono text-gray-700 dark:text-gray-300">{group.po_number}</p>
           {group.is_ad_hoc && (
@@ -289,13 +276,10 @@ function POGroupRow({ group, onRowClick }: { group: POReceivingGroup; onRowClick
           )}
         </div>
 
-        {/* Status — PO-level badge */}
         <div className="w-24 shrink-0 flex flex-col items-start gap-1">
           <POStatusBadge status={group.canonical_status} />
           {group.is_test && (
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded
-                             bg-yellow-100 text-yellow-700
-                             dark:bg-yellow-900/30 dark:text-yellow-300 uppercase">
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 uppercase">
               Test
             </span>
           )}
@@ -304,26 +288,14 @@ function POGroupRow({ group, onRowClick }: { group: POReceivingGroup; onRowClick
           )}
         </div>
 
-        {/* Lines completion */}
         <div className="w-24 shrink-0 text-right space-y-0.5">
-          {group.lines_full > 0 && (
-            <p className="text-[11px] text-green-600 dark:text-green-400 tabular-nums">{group.lines_full} complete</p>
-          )}
-          {group.lines_partial > 0 && (
-            <p className="text-[11px] text-amber-600 dark:text-amber-400 tabular-nums">{group.lines_partial} partial</p>
-          )}
-          {group.lines_open > 0 && (
-            <p className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums">{group.lines_open} pending</p>
-          )}
-          {group.lines_total === 0 && (
-            <p className="text-[11px] text-gray-400 tabular-nums">
-              {group.total_lines} line{group.total_lines !== 1 ? 's' : ''}
-            </p>
-          )}
+          {group.lines_full > 0 && <p className="text-[11px] text-green-600 dark:text-green-400 tabular-nums">{group.lines_full} complete</p>}
+          {group.lines_partial > 0 && <p className="text-[11px] text-amber-600 dark:text-amber-400 tabular-nums">{group.lines_partial} partial</p>}
+          {group.lines_open > 0 && <p className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums">{group.lines_open} pending</p>}
+          {group.lines_total === 0 && <p className="text-[11px] text-gray-400 tabular-nums">{group.total_lines} line{group.total_lines !== 1 ? 's' : ''}</p>}
         </div>
       </div>
 
-      {/* Expanded: receipt-level attempt rows */}
       {expanded && nonCanonical.length > 0 && (
         <div className="ml-7 mr-4 mb-2 border dark:border-gray-800 rounded-md overflow-hidden bg-gray-50/50 dark:bg-gray-900/30">
           {nonCanonical.map(attempt => (
@@ -347,49 +319,54 @@ function POGroupRow({ group, onRowClick }: { group: POReceivingGroup; onRowClick
 }
 
 // ---------------------------------------------------------------------------
-// Data fetcher
-// ---------------------------------------------------------------------------
-
-async function fetchReceiptHistory(): Promise<RawReceiptRow[]> {
-  const SC_BASE_URL = import.meta.env.VITE_SC_BASE_URL as string
-  const SC_TOKEN    = import.meta.env.VITE_SC_ADMIN_TOKEN as string
-  const res = await fetch(`${SC_BASE_URL}/api/receiving/history?limit=100`, {
-    headers: { 'X-Admin-Token': SC_TOKEN },
-  })
-  if (!res.ok) throw new Error(`Failed to load receipt history: ${res.status}`)
-  return res.json()
-}
-
-// ---------------------------------------------------------------------------
 // Main dashboard
 // ---------------------------------------------------------------------------
 
 export default function ReceivingDashboard() {
   const navigate = useNavigate()
-  const [groups, setGroups]               = useState<POReceivingGroup[]>([])
-  const [loading, setLoading]             = useState(true)
-  const [error, setError]                 = useState<string | null>(null)
-  const [statusFilter, setStatusFilter]   = useState<string>('all')
-  const [sortConfig, setSortConfig]       = useState<SortConfig<POReceivingGroup> | null>({
+  const [groups, setGroups]             = useState<POReceivingGroup[]>([])
+  const [loading, setLoading]           = useState(true)
+  const [error, setError]               = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [sortConfig, setSortConfig]     = useState<SortConfig<POReceivingGroup> | null>({
     key: 'received_at' as keyof POReceivingGroup, direction: 'desc',
   })
+  const [searchQuery, setSearchQuery]   = useState('')
+  const [searching, setSearching]       = useState(false)
   const [selectedPODetail, setSelectedPODetail] = useState<PurchaseOrderDetail | null>(null)
-  const [submittedPOs, setSubmittedPOs]   = useState<PurchaseOrder[]>([])
-  const [posLoading, setPosLoading]       = useState(true)
+  const [submittedPOs, setSubmittedPOs] = useState<PurchaseOrder[]>([])
+  const [posLoading, setPosLoading]     = useState(true)
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Initial load
   useEffect(() => {
-    fetchReceiptHistory()
-      .then(rows => setGroups(groupByPO(rows)))
+    fetchReceiptHistory({ limit: 100 })
+      .then(rows => setGroups(groupByPO(rows as RawReceiptRow[])))
       .catch(e => setError(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => setLoading(false))
   }, [])
 
+  // Awaiting receipt POs
   useEffect(() => {
     fetchPurchaseOrders({ status: 'submitted,confirmed,partial', limit: 50 })
       .then(orders => setSubmittedPOs(orders))
       .catch(() => {})
       .finally(() => setPosLoading(false))
   }, [])
+
+  // Debounced search — fires against the backend with the search param
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+    searchDebounceRef.current = setTimeout(async () => {
+      setSearching(true)
+      try {
+        const rows = await fetchReceiptHistory({ limit: 100, search: searchQuery || undefined })
+        setGroups(groupByPO(rows as RawReceiptRow[]))
+      } catch { /* keep existing results on error */ }
+      finally { setSearching(false) }
+    }, 300)
+    return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current) }
+  }, [searchQuery])
 
   const handleSort = (key: SortKey) => {
     setSortConfig(prev => ({
@@ -406,17 +383,12 @@ export default function ReceivingDashboard() {
     if (sortConfig) {
       const { key, direction } = sortConfig
       list = [...list].sort((a, b) => {
-        let av: string
-        let bv: string
-
-        if (key === 'received_at') {
-          av = a.canonical_receipt?.received_at ?? ''
-          bv = b.canonical_receipt?.received_at ?? ''
-        } else {
-          av = (a[key as keyof POReceivingGroup] as string) ?? ''
-          bv = (b[key as keyof POReceivingGroup] as string) ?? ''
-        }
-
+        const av = key === 'received_at'
+          ? (a.canonical_receipt?.received_at ?? '')
+          : (a[key as keyof POReceivingGroup] as string) ?? ''
+        const bv = key === 'received_at'
+          ? (b.canonical_receipt?.received_at ?? '')
+          : (b[key as keyof POReceivingGroup] as string) ?? ''
         const cmp = av.localeCompare(bv)
         return direction === 'asc' ? cmp : -cmp
       })
@@ -425,7 +397,7 @@ export default function ReceivingDashboard() {
     return list
   }, [groups, statusFilter, sortConfig])
 
-  const totalUnits    = groups.filter(g => ['received', 'partial'].includes(g.canonical_status)).reduce((s, g) => s + g.total_units, 0)
+  const totalUnits    = groups.filter(g => ['received','partial'].includes(g.canonical_status)).reduce((s,g) => s+g.total_units, 0)
   const failedGroups  = groups.filter(g => g.canonical_status === 'failed')
   const pendingGroups = groups.filter(g => g.canonical_status === 'pending')
 
@@ -444,7 +416,6 @@ export default function ReceivingDashboard() {
     } catch { /* ignore */ }
   }
 
-  // Cast sortConfig key for ThSortable
   const sortKey = sortConfig?.key as SortKey | undefined
 
   return (
@@ -454,14 +425,10 @@ export default function ReceivingDashboard() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Receiving</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            Incoming stock history and receipt management.
-          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Incoming stock history and receipt management.</p>
         </div>
-        <button
-          onClick={() => navigate('/receiving/new')}
-          className="px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors active:scale-[0.97] flex items-center gap-2"
-        >
+        <button onClick={() => navigate('/receiving/new')}
+          className="px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors active:scale-[0.97] flex items-center gap-2">
           <span className="text-lg leading-none">+</span>
           New Receipt
         </button>
@@ -471,8 +438,8 @@ export default function ReceivingDashboard() {
       {!loading && !error && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard label="Orders received" value={counts.received} />
-          <StatCard label="Units received"  value={totalUnits.toLocaleString()} sub="received + partial" />
-          <StatCard label="Failed"  value={failedGroups.length}
+          <StatCard label="Units received" value={totalUnits.toLocaleString()} sub="received + partial" />
+          <StatCard label="Failed" value={failedGroups.length}
             sub={failedGroups.length > 0 ? 'need attention' : 'all clear'} alert={failedGroups.length > 0} />
           <StatCard label="Pending" value={pendingGroups.length}
             sub={pendingGroups.length > 0 ? 'in progress' : 'none open'} />
@@ -493,13 +460,11 @@ export default function ReceivingDashboard() {
         </div>
       )}
 
-      {/* Awaiting receipt — submitted, confirmed, and partial POs */}
+      {/* Awaiting receipt */}
       {(posLoading || submittedPOs.length > 0) && (
         <div className="border dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-900">
           <div className="px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700 flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-              Awaiting receipt
-            </h3>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Awaiting receipt</h3>
             <span className="text-xs text-gray-400">{submittedPOs.length} PO{submittedPOs.length !== 1 ? 's' : ''}</span>
           </div>
           {posLoading ? (
@@ -511,17 +476,12 @@ export default function ReceivingDashboard() {
           ) : (
             <div className="divide-y dark:divide-gray-800">
               {submittedPOs.map(po => (
-                <button
-                  key={po.id}
-                  onClick={() => navigate(`/receiving/wizard?po=${po.id}`)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors text-left"
-                >
+                <button key={po.id} onClick={() => navigate(`/receiving/wizard?po=${po.id}`)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors text-left">
                   <div className="flex items-center gap-3 min-w-0">
                     <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase shrink-0
-                      ${po.status === 'confirmed'
-                        ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
-                        : po.status === 'partial'
-                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                      ${po.status === 'confirmed' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
+                        : po.status === 'partial' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
                         : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>
                       {po.status}
                     </span>
@@ -529,9 +489,7 @@ export default function ReceivingDashboard() {
                       {po.supplier_name ?? po.account_label}
                     </span>
                     {(po as any).is_test && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 uppercase shrink-0">
-                        Test
-                      </span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 uppercase shrink-0">Test</span>
                     )}
                   </div>
                   <div className="flex items-center gap-3 shrink-0 ml-3">
@@ -550,6 +508,27 @@ export default function ReceivingDashboard() {
         </div>
       )}
 
+      {/* Search bar (#21) */}
+      <div className="relative">
+        <input
+          type="search"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Search by PO number, supplier, or reference…"
+          className="w-full pl-9 pr-4 py-2 border dark:border-gray-700 rounded-lg text-sm
+                     bg-white dark:bg-gray-900 dark:text-white
+                     focus:ring-2 focus:ring-blue-500 outline-none placeholder-gray-400 dark:placeholder-gray-500"
+        />
+        <svg className="absolute left-3 top-2.5 w-4 h-4 text-gray-400 pointer-events-none"
+          fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+        </svg>
+        {searching && (
+          <div className="absolute right-3 top-2.5 w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        )}
+      </div>
+
       {/* Filter tabs */}
       <div className="flex gap-1 border-b dark:border-gray-800">
         {([
@@ -563,8 +542,7 @@ export default function ReceivingDashboard() {
             className={`px-3 py-1.5 text-xs font-semibold border-b-2 -mb-px transition-colors
               ${statusFilter === key
                 ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-          >
+                : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>
             {label}
           </button>
         ))}
@@ -587,17 +565,20 @@ export default function ReceivingDashboard() {
 
       {!loading && !error && filtered.length === 0 && (
         <div className="py-16 text-center">
-          <p className="text-gray-400 dark:text-gray-500 text-sm">No receipts found.</p>
-          <button onClick={() => navigate('/receiving/new')} className="mt-3 text-sm text-blue-500 hover:underline">
-            Start your first receipt →
-          </button>
+          <p className="text-gray-400 dark:text-gray-500 text-sm">
+            {searchQuery ? `No receipts match "${searchQuery}"` : 'No receipts found.'}
+          </p>
+          {!searchQuery && (
+            <button onClick={() => navigate('/receiving/new')} className="mt-3 text-sm text-blue-500 hover:underline">
+              Start your first receipt →
+            </button>
+          )}
         </div>
       )}
 
       {/* PO-grouped receipt list */}
       {!loading && !error && filtered.length > 0 && (
         <div className="border dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-900">
-          {/* Sortable column headers */}
           <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
             <div className="w-4 shrink-0" />
             <div className="w-24 shrink-0">
