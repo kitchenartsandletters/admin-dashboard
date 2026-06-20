@@ -16,6 +16,12 @@
 //   a prominent alert listing the outstanding lines so staff
 //   consciously acknowledge them before committing.
 //
+// Receipt PDF (#14):
+//   "Download receipt PDF" button appears in the result phase for
+//   applied and test_applied receipts. Calls GET /api/receiving/{id}/pdf
+//   which returns the internal receiving document (received quantities,
+//   outstanding lines, notes) — not the supplier-facing PO PDF.
+//
 // Location:
 //   Receive is applied at PO's destination_location_id.
 //   DEFAULT_LOCATION_ID (HQ) is a fallback for legacy POs only.
@@ -32,6 +38,7 @@ import {
   fetchPurchaseOrderDetail,
   receiveOrder,
   parseAndLookup,
+  downloadReceiptPdf,
 } from '../../api/supplyChainApi'
 import { useLocations } from '../hooks/useLocations'
 import { formatDate } from '../../utils/tableUtils'
@@ -291,7 +298,6 @@ function ConfirmSummary({
   const activeLines      = lines.filter(l => l.quantity_received > 0)
   const outstandingLines = lines.filter(l => l.quantity_received === 0)
   const totalUnits       = activeLines.reduce((s, l) => s + l.quantity_received, 0)
-  const totalOrdered     = lines.reduce((s, l) => s + (l.quantity_ordered - l.quantity_previously_received), 0)
   const isPartial        = outstandingLines.length > 0 || completedLines.length > 0
 
   const order = poDetail.order as any
@@ -305,7 +311,6 @@ function ConfirmSummary({
         </p>
       </div>
 
-      {/* Partial alert — shown prominently when some lines will be left at 0 */}
       {isPartial && outstandingLines.length > 0 && (
         <div className="px-4 py-3 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20">
           <p className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-1">
@@ -324,7 +329,6 @@ function ConfirmSummary({
         </div>
       )}
 
-      {/* PO + location summary */}
       <div className="border dark:border-gray-700 rounded-lg overflow-hidden text-sm">
         <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Receipt summary</p>
@@ -357,7 +361,6 @@ function ConfirmSummary({
         </div>
       </div>
 
-      {/* Lines being received */}
       <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
         <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
           <p className="text-[10px] font-bold uppercase tracking-wider text-green-700 dark:text-green-400">
@@ -402,6 +405,54 @@ function ConfirmSummary({
 }
 
 // ---------------------------------------------------------------------------
+// Receipt PDF download button (#14)
+// ---------------------------------------------------------------------------
+
+function ReceiptPdfButton({ receiptId }: { receiptId: string }) {
+  const [downloading, setDownloading] = useState(false)
+  const [dlError, setDlError]         = useState<string | null>(null)
+
+  const handleDownload = async () => {
+    setDownloading(true)
+    setDlError(null)
+    try {
+      await downloadReceiptPdf(receiptId)
+    } catch (e) {
+      setDlError(e instanceof Error ? e.message : 'Download failed')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  return (
+    <div>
+      <button
+        onClick={handleDownload}
+        disabled={downloading}
+        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md border
+                   border-gray-300 dark:border-gray-600 text-sm font-medium
+                   text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800
+                   disabled:opacity-50 transition-colors"
+      >
+        {downloading ? (
+          <>
+            <span className="w-3.5 h-3.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+            Generating PDF…
+          </>
+        ) : (
+          <>
+            ↓ Download receipt PDF
+          </>
+        )}
+      </button>
+      {dlError && (
+        <p className="text-xs text-red-600 dark:text-red-400 mt-1 text-center">{dlError}</p>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Main wizard
 // ---------------------------------------------------------------------------
 
@@ -436,8 +487,6 @@ export default function ReceivingWizard() {
         initLines(detail)
         const dest = (detail.order as any).destination_location_id
         setLocationId(dest || DEFAULT_LOCATION_ID)
-        // #11: pre-seed notes from informal_ref so staff don't have to retype
-        // the reference at receive time. Editable — staff can append parcel info.
         const ref = (detail.order as any).informal_ref
         if (ref) setNotes(ref)
         setPhase('review')
@@ -497,7 +546,6 @@ export default function ReceivingWizard() {
     return null
   }
 
-  // Review → Confirm: validate then advance to the confirm summary step
   function handleReviewNext() {
     const validationError = validate()
     if (validationError) { setError(validationError); return }
@@ -505,7 +553,6 @@ export default function ReceivingWizard() {
     setPhase('confirm')
   }
 
-  // Confirm → Confirming: fire the API
   async function handleConfirm() {
     setBusy(true)
     setError(null)
@@ -583,7 +630,6 @@ export default function ReceivingWizard() {
       {/* ── REVIEW ───────────────────────────────────────────────── */}
       {phase === 'review' && poDetail && (
         <div className="space-y-5">
-          {/* PO context */}
           <div className="rounded-md border dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-0.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -610,7 +656,6 @@ export default function ReceivingWizard() {
             )}
           </div>
 
-          {/* Destination location */}
           <div className="rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 flex items-center justify-between">
             <div>
               <p className="text-[10px] uppercase tracking-wider text-blue-500 dark:text-blue-400 font-bold mb-0.5">Receiving into</p>
@@ -664,7 +709,6 @@ export default function ReceivingWizard() {
             )}
           </div>
 
-          {/* Notes — pre-seeded from informal_ref (#11) */}
           <div>
             <label className="block text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold mb-1">
               Notes
@@ -684,7 +728,6 @@ export default function ReceivingWizard() {
             </div>
           )}
 
-          {/* Review → Confirm (not the API call yet) */}
           <button
             disabled={lines.length === 0 || busy}
             onClick={handleReviewNext}
@@ -749,7 +792,6 @@ export default function ReceivingWizard() {
               <p>{result.lines_applied} line{result.lines_applied !== 1 ? 's' : ''} applied</p>
               {result.lines_failed  > 0 && <p className="text-red-700 dark:text-red-300">{result.lines_failed} line{result.lines_failed !== 1 ? 's' : ''} failed</p>}
               {result.lines_skipped > 0 && <p className="text-gray-500 dark:text-gray-400">{result.lines_skipped} line{result.lines_skipped !== 1 ? 's' : ''} skipped (zero quantity)</p>}
-              {/* #11: show receipt notes in result so staff can verify what was recorded */}
               {notes.trim() && (
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 font-mono">
                   Notes: {notes.trim()}
@@ -763,6 +805,11 @@ export default function ReceivingWizard() {
               </div>
             )}
           </div>
+
+          {/* #14: download receipt PDF for applied/test receipts */}
+          {(result.status === 'applied' || result.status === 'test_applied') && (
+            <ReceiptPdfButton receiptId={result.receipt_id} />
+          )}
 
           <button onClick={handleReset}
             className="w-full border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 font-medium py-2.5 rounded-md text-sm transition-colors">
