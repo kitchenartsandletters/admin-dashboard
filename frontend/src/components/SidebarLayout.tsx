@@ -34,7 +34,7 @@ const navItems = [
   { label: 'Campaigns', path: '/campaigns', roles: ['admin'] },
   {
     label: 'Supply Chain',
-    path: '/Purchase Orders',
+    path: '/purchase-orders',
     roles: ['admin'],
     children: [
       { label: 'Purchase Orders', path: '/purchase-orders', roles: ['admin','editor'] },
