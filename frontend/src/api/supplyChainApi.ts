@@ -76,6 +76,30 @@ function qs(params: Record<string, string | number | boolean | undefined | null>
   return str ? `?${str}` : ''
 }
 
+// ---------------------------------------------------------------------------
+// Shared blob-download helper (used for PO PDF and receipt PDF)
+// ---------------------------------------------------------------------------
+
+async function _downloadBlob(path: string, filename: string): Promise<void> {
+  const res = await fetch(`${SC_BASE_URL}${path}`, {
+    method: 'GET',
+    headers: { 'X-Admin-Token': SC_TOKEN },
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? `[${res.status}] Failed to generate PDF`)
+  }
+  const blob = await res.blob()
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 // ===========================================================================
 // SUPPLIERS
 // ===========================================================================
@@ -373,24 +397,17 @@ export async function lookupPurchaseOrders(opts: {
 // PDF export
 
 export async function downloadPOPdf(poId: string, poNumber: string): Promise<void> {
-  // Fetch PDF as blob so we can pass the auth header
-  const res = await fetch(`${SC_BASE_URL}/api/purchase-orders/${poId}/pdf`, {
-    method: 'GET',
-    headers: { 'X-Admin-Token': SC_TOKEN },
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail ?? `[${res.status}] Failed to generate PDF`)
-  }
-  const blob = await res.blob()
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  a.href     = url
-  a.download = `KAL-${poNumber}.pdf`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  return _downloadBlob(`/api/purchase-orders/${poId}/pdf`, `KAL-${poNumber}.pdf`)
+}
+
+/**
+ * Download the internal receipt PDF for a given receipt ID (#14).
+ * Shows received quantities (not ordered), outstanding lines, receipt notes.
+ * Distinct from the supplier-facing PO PDF.
+ */
+export async function downloadReceiptPdf(receiptId: string): Promise<void> {
+  const shortId = receiptId.slice(0, 8).toUpperCase()
+  return _downloadBlob(`/api/receiving/${receiptId}/pdf`, `KAL-RECEIPT-${shortId}.pdf`)
 }
 
 // ===========================================================================
@@ -409,6 +426,26 @@ export async function fetchReceipt(
   receiptId: string
 ): Promise<{ receipt: Receipt; lines: unknown[] }> {
   return sc(`/api/receiving/${receiptId}`)
+}
+
+/**
+ * Fetch receipt history for the receiving dashboard (#21).
+ * Centralised here so both ReceivingDashboard and any future callers
+ * go through the API module rather than calling fetch() directly.
+ *
+ * search param: case-insensitive substring match on po_number, informal_ref,
+ * supplier_name, account_label (applied server-side after enrichment).
+ */
+export async function fetchReceiptHistory(opts: {
+  limit?: number
+  status?: string
+  search?: string
+} = {}): Promise<unknown[]> {
+  return sc(`/api/receiving/history${qs({
+    limit:  opts.limit ?? 100,
+    status: opts.status,
+    search: opts.search,
+  })}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -464,7 +501,6 @@ async function _multipartPost<T>(path: string, file: File): Promise<T> {
   const res = await fetch(`${SC_BASE_URL}${path}`, {
     method: 'POST',
     headers: { 'X-Admin-Token': SC_TOKEN },
-    // Do NOT set Content-Type — browser sets it with multipart boundary
     body: form,
   })
   if (!res.ok) {
@@ -474,27 +510,10 @@ async function _multipartPost<T>(path: string, file: File): Promise<T> {
   return res.json()
 }
 
-/**
- * Parse a packing slip or invoice image — line items only, no PO lookup.
- * Use parseAndLookup() when you also want PO candidate resolution.
- */
 export async function parsePackingSlip(file: File): Promise<SlipParseResult> {
   return _multipartPost('/api/receiving/parse-packing-slip', file)
 }
 
-/**
- * Parse a packing slip or invoice AND attempt PO resolution in one call.
- *
- * Returns all fields from SlipParseResult plus:
- *   - po_reference: PO number found on the document (null if absent)
- *   - po_reference_confidence: "high" | "medium" | "low" | null
- *   - po_candidates: matching POs — only populated when confidence is "high"
- *
- * The caller should:
- *   - If po_candidates.length === 1 and confidence is "high": auto-navigate to wizard
- *   - If po_candidates.length > 1: show the fuzzy-confirm step for the user to pick
- *   - If po_candidates.length === 0: fall through to manual PO entry or ad hoc flow
- */
 export async function parseAndLookup(file: File): Promise<ParseAndLookupResult> {
   return _multipartPost('/api/receiving/parse-and-lookup', file)
 }
