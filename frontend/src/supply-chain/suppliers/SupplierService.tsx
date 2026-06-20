@@ -81,9 +81,6 @@ export default function SupplierService() {
   const [detail, setDetail] = useState<SupplierDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [formMode, setFormMode] = useState<'create' | 'edit' | null>(null)
-
-  // showPOBuilder is explicitly set to false when sidebar closes
-  // and is NEVER set by row clicks — only by the "+ New PO" button in the sidebar header
   const [showPOBuilder, setShowPOBuilder] = useState(false)
 
   const handleSetRoleFilter = (f: RoleFilter) => {
@@ -158,13 +155,11 @@ export default function SupplierService() {
     setSortConfig(prev => ({ key, direction: nextSortDirection(prev, key) }))
   }
 
-  // Row click — reset stack, never open POBuilder
   const handleRowClick = (party: SupplierParty) => {
     if (selectedParty?.id === party.id) {
       setPartyStack([])
     } else {
       setPartyStack([party])
-      // showPOBuilder intentionally NOT set here
     }
   }
 
@@ -176,7 +171,6 @@ export default function SupplierService() {
     setPartyStack(prev => prev.slice(0, -1))
   }, [])
 
-  // Close sidebar — clear stack and close PO builder if open
   const handleClose = useCallback(() => {
     setShowPOBuilder(false)
     setPartyStack([])
@@ -210,57 +204,60 @@ export default function SupplierService() {
   const activeCount = allSuppliers.filter(p => p.is_active).length
   const draftCount  = allSuppliers.filter(p => !p.is_active).length
 
-     // Fetch parent detail when selected party is a child (has parent_id)
-   const [parentDetail, setParentDetail] = useState<SupplierDetail | null>(null)
+  const [parentDetail, setParentDetail] = useState<SupplierDetail | null>(null)
 
-   useEffect(() => {
-     if (!detail?.party.parent_id) { setParentDetail(null); return }
-     fetchSupplierDetail(detail.party.parent_id)
-       .then(setParentDetail)
-       .catch(() => setParentDetail(null))
-   }, [detail?.party.parent_id])
+  useEffect(() => {
+    if (!detail?.party.parent_id) { setParentDetail(null); return }
+    fetchSupplierDetail(detail.party.parent_id)
+      .then(setParentDetail)
+      .catch(() => setParentDetail(null))
+  }, [detail?.party.parent_id])
 
   return (
     <>
-      <div className="space-y-4">
-        <div className="flex items-start justify-between">
+      <div className="space-y-4 p-4 sm:p-0">
+        {/* Header Block */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Publishers</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">Publishers</h1>
+            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5">
               {loading ? 'Loading…' : `${activeCount} active · ${draftCount} drafts`}
             </p>
           </div>
           <button
             onClick={() => { setPartyStack([]); setFormMode('create') }}
-            className="px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors active:scale-[0.98]"
+            className="w-full sm:w-auto px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm text-center"
           >
             + New Profile
           </button>
         </div>
 
         {error && (
-          <div className="px-4 py-3 rounded-md bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">
+          <div className="px-4 py-3 rounded-md bg-red-50 dark:bg-red-900/20 text-xs sm:text-sm text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">
             {error}
           </div>
         )}
 
-        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+        {/* Inputs & Filter Row */}
+        <div className="flex flex-col gap-3">
           <input
             type="text"
             placeholder="Search by name, role…"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="px-3 py-2 border rounded text-sm bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none flex-1"
+            className="w-full px-3 py-2 border rounded text-xs sm:text-sm bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500/20 outline-none shadow-sm"
           />
-          <div className="flex gap-1 flex-wrap">
+          
+          {/* Horizontally Swipeable Filter Pill Ribbon */}
+          <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none touch-pan-x -mx-4 px-4 sm:mx-0 sm:px-0">
             {ROLE_FILTERS.map(f => (
               <button
                 key={f.key}
                 onClick={() => handleSetRoleFilter(f.key)}
-                className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors whitespace-nowrap
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap tracking-wide
                   ${roleFilter === f.key
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                    : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
                   }`}
               >
                 {f.label}
@@ -270,23 +267,87 @@ export default function SupplierService() {
         </div>
 
         {!loading && (
-          <p className="text-xs text-gray-400 dark:text-gray-600">
+          <p className="text-xs text-gray-400 dark:text-gray-500 font-medium px-0.5">
             {filtered.length} supplier{filtered.length !== 1 ? 's' : ''}
           </p>
         )}
 
         {loading ? <TableSkeleton /> : (
-          <SupplierTable
-            suppliers={filtered}
-            sortConfig={sortConfig}
-            onSort={handleSort}
-            onRowClick={handleRowClick}
-            selectedId={selectedParty?.id ?? null}
-          />
+          <div className="w-full">
+            
+            {/* --- MOBILE VIEW: Card Stack Layout --- */}
+            <div className="block sm:hidden space-y-2.5">
+              {/* Discrete Mobile Sort Controller Toolbar */}
+              <div className="flex items-center gap-2 text-[11px] text-gray-400 font-medium px-0.5 pb-1 overflow-x-auto scrollbar-none">
+                <span className="shrink-0 uppercase tracking-wider text-[10px]">Sort:</span>
+                <button 
+                  type="button" 
+                  onClick={() => handleSort('name')} 
+                  className={`px-2 py-0.5 rounded border dark:border-gray-800 shrink-0 ${sortConfig?.key === 'name' ? 'bg-gray-100 dark:bg-gray-800 font-bold text-gray-900 dark:text-white' : ''}`}
+                >
+                  Name {sortConfig?.key === 'name' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                </button>
+              </div>
+
+              {filtered.map(supplier => {
+                const isSelected = selectedParty?.id === supplier.id
+                return (
+                  <div
+                    key={supplier.id}
+                    onClick={() => handleRowClick(supplier)}
+                    className={`p-3.5 rounded-xl border transition-all text-left flex items-center justify-between gap-4 cursor-pointer shadow-sm
+                      ${isSelected
+                        ? 'bg-blue-50/70 border-blue-300 dark:bg-blue-950/20 dark:border-blue-800/80 ring-1 ring-blue-300 dark:ring-blue-800'
+                        : 'bg-white border-gray-200 dark:bg-gray-900 dark:border-gray-800/80 active:bg-gray-50 dark:active:bg-gray-800/40'
+                      }`}
+                  >
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                          {supplier.name}
+                        </h3>
+                      </div>
+                      {supplier.legal_name && supplier.legal_name !== supplier.name && (
+                        <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{supplier.legal_name}</p>
+                      )}
+                      
+                      {/* Active / Role Tags */}
+                      <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                        <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded uppercase ${supplier.is_active ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
+                          {supplier.is_active ? 'Active' : 'Draft'}
+                        </span>
+                        {supplier.roles.map(role => (
+                          <span key={role} className="text-[10px] text-gray-500 bg-gray-50 border border-gray-200/60 dark:bg-gray-800 dark:text-gray-400 dark:border-transparent px-1.5 py-0.2 rounded font-medium">
+                            {SUPPLIER_ROLE_LABELS[role]}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 text-gray-400 dark:text-gray-600 text-xs pl-2">
+                      {isSelected ? '▾' : '▸'}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* --- DESKTOP VIEW: Native Grid Component --- */}
+            <div className="hidden sm:block">
+              <SupplierTable
+                suppliers={filtered}
+                sortConfig={sortConfig}
+                onSort={handleSort}
+                onRowClick={handleRowClick}
+                selectedId={selectedParty?.id ?? null}
+              />
+            </div>
+
+          </div>
         )}
       </div>
 
-      {/* Sidebar, form, and PO builder outside space-y-4 */}
+      {/* Slideout Panels & Modals */}
       <SupplierDetailSidebar
         detail={detailLoading ? null : detail}
         canGoBack={partyStack.length > 1}
@@ -299,7 +360,6 @@ export default function SupplierService() {
         parentDetail={parentDetail}
         onNewParentPO={() => {
           if (parentDetail) {
-            // Switch selected party to parent, then open PO builder
             setPartyStack([parentDetail.party])
             setShowPOBuilder(true)
           }
@@ -325,13 +385,6 @@ export default function SupplierService() {
         />
       )}
 
-      {/* POBuilder:
-          - Only opens via "+ New PO" in sidebar, never from row clicks
-          - initialSupplier pre-fills Step 1 supplier field but stays on Step 1
-            so staff can still set order date, expected arrival, notes, drop-ship flag
-          - ESC inside the modal closes the modal only (modal handles its own ESC)
-          - After modal closes, sidebar remains open
-      */}
       {showPOBuilder && detail && (
         <POBuilder
           initialSupplier={detail}

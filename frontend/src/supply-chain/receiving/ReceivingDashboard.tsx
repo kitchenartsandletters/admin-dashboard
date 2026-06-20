@@ -496,7 +496,7 @@ export default function ReceivingDashboard() {
           </p>
           {!searchQuery && (
             <button onClick={() => navigate('/receiving/new')} className="mt-3 text-xs sm:text-sm text-blue-500 hover:underline">
-              Start your first receipt &rarr;
+              Start a new receipt? &rarr;
             </button>
           )}
         </div>
