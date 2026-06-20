@@ -24,6 +24,7 @@ import type {
   ReceiveRequest,
   ReceiveResult,
   Receipt,
+  DamageResolution,
 } from '../supply-chain/receiving/receivingTypes'
 
 import type {
@@ -326,7 +327,6 @@ export async function archiveTestPOs(): Promise<{ archived_count: number }> {
   return sc('/api/purchase-orders/archive-test-pos', { method: 'POST' })
 }
 
-// Alias for backwards compatibility with POBuilder
 export const submitPO = submitPurchaseOrder
 
 export async function addPOLine(
@@ -378,8 +378,6 @@ export async function removePOLine(lineId: string): Promise<void> {
   return sc(`/api/purchase-orders/lines/${lineId}`, { method: 'DELETE' })
 }
 
-// PO lookup for packing slip resolution
-
 export interface POLookupResult extends PurchaseOrder {
   match_type: 'exact' | 'fuzzy'
 }
@@ -394,17 +392,10 @@ export async function lookupPurchaseOrders(opts: {
   })}`)
 }
 
-// PDF export
-
 export async function downloadPOPdf(poId: string, poNumber: string): Promise<void> {
   return _downloadBlob(`/api/purchase-orders/${poId}/pdf`, `KAL-${poNumber}.pdf`)
 }
 
-/**
- * Download the internal receipt PDF for a given receipt ID (#14).
- * Shows received quantities (not ordered), outstanding lines, receipt notes.
- * Distinct from the supplier-facing PO PDF.
- */
 export async function downloadReceiptPdf(receiptId: string): Promise<void> {
   const shortId = receiptId.slice(0, 8).toUpperCase()
   return _downloadBlob(`/api/receiving/${receiptId}/pdf`, `KAL-RECEIPT-${shortId}.pdf`)
@@ -428,14 +419,6 @@ export async function fetchReceipt(
   return sc(`/api/receiving/${receiptId}`)
 }
 
-/**
- * Fetch receipt history for the receiving dashboard (#21).
- * Centralised here so both ReceivingDashboard and any future callers
- * go through the API module rather than calling fetch() directly.
- *
- * search param: case-insensitive substring match on po_number, informal_ref,
- * supplier_name, account_label (applied server-side after enrichment).
- */
 export async function fetchReceiptHistory(opts: {
   limit?: number
   status?: string
@@ -446,6 +429,34 @@ export async function fetchReceiptHistory(opts: {
     status: opts.status,
     search: opts.search,
   })}`)
+}
+
+/**
+ * Record the publisher's damage resolution for a PO line (#29).
+ *
+ * Call this after the publisher responds to a damage claim:
+ *   'credit'              — account credited; line closes at quantity_received.
+ *                           PO may now be fully received.
+ *   'replacement_pending' — publisher reshipping on same PO number.
+ *                           Line stays open; staff receive replacement via wizard.
+ *
+ * Can also be set at receive time via ReceiveLineInput.damage_resolution.
+ * Use this endpoint when the publisher responds after the initial session.
+ */
+export async function resolveDamage(
+  poLineId: string,
+  resolution: DamageResolution
+): Promise<{
+  po_line_id: string
+  damage_resolution: DamageResolution
+  line_status: string
+  po_status: string
+  updated: boolean
+}> {
+  return sc(`/api/receiving/lines/${poLineId}/damage`, {
+    method: 'PATCH',
+    body: JSON.stringify({ damage_resolution: resolution }),
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -473,7 +484,6 @@ export interface SlipParseResult {
   confidence?: number
 }
 
-/** A PO candidate returned by parse-and-lookup when po_reference_confidence is "high". */
 export interface POCandidate {
   id: string
   po_number: string
@@ -483,15 +493,12 @@ export interface POCandidate {
   destination_location_id: string
   supplier_name: string | null
   account_label: string | null
-  /** "exact" = matched po_number; "informal_ref" = matched informal_ref field */
   match_type: 'exact' | 'informal_ref'
 }
 
 export interface ParseAndLookupResult extends SlipParseResult {
   po_reference: string | null
-  /** Only "high" triggers PO lookup. "medium"/"low" return po_candidates: [] */
   po_reference_confidence: 'high' | 'medium' | 'low' | null
-  /** Populated only when po_reference_confidence === "high" and matches exist */
   po_candidates: POCandidate[]
 }
 
@@ -517,8 +524,6 @@ export async function parsePackingSlip(file: File): Promise<SlipParseResult> {
 export async function parseAndLookup(file: File): Promise<ParseAndLookupResult> {
   return _multipartPost('/api/receiving/parse-and-lookup', file)
 }
-
-// Receipt detail records
 
 export interface ReceiptRecord {
   id: string
