@@ -1,38 +1,29 @@
 // ReceivingWizard.tsx
 // Phase-based wizard: idle → review → confirm → confirming → result
 //
-// Packing slip scan:
-//   Sits above line rows in the review phase. Calls parse-and-lookup,
-//   matches ISBNs against PO lines, updates quantities. Lines flagged
-//   "Not on slip" (amber) or "From scan" (blue) after a scan.
+// Damage handling (#29):
+//   HARD RULE: quantity_received = undamaged copies only.
+//   quantity_damaged is tracked separately and never added to quantity_received.
 //
-// Notes (#11):
-//   Notes field pre-seeds from PO informal_ref on load (editable).
-//   Receipt notes are also shown in the result phase after submission.
+//   Each line row has a structured damage section (expandable):
+//     1. Qty damaged    — how many arrived damaged (max = qty that arrived total)
+//     2. Disposal       — Donate/destroy · Return (call tag) [folded into notes]
+//     3. Resolution     — Credit · Replacement incoming
+//        Credit:       line closes at quantity_received (account credit fills the gap)
+//        Replacement:  line stays partial; publisher reshipping on same PO number
 //
-// Confirm modal (#12):
-//   New 'confirm' phase between 'review' and 'confirming'. Shows a
-//   full summary of what will be submitted. Partial receives trigger
-//   a prominent alert listing the outstanding lines so staff
-//   consciously acknowledge them before committing.
+//   "Qty arrived" = quantity_received + quantity_damaged
+//   Staff enter total qty that arrived, then how many were damaged.
+//   quantity_received is derived: arrived − damaged.
 //
-// Receipt PDF (#14):
-//   "Download receipt PDF" button appears in the result phase for
-//   applied and test_applied receipts. Calls GET /api/receiving/{id}/pdf
-//   which returns the internal receiving document (received quantities,
-//   outstanding lines, notes) — not the supplier-facing PO PDF.
+//   The confirm summary shows damaged-line details so staff can verify before submit.
+//   Disposal method and damage note are folded into receipt-level notes on submit.
 //
-// Location:
-//   Receive is applied at PO's destination_location_id.
-//   DEFAULT_LOCATION_ID (HQ) is a fallback for legacy POs only.
-//
-// Damage handling:
-//   Free-text damage note per line, folded into receipt notes on submit.
-//   quantity_damaged always 0 — no Shopify damaged state mutation.
+// Other phases unchanged from previous commits (#11 notes seeding, #12 confirm, #14 PDF).
 
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { WizardLine, ReceiveResult } from './receivingTypes'
+import { WizardLine, ReceiveResult, DamageDisposal, DamageResolution } from './receivingTypes'
 import { PurchaseOrderDetail } from '../purchase-orders/purchaseOrderTypes'
 import {
   fetchPurchaseOrderDetail,
@@ -49,7 +40,7 @@ type ScanState = 'idle' | 'scanning' | 'done' | 'error'
 const DEFAULT_LOCATION_ID = 'gid://shopify/Location/40052293765'
 
 // ---------------------------------------------------------------------------
-// Packing slip scanner
+// Packing slip scanner (unchanged)
 // ---------------------------------------------------------------------------
 
 function WizardSlipScanner({
@@ -92,7 +83,7 @@ function WizardSlipScanner({
       let matched = 0, notOnSlip = 0
       for (const wizLine of lines) {
         if (!wizLine.isbn) continue
-        const slipQty = slipQtyByIsbn[wizLine.isbn]
+        const slipQty  = slipQtyByIsbn[wizLine.isbn]
         const remaining = wizLine.quantity_ordered - wizLine.quantity_previously_received
         if (slipQty != null) {
           updates[wizLine.purchase_order_line_id] = Math.min(slipQty, remaining)
@@ -103,7 +94,7 @@ function WizardSlipScanner({
         }
       }
 
-      const poIsbns = new Set(lines.map(l => l.isbn).filter(Boolean))
+      const poIsbns   = new Set(lines.map(l => l.isbn).filter(Boolean))
       const unmatched = Object.keys(slipQtyByIsbn).filter(isbn => !poIsbns.has(isbn)).length
 
       onLinesUpdated(updates)
@@ -171,9 +162,11 @@ function WizardSlipScanner({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {scanSummary.previewUrl && (
-            <a href={scanSummary.previewUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-gray-400 hover:underline">View</a>
+            <a href={scanSummary.previewUrl} target="_blank" rel="noopener noreferrer"
+              className="text-[10px] text-gray-400 hover:underline">View</a>
           )}
-          <button type="button" onClick={handleReset} className="text-[10px] text-gray-400 hover:underline">Rescan</button>
+          <button type="button" onClick={handleReset}
+            className="text-[10px] text-gray-400 hover:underline">Rescan</button>
         </div>
       </div>
     </div>
@@ -183,33 +176,225 @@ function WizardSlipScanner({
 }
 
 // ---------------------------------------------------------------------------
-// Line row
+// Structured damage section (#29)
+//
+// Staff workflow:
+//   1. Enter how many copies arrived total (qty_arrived)
+//   2. Enter how many of those are damaged (qty_damaged)
+//   3. System derives quantity_received = qty_arrived − qty_damaged (undamaged only)
+//   4. Choose disposal method (for notes record)
+//   5. Choose resolution (credit closes the line; replacement keeps it open)
+//
+// "I don't know yet" is valid for resolution — staff can set it post-receive
+// via the PODetailSidebar resolve-damage action.
+// ---------------------------------------------------------------------------
+
+function DamageSection({
+  line,
+  onChange,
+}: {
+  line: WizardLine
+  onChange: (patch: Partial<Pick<WizardLine, 'quantity_received' | 'quantity_damaged' | 'damage_disposal' | 'damage_resolution'>>) => void
+}) {
+  const remaining  = line.quantity_ordered - line.quantity_previously_received
+  // qty_arrived is what the staff physically counted coming off the truck
+  const qtyArrived = line.quantity_received + line.quantity_damaged
+
+  const handleArrivedChange = (arrived: number) => {
+    const safeArrived  = Math.min(Math.max(0, arrived), remaining)
+    const safeDamaged  = Math.min(line.quantity_damaged, safeArrived)
+    onChange({
+      quantity_received: safeArrived - safeDamaged,
+      quantity_damaged:  safeDamaged,
+    })
+  }
+
+  const handleDamagedChange = (damaged: number) => {
+    const safeDamaged = Math.min(Math.max(0, damaged), qtyArrived)
+    onChange({
+      quantity_damaged:  safeDamaged,
+      quantity_received: qtyArrived - safeDamaged,
+    })
+  }
+
+  return (
+    <div className="border-t border-amber-200 dark:border-amber-800 pt-3 mt-1 space-y-3">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+        Damage details
+      </p>
+
+      {/* Qty arrived + qty damaged — derive quantity_received automatically */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold mb-1">
+            Total arrived
+            <span className="ml-1 normal-case font-normal text-gray-400">(incl. damaged)</span>
+          </label>
+          <input
+            type="number" min={0} max={remaining}
+            value={qtyArrived}
+            onChange={e => handleArrivedChange(parseInt(e.target.value) || 0)}
+            className="w-full px-3 py-1.5 border dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+          />
+          <p className="text-[10px] text-gray-400 mt-1">max {remaining}</p>
+        </div>
+        <div>
+          <label className="block text-[10px] uppercase tracking-wider text-amber-500 dark:text-amber-400 font-bold mb-1">
+            Qty damaged
+          </label>
+          <input
+            type="number" min={0} max={qtyArrived}
+            value={line.quantity_damaged}
+            onChange={e => handleDamagedChange(parseInt(e.target.value) || 0)}
+            className="w-full px-3 py-1.5 border border-amber-300 dark:border-amber-700 rounded text-sm bg-amber-50/50 dark:bg-amber-900/10 dark:text-white focus:ring-2 focus:ring-amber-400 outline-none font-mono"
+          />
+          {line.quantity_damaged > 0 && (
+            <p className="text-[10px] text-green-600 dark:text-green-400 mt-1 font-mono">
+              → {line.quantity_received} restocked to Shopify
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Only show the rest once there are actually damaged copies */}
+      {line.quantity_damaged > 0 && (
+        <>
+          {/* Disposal */}
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold mb-1.5">
+              Disposal of damaged copies
+            </label>
+            <div className="flex gap-2">
+              {([
+                { value: 'donate_destroy', label: 'Donate / destroy' },
+                { value: 'return',         label: 'Return (call tag)' },
+              ] as const).map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => onChange({ damage_disposal: opt.value })}
+                  className={`flex-1 px-3 py-2 rounded border text-xs font-medium transition-colors
+                    ${line.damage_disposal === opt.value
+                      ? 'border-amber-400 dark:border-amber-600 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Resolution */}
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold mb-1.5">
+              Publisher response
+            </label>
+            <div className="flex gap-2">
+              {([
+                { value: 'credit',              label: 'Credit',              sub: 'Account credited — line closes' },
+                { value: 'replacement_pending', label: 'Replacement incoming', sub: 'Same PO# — keep open' },
+              ] as const).map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() =>
+                    onChange({
+                      damage_resolution: line.damage_resolution === opt.value ? null : opt.value,
+                    })
+                  }
+                  className={`flex-1 px-3 py-2 rounded border text-xs font-medium transition-colors text-left
+                    ${line.damage_resolution === opt.value
+                      ? opt.value === 'credit'
+                        ? 'border-green-400 dark:border-green-700 bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200'
+                        : 'border-blue-400 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'}`}
+                >
+                  <div className="font-semibold">{opt.label}</div>
+                  <div className={`text-[10px] mt-0.5 ${
+                    line.damage_resolution === opt.value
+                      ? opt.value === 'credit'
+                        ? 'text-green-600 dark:text-green-400'
+                        : 'text-blue-500 dark:text-blue-400'
+                      : 'text-gray-400 dark:text-gray-500'
+                  }`}>{opt.sub}</div>
+                </button>
+              ))}
+            </div>
+            {!line.damage_resolution && (
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
+                Don't know yet? Leave unselected — you can record the response from the PO later.
+              </p>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Line row (#29 updated — replaces free-text damage note)
 // ---------------------------------------------------------------------------
 
 function LineRow({
-  line, fromScan, onQtyChange, onDamageNoteChange,
+  line,
+  fromScan,
+  onQtyChange,
+  onDamageChange,
 }: {
   line: WizardLine
   fromScan: boolean
-  onQtyChange:        (id: string, value: number) => void
-  onDamageNoteChange: (id: string, note: string)  => void
+  onQtyChange:    (id: string, value: number) => void
+  onDamageChange: (id: string, patch: Partial<Pick<WizardLine, 'quantity_received' | 'quantity_damaged' | 'damage_disposal' | 'damage_resolution'>>) => void
 }) {
-  const remaining = line.quantity_ordered - line.quantity_previously_received
-  const [showDamageNote, setShowDamageNote] = useState(false)
+  const remaining  = line.quantity_ordered - line.quantity_previously_received
+  const [showDamage, setShowDamage] = useState(line.quantity_damaged > 0)
+  const hasDamage  = line.quantity_damaged > 0
+
+  // When staff open the damage section for the first time, pre-set qty_arrived
+  // to the current quantity_received so they don't have to re-enter it
+  const handleOpenDamage = () => {
+    if (!showDamage && !hasDamage) {
+      // Pre-seed arrived = current qty_received so the field isn't blank
+      // quantity_damaged defaults to 0 → quantity_received stays the same until they enter damage qty
+    }
+    setShowDamage(v => !v)
+  }
 
   return (
     <div className={`rounded-md border bg-white dark:bg-gray-900 px-4 py-3 space-y-3
-      ${fromScan && line.quantity_received === 0 ? 'border-amber-300 dark:border-amber-700' : 'dark:border-gray-700'}`}>
+      ${fromScan && line.quantity_received === 0 && !hasDamage
+        ? 'border-amber-300 dark:border-amber-700'
+        : hasDamage
+        ? 'border-amber-400 dark:border-amber-600'
+        : 'dark:border-gray-700'}`}>
+
+      {/* Title / ISBN / badges */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-medium text-gray-900 dark:text-gray-100 leading-tight truncate">{line.title}</p>
-            {fromScan && line.quantity_received === 0 && (
+            {hasDamage && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 uppercase tracking-wide shrink-0">
+                {line.quantity_damaged} damaged
+              </span>
+            )}
+            {hasDamage && line.damage_resolution === 'credit' && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 uppercase tracking-wide shrink-0">
+                Credit
+              </span>
+            )}
+            {hasDamage && line.damage_resolution === 'replacement_pending' && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 uppercase tracking-wide shrink-0">
+                Replacement
+              </span>
+            )}
+            {fromScan && line.quantity_received === 0 && !hasDamage && (
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 uppercase tracking-wide shrink-0">
                 Not on slip
               </span>
             )}
-            {fromScan && line.quantity_received > 0 && (
+            {fromScan && line.quantity_received > 0 && !hasDamage && (
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 uppercase tracking-wide shrink-0">
                 From scan
               </span>
@@ -226,42 +411,72 @@ function LineRow({
         </div>
       </div>
 
-      <div className="flex items-end gap-3">
-        <div className="flex-1">
-          <label className="block text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold mb-1">
-            Quantity received
-          </label>
-          <input
-            type="number" min={0} max={remaining}
-            value={line.quantity_received}
-            onChange={e => onQtyChange(line.purchase_order_line_id, Math.max(0, parseInt(e.target.value) || 0))}
-            className={`w-full px-3 py-1.5 border rounded text-sm bg-white dark:bg-gray-800 dark:text-white
-              focus:ring-2 focus:ring-blue-500 outline-none font-mono
-              ${fromScan && line.quantity_received === 0 ? 'border-amber-300 dark:border-amber-600' : 'dark:border-gray-600'}`}
-          />
+      {/* Qty received (undamaged) — shown when damage section is not open */}
+      {!showDamage && (
+        <div className="flex items-end gap-3">
+          <div className="flex-1">
+            <label className="block text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold mb-1">
+              Qty received
+              {hasDamage && (
+                <span className="ml-1 normal-case font-normal text-green-600 dark:text-green-400">
+                  (undamaged only — {line.quantity_received} to Shopify)
+                </span>
+              )}
+            </label>
+            <input
+              type="number" min={0} max={remaining}
+              value={line.quantity_received}
+              onChange={e => onQtyChange(line.purchase_order_line_id, Math.max(0, parseInt(e.target.value) || 0))}
+              className={`w-full px-3 py-1.5 border rounded text-sm bg-white dark:bg-gray-800 dark:text-white
+                focus:ring-2 focus:ring-blue-500 outline-none font-mono
+                ${fromScan && line.quantity_received === 0 && !hasDamage
+                  ? 'border-amber-300 dark:border-amber-600'
+                  : 'dark:border-gray-600'}`}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleOpenDamage}
+            className="px-2.5 py-1.5 rounded border border-gray-200 dark:border-gray-700 text-xs font-medium
+                       text-gray-400 dark:text-gray-500 hover:border-amber-300 dark:hover:border-amber-700
+                       hover:text-amber-600 dark:hover:text-amber-400 transition-colors mb-0.5">
+            + Damage
+          </button>
         </div>
-        <button type="button" onClick={() => setShowDamageNote(v => !v)}
-          className={`px-2.5 py-1.5 rounded border text-xs font-medium transition-colors mb-0.5
-            ${showDamageNote || line.notes_damaged
-              ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300'
-              : 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-gray-300'}`}>
-          {line.notes_damaged ? 'Damage noted' : '+ Damage note'}
-        </button>
-      </div>
+      )}
 
-      {(showDamageNote || line.notes_damaged) && (
+      {/* Damage section */}
+      {showDamage && (
         <div>
-          <label className="block text-[10px] uppercase tracking-wider text-amber-500 dark:text-amber-400 font-bold mb-1">
-            Damage note (for records — no Shopify change)
-          </label>
-          <input type="text" value={line.notes_damaged ?? ''}
-            onChange={e => onDamageNoteChange(line.purchase_order_line_id, e.target.value)}
-            placeholder="e.g. 2 copies water damaged, 1 torn spine"
-            className="w-full px-3 py-1.5 border border-amber-200 dark:border-amber-800 rounded text-sm bg-amber-50/50 dark:bg-amber-900/10 dark:text-white focus:ring-2 focus:ring-amber-400 outline-none"
+          {/* Close button */}
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Qty received (undamaged):
+              <strong className="ml-1 font-mono text-gray-900 dark:text-gray-100">{line.quantity_received}</strong>
+              {line.quantity_damaged > 0 && (
+                <span className="ml-1 text-green-600 dark:text-green-400">→ Shopify</span>
+              )}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setShowDamage(false)
+                // If no damage was actually entered, clear everything
+                if (line.quantity_damaged === 0) {
+                  onDamageChange(line.purchase_order_line_id, {
+                    damage_disposal: null,
+                    damage_resolution: null,
+                  })
+                }
+              }}
+              className="text-[10px] text-gray-400 hover:underline">
+              {line.quantity_damaged > 0 ? 'Collapse' : 'Cancel'}
+            </button>
+          </div>
+          <DamageSection
+            line={line}
+            onChange={patch => onDamageChange(line.purchase_order_line_id, patch)}
           />
-          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
-            Handle with supplier for credit or replacement. No inventory change in Shopify.
-          </p>
         </div>
       )}
     </div>
@@ -269,7 +484,7 @@ function LineRow({
 }
 
 // ---------------------------------------------------------------------------
-// Confirm summary (#12)
+// Confirm summary — updated to show damage details (#29)
 // ---------------------------------------------------------------------------
 
 function ConfirmSummary({
@@ -295,10 +510,17 @@ function ConfirmSummary({
   onConfirm: () => void
   busy: boolean
 }) {
-  const activeLines      = lines.filter(l => l.quantity_received > 0)
-  const outstandingLines = lines.filter(l => l.quantity_received === 0)
-  const totalUnits       = activeLines.reduce((s, l) => s + l.quantity_received, 0)
-  const isPartial        = outstandingLines.length > 0 || completedLines.length > 0
+  const activeLines   = lines.filter(l => l.quantity_received > 0 || l.quantity_damaged > 0)
+  const damagedLines  = activeLines.filter(l => l.quantity_damaged > 0)
+  // Lines with zero qty_received AND zero damage are treated as skipped
+  const outstandingLines = lines.filter(l => l.quantity_received === 0 && l.quantity_damaged === 0)
+  // Credit lines close even though qty_received < qty_ordered
+  const creditLines   = damagedLines.filter(l => l.damage_resolution === 'credit')
+  const replacementLines = damagedLines.filter(l => l.damage_resolution === 'replacement_pending')
+
+  const totalReceived = activeLines.reduce((s, l) => s + l.quantity_received, 0)
+  const totalDamaged  = activeLines.reduce((s, l) => s + l.quantity_damaged, 0)
+  const isPartial     = outstandingLines.length > 0 || replacementLines.length > 0 || completedLines.length > 0
 
   const order = poDetail.order as any
 
@@ -306,29 +528,47 @@ function ConfirmSummary({
     <div className="space-y-5">
       <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Confirm Receipt</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-          Review before applying inventory changes.
-        </p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Review before applying inventory changes.</p>
       </div>
 
-      {isPartial && outstandingLines.length > 0 && (
-        <div className="px-4 py-3 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20">
-          <p className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-1">
-            ⚠ Partial receipt — {outstandingLines.length} line{outstandingLines.length !== 1 ? 's' : ''} ({outstandingLines.reduce((s, l) => s + (l.quantity_ordered - l.quantity_previously_received), 0)} units) still outstanding
-          </p>
-          <div className="space-y-0.5 mt-2">
-            {outstandingLines.map(l => (
-              <p key={l.purchase_order_line_id} className="text-xs text-amber-700 dark:text-amber-300 truncate">
-                · {l.title} — {l.quantity_ordered - l.quantity_previously_received} remaining
+      {/* Partial alert — outstanding + replacement-pending lines */}
+      {isPartial && (outstandingLines.length > 0 || replacementLines.length > 0) && (
+        <div className="px-4 py-3 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 space-y-2">
+          {outstandingLines.length > 0 && (
+            <>
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                ⚠ {outstandingLines.length} line{outstandingLines.length !== 1 ? 's' : ''} ({outstandingLines.reduce((s,l) => s + (l.quantity_ordered - l.quantity_previously_received), 0)} units) still outstanding
               </p>
-            ))}
-          </div>
-          <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-            These lines will remain open. The PO will stay in "Partial" status until they are received.
+              <div className="space-y-0.5">
+                {outstandingLines.map(l => (
+                  <p key={l.purchase_order_line_id} className="text-xs text-amber-700 dark:text-amber-300 truncate">
+                    · {l.title} — {l.quantity_ordered - l.quantity_previously_received} remaining
+                  </p>
+                ))}
+              </div>
+            </>
+          )}
+          {replacementLines.length > 0 && (
+            <>
+              <p className="text-sm font-semibold text-blue-800 dark:text-blue-200">
+                ⟳ {replacementLines.length} line{replacementLines.length !== 1 ? 's' : ''} awaiting replacement on this PO
+              </p>
+              <div className="space-y-0.5">
+                {replacementLines.map(l => (
+                  <p key={l.purchase_order_line_id} className="text-xs text-blue-700 dark:text-blue-300 truncate">
+                    · {l.title} — {l.quantity_damaged} damaged, replacement incoming
+                  </p>
+                ))}
+              </div>
+            </>
+          )}
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            PO will stay in "Partial" / "Awaiting receipt" until all lines are resolved.
           </p>
         </div>
       )}
 
+      {/* Summary card */}
       <div className="border dark:border-gray-700 rounded-lg overflow-hidden text-sm">
         <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Receipt summary</p>
@@ -347,11 +587,15 @@ function ConfirmSummary({
             <span className="text-gray-900 dark:text-gray-100">{locationName(locationId)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-500 dark:text-gray-400">Lines to receive</span>
-            <span className="font-semibold text-gray-900 dark:text-gray-100">
-              {activeLines.length} of {lines.length} ({totalUnits} units)
-            </span>
+            <span className="text-gray-500 dark:text-gray-400">Restocked to Shopify</span>
+            <span className="font-semibold text-gray-900 dark:text-gray-100">{totalReceived} units (undamaged)</span>
           </div>
+          {totalDamaged > 0 && (
+            <div className="flex justify-between">
+              <span className="text-amber-600 dark:text-amber-400">Damaged (not restocked)</span>
+              <span className="font-semibold text-amber-700 dark:text-amber-300">{totalDamaged} units</span>
+            </div>
+          )}
           {notes.trim() && (
             <div className="flex justify-between gap-4">
               <span className="text-gray-500 dark:text-gray-400 shrink-0">Notes</span>
@@ -361,26 +605,45 @@ function ConfirmSummary({
         </div>
       </div>
 
+      {/* Lines being received */}
       <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
         <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
           <p className="text-[10px] font-bold uppercase tracking-wider text-green-700 dark:text-green-400">
-            Receiving ({activeLines.length} lines · {totalUnits} units)
+            Lines ({activeLines.length} · {totalReceived} restocked{totalDamaged > 0 ? ` + ${totalDamaged} damaged` : ''})
           </p>
         </div>
-        <div className="divide-y dark:divide-gray-800 max-h-48 overflow-y-auto">
+        <div className="divide-y dark:divide-gray-800 max-h-56 overflow-y-auto">
           {activeLines.map(l => (
-            <div key={l.purchase_order_line_id} className="flex items-center justify-between px-4 py-2 text-sm">
-              <div className="min-w-0 flex-1">
-                <p className="text-gray-900 dark:text-gray-100 truncate">{l.title}</p>
-                {l.isbn && <p className="text-[10px] font-mono text-gray-400 dark:text-gray-500">{l.isbn}</p>}
+            <div key={l.purchase_order_line_id} className="px-4 py-2 text-sm">
+              <div className="flex items-center justify-between">
+                <div className="min-w-0 flex-1">
+                  <p className="text-gray-900 dark:text-gray-100 truncate">{l.title}</p>
+                  {l.isbn && <p className="text-[10px] font-mono text-gray-400 dark:text-gray-500">{l.isbn}</p>}
+                </div>
+                <div className="text-right shrink-0 ml-3 space-y-0.5">
+                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 tabular-nums">
+                    × {l.quantity_received} ✓
+                  </p>
+                  {l.quantity_damaged > 0 && (
+                    <p className="text-[10px] text-amber-600 dark:text-amber-400 tabular-nums">
+                      {l.quantity_damaged} dmg
+                      {l.damage_resolution === 'credit' && ' · credit'}
+                      {l.damage_resolution === 'replacement_pending' && ' · repl.'}
+                      {!l.damage_resolution && ' · TBD'}
+                    </p>
+                  )}
+                </div>
               </div>
-              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 shrink-0 ml-3 tabular-nums">
-                × {l.quantity_received}
-              </span>
             </div>
           ))}
         </div>
       </div>
+
+      {creditLines.length > 0 && (
+        <div className="px-3 py-2.5 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-xs text-green-800 dark:text-green-200">
+          ✓ {creditLines.length} line{creditLines.length !== 1 ? 's' : ''} will close immediately — account credit covers the damaged units.
+        </div>
+      )}
 
       {isTest && (
         <div className="px-3 py-2.5 rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 text-sm text-yellow-800 dark:text-yellow-200">
@@ -396,8 +659,8 @@ function ConfirmSummary({
         <button onClick={onConfirm} disabled={busy}
           className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-md text-sm transition-colors disabled:opacity-50 active:scale-[0.98]">
           {busy ? 'Applying…' : isTest
-            ? `Confirm test receipt (${totalUnits} units) →`
-            : `Confirm & apply to Shopify (${totalUnits} units) →`}
+            ? `Confirm test receipt (${totalReceived} units) →`
+            : `Confirm & apply to Shopify (${totalReceived} units) →`}
         </button>
       </div>
     </div>
@@ -405,7 +668,7 @@ function ConfirmSummary({
 }
 
 // ---------------------------------------------------------------------------
-// Receipt PDF download button (#14)
+// Receipt PDF download button (#14 — unchanged)
 // ---------------------------------------------------------------------------
 
 function ReceiptPdfButton({ receiptId }: { receiptId: string }) {
@@ -426,28 +689,16 @@ function ReceiptPdfButton({ receiptId }: { receiptId: string }) {
 
   return (
     <div>
-      <button
-        onClick={handleDownload}
-        disabled={downloading}
+      <button onClick={handleDownload} disabled={downloading}
         className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md border
                    border-gray-300 dark:border-gray-600 text-sm font-medium
                    text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800
-                   disabled:opacity-50 transition-colors"
-      >
+                   disabled:opacity-50 transition-colors">
         {downloading ? (
-          <>
-            <span className="w-3.5 h-3.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-            Generating PDF…
-          </>
-        ) : (
-          <>
-            ↓ Download receipt PDF
-          </>
-        )}
+          <><span className="w-3.5 h-3.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />Generating PDF…</>
+        ) : '↓ Download receipt PDF'}
       </button>
-      {dlError && (
-        <p className="text-xs text-red-600 dark:text-red-400 mt-1 text-center">{dlError}</p>
-      )}
+      {dlError && <p className="text-xs text-red-600 dark:text-red-400 mt-1 text-center">{dlError}</p>}
     </div>
   )
 }
@@ -459,23 +710,21 @@ function ReceiptPdfButton({ receiptId }: { receiptId: string }) {
 export default function ReceivingWizard() {
   const [searchParams] = useSearchParams()
   const poId = searchParams.get('po')
-
   const { locationName } = useLocations()
 
-  const [phase,    setPhase]    = useState<Phase>('idle')
-  const [poDetail, setPoDetail] = useState<PurchaseOrderDetail | null>(null)
-  const [lines,    setLines]    = useState<WizardLine[]>([])
+  const [phase,         setPhase]         = useState<Phase>('idle')
+  const [poDetail,      setPoDetail]      = useState<PurchaseOrderDetail | null>(null)
+  const [lines,         setLines]         = useState<WizardLine[]>([])
   const [completedLines, setCompletedLines] = useState<Array<{
     title: string; isbn: string | null; quantity_ordered: number; quantity_received: number
   }>>([])
-  const [locationId, setLocationId] = useState(DEFAULT_LOCATION_ID)
-  const [notes,    setNotes]    = useState('')
-  const [loading,  setLoading]  = useState(false)
-  const [busy,     setBusy]     = useState(false)
-  const [error,    setError]    = useState<string | null>(null)
-  const [result,   setResult]   = useState<ReceiveResult | null>(null)
+  const [locationId,    setLocationId]    = useState(DEFAULT_LOCATION_ID)
+  const [notes,         setNotes]         = useState('')
+  const [loading,       setLoading]       = useState(false)
+  const [busy,          setBusy]          = useState(false)
+  const [error,         setError]         = useState<string | null>(null)
+  const [result,        setResult]        = useState<ReceiveResult | null>(null)
   const [scannedLineIds, setScannedLineIds] = useState<Set<string>>(new Set())
-
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -499,9 +748,9 @@ export default function ReceivingWizard() {
     const completed = detail.lines.filter(l => l.status === 'received' || l.status === 'cancelled')
     const active    = detail.lines.filter(l => l.status !== 'cancelled' && l.status !== 'received')
     setCompletedLines(completed.map(l => ({
-      title: l.title ?? `Item ${l.inventory_item_id.split('/').pop()}`,
-      isbn: l.isbn ?? null,
-      quantity_ordered: l.quantity_ordered,
+      title:             l.title ?? `Item ${l.inventory_item_id.split('/').pop()}`,
+      isbn:              l.isbn ?? null,
+      quantity_ordered:  l.quantity_ordered,
       quantity_received: l.quantity_received,
     })))
     setLines(active.map(l => ({
@@ -513,7 +762,9 @@ export default function ReceivingWizard() {
       quantity_ordered:             l.quantity_ordered,
       quantity_previously_received: l.quantity_received,
       quantity_received:            l.quantity_ordered - l.quantity_received,
-      notes_damaged:                null,
+      quantity_damaged:             0,
+      damage_disposal:              null,
+      damage_resolution:            null,
     })))
   }
 
@@ -532,23 +783,32 @@ export default function ReceivingWizard() {
     ))
   }
 
-  function handleDamageNoteChange(lineId: string, note: string) {
+  function handleDamageChange(
+    lineId: string,
+    patch: Partial<Pick<WizardLine, 'quantity_received' | 'quantity_damaged' | 'damage_disposal' | 'damage_resolution'>>
+  ) {
     setLines(prev => prev.map(l =>
-      l.purchase_order_line_id === lineId
-        ? { ...l, notes_damaged: note.trim() === '' ? null : note }
-        : l
+      l.purchase_order_line_id === lineId ? { ...l, ...patch } : l
     ))
   }
 
   function validate(): string | null {
-    if (!lines.some(l => l.quantity_received > 0))
-      return 'At least one line must have a received quantity greater than 0.'
+    const hasAny = lines.some(l => l.quantity_received > 0 || l.quantity_damaged > 0)
+    if (!hasAny) return 'At least one line must have a received or damaged quantity.'
+
+    // Hard rule enforced client-side too: qty_received must be undamaged only
+    for (const l of lines) {
+      const remaining = l.quantity_ordered - l.quantity_previously_received
+      if (l.quantity_received + l.quantity_damaged > remaining) {
+        return `${l.title}: total arrived (${l.quantity_received + l.quantity_damaged}) exceeds remaining ordered qty (${remaining}).`
+      }
+    }
     return null
   }
 
   function handleReviewNext() {
-    const validationError = validate()
-    if (validationError) { setError(validationError); return }
+    const err = validate()
+    if (err) { setError(err); return }
     setError(null)
     setPhase('confirm')
   }
@@ -559,17 +819,33 @@ export default function ReceivingWizard() {
     setPhase('confirming')
 
     try {
-      const activeLines = lines.filter(l => l.quantity_received > 0)
-      const allFull = activeLines.every(
-        l => l.quantity_received >= (l.quantity_ordered - l.quantity_previously_received)
-      )
+      // Lines with any activity (received or damaged)
+      const activeLines = lines.filter(l => l.quantity_received > 0 || l.quantity_damaged > 0)
 
-      const damageNotes = activeLines
-        .filter(l => l.notes_damaged)
-        .map(l => `${l.title}: ${l.notes_damaged}`)
+      // receipt_type: full only if every line is fully received (credit lines count as received)
+      const allFull = activeLines.every(l => {
+        const remaining = l.quantity_ordered - l.quantity_previously_received
+        const totalArrived = l.quantity_received + l.quantity_damaged
+        return totalArrived >= remaining && (
+          l.damage_resolution === 'credit' || l.quantity_damaged === 0
+        )
+      }) && lines.every(l => l.quantity_received + l.quantity_damaged > 0 || l.quantity_previously_received >= l.quantity_ordered)
+
+      // Build notes — include disposal and resolution context for each damaged line
+      const damageNoteParts = activeLines
+        .filter(l => l.quantity_damaged > 0)
+        .map(l => {
+          const parts = [`${l.title}: ${l.quantity_damaged} damaged`]
+          if (l.damage_disposal === 'donate_destroy') parts.push('donate/destroy')
+          if (l.damage_disposal === 'return') parts.push('return with call tag')
+          if (l.damage_resolution === 'credit') parts.push('credit taken')
+          if (l.damage_resolution === 'replacement_pending') parts.push('replacement incoming on this PO')
+          return parts.join(' — ')
+        })
+
       const combinedNotes = [
         notes.trim() || null,
-        damageNotes.length > 0 ? `Damage noted — ${damageNotes.join('; ')}` : null,
+        damageNoteParts.length > 0 ? `Damage: ${damageNoteParts.join('; ')}` : null,
       ].filter(Boolean).join('\n') || undefined
 
       const res = await receiveOrder({
@@ -580,8 +856,9 @@ export default function ReceivingWizard() {
         lines: activeLines.map(l => ({
           purchase_order_line_id: l.purchase_order_line_id,
           inventory_item_id:      l.inventory_item_id,
-          quantity_received:      l.quantity_received,
-          quantity_damaged:       0,
+          quantity_received:      l.quantity_received,   // undamaged only — hard rule
+          quantity_damaged:       l.quantity_damaged,
+          damage_resolution:      l.damage_resolution,
         })),
       })
 
@@ -597,16 +874,14 @@ export default function ReceivingWizard() {
 
   function handleReset() { navigate('/receiving') }
 
-  const order   = poDetail?.order as any
-  const isTest  = !!order?.is_test
+  const order  = poDetail?.order as any
+  const isTest = !!order?.is_test
 
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Receive Stock</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-          Record stock received against a purchase order.
-        </p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Record stock received against a purchase order.</p>
       </div>
 
       {/* ── IDLE ─────────────────────────────────────────────────── */}
@@ -620,9 +895,7 @@ export default function ReceivingWizard() {
             </div>
           )}
           {error && (
-            <div className="px-3 py-2 rounded bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">
-              {error}
-            </div>
+            <div className="px-3 py-2 rounded bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">{error}</div>
           )}
         </div>
       )}
@@ -634,26 +907,16 @@ export default function ReceivingWizard() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="font-mono font-semibold text-gray-900 dark:text-gray-100">{poDetail.order.po_number}</span>
-                {poDetail.order.is_ad_hoc && (
-                  <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase">Ad hoc</span>
-                )}
-                {isTest && (
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 uppercase">
-                    Test
-                  </span>
-                )}
+                {poDetail.order.is_ad_hoc && <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase">Ad hoc</span>}
+                {isTest && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 uppercase">Test</span>}
               </div>
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                {poDetail.lines.length} line{poDetail.lines.length !== 1 ? 's' : ''}
-              </span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">{poDetail.lines.length} line{poDetail.lines.length !== 1 ? 's' : ''}</span>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               {order?.supplier_name ?? order?.account_label ?? ''}
               {poDetail.order.ordered_at ? ` · Ordered ${formatDate(poDetail.order.ordered_at)}` : ''}
             </p>
-            {order?.informal_ref && (
-              <p className="text-[11px] font-mono text-gray-400 dark:text-gray-500">ref: {order.informal_ref}</p>
-            )}
+            {order?.informal_ref && <p className="text-[11px] font-mono text-gray-400 dark:text-gray-500">ref: {order.informal_ref}</p>}
           </div>
 
           <div className="rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 flex items-center justify-between">
@@ -665,9 +928,7 @@ export default function ReceivingWizard() {
             <span className="text-[11px] text-blue-500 dark:text-blue-400">PO destination</span>
           </div>
 
-          {lines.length > 0 && (
-            <WizardSlipScanner lines={lines} onLinesUpdated={handleScanUpdate} />
-          )}
+          {lines.length > 0 && <WizardSlipScanner lines={lines} onLinesUpdated={handleScanUpdate} />}
 
           <div className="space-y-3">
             {lines.map(l => (
@@ -676,7 +937,7 @@ export default function ReceivingWizard() {
                 line={l}
                 fromScan={scannedLineIds.has(l.purchase_order_line_id)}
                 onQtyChange={handleQtyChange}
-                onDamageNoteChange={handleDamageNoteChange}
+                onDamageChange={handleDamageChange}
               />
             ))}
 
@@ -704,15 +965,10 @@ export default function ReceivingWizard() {
             {lines.length === 0 && completedLines.length === 0 && (
               <p className="text-sm text-gray-400 dark:text-gray-600 italic">All lines on this order are already received or cancelled.</p>
             )}
-            {lines.length === 0 && completedLines.length > 0 && (
-              <p className="text-sm text-gray-400 dark:text-gray-600 italic">All outstanding lines have been received.</p>
-            )}
           </div>
 
           <div>
-            <label className="block text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold mb-1">
-              Notes
-            </label>
+            <label className="block text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold mb-1">Notes</label>
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
@@ -723,31 +979,22 @@ export default function ReceivingWizard() {
           </div>
 
           {error && (
-            <div className="px-3 py-2 rounded bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">
-              {error}
-            </div>
+            <div className="px-3 py-2 rounded bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">{error}</div>
           )}
 
-          <button
-            disabled={lines.length === 0 || busy}
-            onClick={handleReviewNext}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-md text-sm transition-colors disabled:opacity-50 active:scale-[0.98]"
-          >
+          <button disabled={lines.length === 0 || busy} onClick={handleReviewNext}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-md text-sm transition-colors disabled:opacity-50 active:scale-[0.98]">
             Review & confirm →
           </button>
         </div>
       )}
 
-      {/* ── CONFIRM (#12) ────────────────────────────────────────── */}
+      {/* ── CONFIRM ──────────────────────────────────────────────── */}
       {phase === 'confirm' && poDetail && (
         <ConfirmSummary
-          lines={lines}
-          completedLines={completedLines}
-          poDetail={poDetail}
-          locationId={locationId}
-          notes={notes}
-          isTest={isTest}
-          locationName={locationName}
+          lines={lines} completedLines={completedLines}
+          poDetail={poDetail} locationId={locationId}
+          notes={notes} isTest={isTest} locationName={locationName}
           onBack={() => setPhase('review')}
           onConfirm={handleConfirm}
           busy={busy}
@@ -767,20 +1014,20 @@ export default function ReceivingWizard() {
       {phase === 'result' && result && (
         <div className="space-y-5">
           <div className={`rounded-md border px-4 py-4 ${
-            result.status === 'applied'      ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+            result.status === 'applied'        ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
             : result.status === 'test_applied' ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
-            : result.status === 'partial'    ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
-            :                                  'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+            : result.status === 'partial'      ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+            :                                    'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
           }`}>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-lg">
                 {result.status === 'applied' ? '✓' : result.status === 'test_applied' ? '⚑' : result.status === 'partial' ? '⚠' : '✗'}
               </span>
               <h3 className={`font-semibold ${
-                result.status === 'applied'      ? 'text-green-800 dark:text-green-200'
+                result.status === 'applied'        ? 'text-green-800 dark:text-green-200'
                 : result.status === 'test_applied' ? 'text-yellow-800 dark:text-yellow-200'
-                : result.status === 'partial'    ? 'text-amber-800 dark:text-amber-200'
-                :                                  'text-red-800 dark:text-red-200'
+                : result.status === 'partial'      ? 'text-amber-800 dark:text-amber-200'
+                :                                    'text-red-800 dark:text-red-200'
               }`}>
                 {result.status === 'applied'         ? 'Receipt applied successfully'
                   : result.status === 'test_applied' ? 'Test receipt recorded — Shopify not updated'
@@ -791,11 +1038,9 @@ export default function ReceivingWizard() {
             <div className="text-sm space-y-1 text-gray-700 dark:text-gray-300">
               <p>{result.lines_applied} line{result.lines_applied !== 1 ? 's' : ''} applied</p>
               {result.lines_failed  > 0 && <p className="text-red-700 dark:text-red-300">{result.lines_failed} line{result.lines_failed !== 1 ? 's' : ''} failed</p>}
-              {result.lines_skipped > 0 && <p className="text-gray-500 dark:text-gray-400">{result.lines_skipped} line{result.lines_skipped !== 1 ? 's' : ''} skipped (zero quantity)</p>}
+              {result.lines_skipped > 0 && <p className="text-gray-500 dark:text-gray-400">{result.lines_skipped} line{result.lines_skipped !== 1 ? 's' : ''} skipped</p>}
               {notes.trim() && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 font-mono">
-                  Notes: {notes.trim()}
-                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 font-mono">Notes: {notes.trim()}</p>
               )}
               <p className="text-[11px] font-mono text-gray-400 dark:text-gray-500 mt-2">Receipt ID: {result.receipt_id}</p>
             </div>
@@ -806,7 +1051,6 @@ export default function ReceivingWizard() {
             )}
           </div>
 
-          {/* #14: download receipt PDF for applied/test receipts */}
           {(result.status === 'applied' || result.status === 'test_applied') && (
             <ReceiptPdfButton receiptId={result.receipt_id} />
           )}
