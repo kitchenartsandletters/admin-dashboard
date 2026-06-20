@@ -34,13 +34,13 @@ const navItems = [
   { label: 'Campaigns', path: '/campaigns', roles: ['admin'] },
   {
     label: 'Supply Chain',
-    path: '/suppliers',
+    path: '/Purchase Orders',
     roles: ['admin'],
     children: [
-      { label: 'Vendors/Publishers',       path: '/suppliers',       roles: ['admin','editor'] },
       { label: 'Purchase Orders', path: '/purchase-orders', roles: ['admin','editor'] },
       { label: 'Receiving',       path: '/receiving',       roles: ['admin','editor'] },
       { label: 'Transfers',       path: '/transfers',       roles: ['admin','editor'] },
+      { label: 'Vendors/Publishers',       path: '/suppliers',       roles: ['admin','editor'] },
       { label: 'Vendor Map',       path: '/supply-chain/cosmology', roles: ['admin', 'editor'] },
     ],
   },
