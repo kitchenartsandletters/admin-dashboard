@@ -2,6 +2,7 @@
 // Transfer list, detail sidebar, and dispatch/receive orchestration.
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import {
   InventoryTransfer, TransferDetail,
   TRANSFER_STATUS_LABELS, TRANSFER_STATUS_COLORS, TransferStatus,
@@ -75,7 +76,7 @@ function TransferDetailSidebar({ detail, locMap, onClose, onReceive }: {
   if (!shouldRender || !detail) return null
   const { transfer, lines } = detail
 
-  return (
+  return createPortal(
     <>
       <div
         className={`fixed inset-0 bg-black/30 backdrop-blur-sm z-40 transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`}
@@ -176,7 +177,8 @@ function TransferDetailSidebar({ detail, locMap, onClose, onReceive }: {
           </section>
         </div>
       </div>
-    </>
+    </>,
+    document.body
   )
 }
 
