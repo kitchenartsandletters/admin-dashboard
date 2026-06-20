@@ -4,6 +4,13 @@
 // Groups receipts by PO — a PO is the unit of work, receipts are attempts.
 // Shows submitted/confirmed/partial POs awaiting receipt above the history table.
 // Lines column shows completion breakdown: complete / partial / pending.
+//
+// Status column semantics:
+//   canonical_status is derived from the PO's own status (received, partial, etc.)
+//   NOT from the receipt's status (applied, test_applied, etc.).
+//   Receipt-level status (applied, test_applied, failed) is shown only in the
+//   expanded attempt rows — the top-level badge always reflects PO state so
+//   a partially-received PO always shows "Partial", never "Received".
 
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -17,6 +24,7 @@ import { PurchaseOrder, PurchaseOrderDetail } from '../purchase-orders/purchaseO
 
 interface ReceiptAttempt {
   id: string
+  /** Receipt-level status — used for expanded attempt rows only */
   status: 'pending' | 'applied' | 'failed' | 'partial' | 'cancelled' | 'test_applied'
   received_at: string
   notes: string | null
@@ -31,6 +39,7 @@ interface POReceivingGroup {
   informal_ref: string | null
   supplier_name: string
   account_label: string
+  /** PO-level status — drives the Status column badge */
   canonical_status: string
   canonical_receipt: ReceiptAttempt | null
   attempts: ReceiptAttempt[]
@@ -40,12 +49,15 @@ interface POReceivingGroup {
   lines_partial: number
   lines_open:    number
   lines_total:   number
-  is_test:     boolean
+  is_test: boolean
 }
 
 interface RawReceiptRow {
   id: string
+  /** Receipt-level status (applied, test_applied, failed, etc.) */
   status: string
+  /** PO-level status (received, partial, submitted, etc.) — used for canonical_status */
+  po_status?: string
   received_at: string
   notes: string | null
   po_id: string
@@ -60,24 +72,49 @@ interface RawReceiptRow {
   lines_partial?: number
   lines_open?:    number
   lines_total?:   number
-  is_test?:     boolean
+  is_test?: boolean
 }
 
 // ---------------------------------------------------------------------------
 // Status config
+//
+// Two separate configs:
+//   PO_STATUS_CONFIG — for the canonical_status badge (PO-level, top-level row)
+//   RECEIPT_STATUS_CONFIG — for expanded attempt rows (receipt-level)
 // ---------------------------------------------------------------------------
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
-  applied:      { label: 'Received',  color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',     dot: 'bg-green-500'  },
-  partial:      { label: 'Partial',   color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',     dot: 'bg-amber-500'  },
-  pending:      { label: 'Pending',   color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',         dot: 'bg-blue-400'   },
-  failed:       { label: 'Failed',    color: 'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400',             dot: 'bg-red-500'    },
-  cancelled:    { label: 'Cancelled', color: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500',            dot: 'bg-gray-400'   },
-  test_applied: { label: 'Test run',  color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300', dot: 'bg-yellow-500' },
+const PO_STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
+  received:  { label: 'Received',  color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',     dot: 'bg-green-500'  },
+  partial:   { label: 'Partial',   color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',     dot: 'bg-amber-500'  },
+  submitted: { label: 'Submitted', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',         dot: 'bg-blue-400'   },
+  confirmed: { label: 'Confirmed', color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300', dot: 'bg-indigo-400' },
+  draft:     { label: 'Draft',     color: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',            dot: 'bg-gray-400'   },
+  cancelled: { label: 'Cancelled', color: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500',            dot: 'bg-gray-300'   },
+  failed:    { label: 'Failed',    color: 'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400',             dot: 'bg-red-500'    },
+  pending:   { label: 'Pending',   color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',         dot: 'bg-blue-400'   },
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending
+const RECEIPT_STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
+  applied:      { label: 'Applied',   color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',     dot: 'bg-green-500'  },
+  test_applied: { label: 'Test run',  color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300', dot: 'bg-yellow-500' },
+  partial:      { label: 'Partial',   color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',     dot: 'bg-amber-500'  },
+  failed:       { label: 'Failed',    color: 'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400',             dot: 'bg-red-500'    },
+  pending:      { label: 'Pending',   color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',         dot: 'bg-blue-400'   },
+  cancelled:    { label: 'Cancelled', color: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500',            dot: 'bg-gray-400'   },
+}
+
+function POStatusBadge({ status }: { status: string }) {
+  const cfg = PO_STATUS_CONFIG[status] ?? PO_STATUS_CONFIG.pending
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold ${cfg.color}`}>
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dot}`} />
+      {cfg.label}
+    </span>
+  )
+}
+
+function ReceiptStatusBadge({ status }: { status: string }) {
+  const cfg = RECEIPT_STATUS_CONFIG[status] ?? RECEIPT_STATUS_CONFIG.pending
   return (
     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold ${cfg.color}`}>
       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dot}`} />
@@ -103,22 +140,26 @@ function groupByPO(rows: RawReceiptRow[]): POReceivingGroup[] {
   for (const row of rows) {
     if (!map.has(row.po_id)) {
       map.set(row.po_id, {
-        po_id:            row.po_id,
-        po_number:        row.po_number,
-        is_ad_hoc:        row.is_ad_hoc,
-        informal_ref:     row.informal_ref,
-        supplier_name:    row.supplier_name,
-        account_label:    row.account_label,
-        canonical_status: 'pending',
+        po_id:             row.po_id,
+        po_number:         row.po_number,
+        is_ad_hoc:         row.is_ad_hoc,
+        informal_ref:      row.informal_ref,
+        supplier_name:     row.supplier_name,
+        account_label:     row.account_label,
+        // Use PO status as the canonical display status when available.
+        // Falls back to receipt status only if po_status isn't in the response
+        // (old backend versions). This ensures a partial PO always shows
+        // "Partial", never "Received", regardless of receipt-level outcome.
+        canonical_status:  row.po_status ?? 'pending',
         canonical_receipt: null,
-        attempts:         [],
-        total_units:      0,
-        total_lines:      0,
-        lines_full:       0,
-        lines_partial:    0,
-        lines_open:       0,
-        lines_total:      0,
-        is_test:          false,
+        attempts:          [],
+        total_units:       0,
+        total_lines:       0,
+        lines_full:        0,
+        lines_partial:     0,
+        lines_open:        0,
+        lines_total:       0,
+        is_test:           false,
       })
     }
 
@@ -133,9 +174,11 @@ function groupByPO(rows: RawReceiptRow[]): POReceivingGroup[] {
     }
     group.attempts.push(attempt)
 
+    // Update canonical group state from the most recent successful receipt
     if (row.status === 'applied' || row.status === 'partial' || row.status === 'test_applied') {
       group.canonical_receipt = attempt
-      group.canonical_status  = row.status
+      // canonical_status always reflects PO state, updated from latest row
+      group.canonical_status  = row.po_status ?? row.status
       group.total_units       = row.units_received
       group.total_lines       = row.line_count
       group.lines_full        = row.lines_full    ?? 0
@@ -145,14 +188,18 @@ function groupByPO(rows: RawReceiptRow[]): POReceivingGroup[] {
       group.is_test           = row.is_test       ?? false
     } else if (!group.canonical_receipt) {
       group.canonical_receipt = attempt
-      group.canonical_status  = row.status
+      group.canonical_status  = row.po_status ?? row.status
       group.total_units       = row.units_received
       group.total_lines       = row.line_count
     }
   }
 
+  // Sort by PO status priority then most-recent-first within each status
   return Array.from(map.values()).sort((a, b) => {
-    const order: Record<string, number> = { applied: 0, partial: 1, test_applied: 2, pending: 3, failed: 4, cancelled: 5 }
+    const order: Record<string, number> = {
+      received: 0, partial: 1, submitted: 2, confirmed: 3,
+      pending: 4, failed: 5, cancelled: 6,
+    }
     const ao = order[a.canonical_status] ?? 9
     const bo = order[b.canonical_status] ?? 9
     if (ao !== bo) return ao - bo
@@ -230,9 +277,9 @@ function POGroupRow({ group, onRowClick }: { group: POReceivingGroup; onRowClick
           )}
         </div>
 
-        {/* Status */}
+        {/* Status — PO-level badge */}
         <div className="w-24 shrink-0 flex flex-col items-start gap-1">
-          <StatusBadge status={group.canonical_status} />
+          <POStatusBadge status={group.canonical_status} />
           {group.is_test && (
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded
                              bg-yellow-100 text-yellow-700
@@ -264,13 +311,13 @@ function POGroupRow({ group, onRowClick }: { group: POReceivingGroup; onRowClick
         </div>
       </div>
 
-      {/* Expanded: previous attempts */}
+      {/* Expanded: previous receipt attempts — use receipt-level status badge here */}
       {expanded && nonCanonical.length > 0 && (
         <div className="ml-7 mr-4 mb-2 border dark:border-gray-800 rounded-md overflow-hidden bg-gray-50/50 dark:bg-gray-900/30">
           {nonCanonical.map(attempt => (
             <div key={attempt.id}
               className="flex items-center gap-3 px-3 py-2 border-b dark:border-gray-800 last:border-0 opacity-60">
-              <StatusBadge status={attempt.status} />
+              <ReceiptStatusBadge status={attempt.status} />
               <span className="text-xs text-gray-500 dark:text-gray-400">
                 {formatDate(attempt.received_at)} {formatTime(attempt.received_at)}
               </span>
@@ -323,8 +370,7 @@ export default function ReceivingDashboard() {
   }, [])
 
   useEffect(() => {
-    // Include 'partial' so POs with outstanding lines appear in Awaiting Receipt,
-    // not just submitted/confirmed. A partial PO still has open lines to receive.
+    // Include 'partial' so POs with outstanding lines appear in Awaiting Receipt
     fetchPurchaseOrders({ status: 'submitted,confirmed,partial', limit: 50 })
       .then(orders => setSubmittedPOs(orders))
       .catch(() => {})
@@ -337,16 +383,16 @@ export default function ReceivingDashboard() {
       : groups.filter(g => g.canonical_status === statusFilter)
   ), [groups, statusFilter])
 
-  const totalUnits    = groups.filter(g => ['applied','partial'].includes(g.canonical_status)).reduce((s, g) => s + g.total_units, 0)
+  const totalUnits    = groups.filter(g => ['received', 'partial'].includes(g.canonical_status)).reduce((s, g) => s + g.total_units, 0)
   const failedGroups  = groups.filter(g => g.canonical_status === 'failed')
   const pendingGroups = groups.filter(g => g.canonical_status === 'pending')
 
   const counts = {
-    all:     groups.length,
-    applied: groups.filter(g => g.canonical_status === 'applied').length,
-    pending: pendingGroups.length,
-    partial: groups.filter(g => g.canonical_status === 'partial').length,
-    failed:  failedGroups.length,
+    all:      groups.length,
+    received: groups.filter(g => g.canonical_status === 'received').length,
+    partial:  groups.filter(g => g.canonical_status === 'partial').length,
+    pending:  pendingGroups.length,
+    failed:   failedGroups.length,
   }
 
   const handleRowClick = async (poId: string) => {
@@ -379,8 +425,8 @@ export default function ReceivingDashboard() {
       {/* Stats */}
       {!loading && !error && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard label="Orders received" value={counts.applied} />
-          <StatCard label="Units received"  value={totalUnits.toLocaleString()} sub="applied only" />
+          <StatCard label="Orders received" value={counts.received} />
+          <StatCard label="Units received"  value={totalUnits.toLocaleString()} sub="received + partial" />
           <StatCard label="Failed"  value={failedGroups.length}
             sub={failedGroups.length > 0 ? 'need attention' : 'all clear'} alert={failedGroups.length > 0} />
           <StatCard label="Pending" value={pendingGroups.length}
@@ -459,16 +505,22 @@ export default function ReceivingDashboard() {
         </div>
       )}
 
-      {/* Filter tabs */}
+      {/* Filter tabs — now keyed on PO status values */}
       <div className="flex gap-1 border-b dark:border-gray-800">
-        {(['all', 'applied', 'pending', 'partial', 'failed'] as const).map(s => (
-          <button key={s} onClick={() => setStatusFilter(s)}
+        {([
+          { key: 'all',      label: `All (${counts.all})` },
+          { key: 'received', label: `Received (${counts.received})` },
+          { key: 'partial',  label: `Partial (${counts.partial})` },
+          { key: 'pending',  label: `Pending (${counts.pending})` },
+          { key: 'failed',   label: `Failed (${counts.failed})` },
+        ] as const).map(({ key, label }) => (
+          <button key={key} onClick={() => setStatusFilter(key)}
             className={`px-3 py-1.5 text-xs font-semibold border-b-2 -mb-px transition-colors
-              ${statusFilter === s
+              ${statusFilter === key
                 ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                 : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
           >
-            {s === 'all' ? `All (${counts.all})` : `${s.charAt(0).toUpperCase() + s.slice(1)} (${counts[s]})`}
+            {label}
           </button>
         ))}
       </div>
