@@ -41,7 +41,7 @@ const navItems = [
       { label: 'Receiving',       path: '/receiving',       roles: ['admin','editor'] },
       { label: 'Transfers',       path: '/transfers',       roles: ['admin','editor'] },
       { label: 'Vendors/Publishers',       path: '/suppliers',       roles: ['admin','editor'] },
-      { label: 'Vendor Map',       path: '/supply-chain/cosmology', roles: ['admin', 'editor'] },
+      { label: 'Vendor Cosmology',       path: '/supply-chain/cosmology', roles: ['admin', 'editor'] },
     ],
   },
   {

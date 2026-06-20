@@ -907,7 +907,7 @@ export default function SupplierCosmologyMap() {
       {/* Page header */}
       <div className="flex items-start justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Supplier Cosmology</h1>
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Vendor Cosmology</h1>
           {!loading && (
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
               {stats.active} active · {stats.ordering} ordering parties · {stats.direct} direct · {stats.unclassified} unclassified · {stats.deprecated} deprecated
