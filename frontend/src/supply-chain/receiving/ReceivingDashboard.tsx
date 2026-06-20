@@ -2,7 +2,7 @@
 // Route: /receiving
 //
 // Groups receipts by PO — a PO is the unit of work, receipts are attempts.
-// Shows submitted/confirmed POs awaiting receipt above the history table.
+// Shows submitted/confirmed/partial POs awaiting receipt above the history table.
 // Lines column shows completion breakdown: complete / partial / pending.
 
 import { useState, useEffect, useMemo } from 'react'
@@ -323,7 +323,9 @@ export default function ReceivingDashboard() {
   }, [])
 
   useEffect(() => {
-    fetchPurchaseOrders({ status: 'submitted,confirmed', limit: 20 })
+    // Include 'partial' so POs with outstanding lines appear in Awaiting Receipt,
+    // not just submitted/confirmed. A partial PO still has open lines to receive.
+    fetchPurchaseOrders({ status: 'submitted,confirmed,partial', limit: 50 })
       .then(orders => setSubmittedPOs(orders))
       .catch(() => {})
       .finally(() => setPosLoading(false))
@@ -400,7 +402,7 @@ export default function ReceivingDashboard() {
         </div>
       )}
 
-      {/* Awaiting receipt — submitted/confirmed POs */}
+      {/* Awaiting receipt — submitted, confirmed, and partial POs */}
       {(posLoading || submittedPOs.length > 0) && (
         <div className="border dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-900">
           <div className="px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700 flex items-center justify-between">
@@ -427,6 +429,8 @@ export default function ReceivingDashboard() {
                     <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase shrink-0
                       ${po.status === 'confirmed'
                         ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
+                        : po.status === 'partial'
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
                         : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>
                       {po.status}
                     </span>

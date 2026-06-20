@@ -4,7 +4,7 @@
 // Route: /receiving/new
 //
 // Flow:
-//   Step 1: PO Resolution
+//   Step 1: Upload Packing Slip
 //     - Staff scan a packing slip OR enter PO number manually
 //     - Scan path: parse-and-lookup extracts lines + resolves PO in one call
 //       - High-confidence single match → wizard directly
@@ -104,7 +104,7 @@ function StepHeader({ step, label, sub }: { step: number; label: string; sub?: s
 }
 
 // ---------------------------------------------------------------------------
-// Step 1: PO lookup — scan OR manual entry
+// Step 1: Upload Packing Slip — scan OR manual PO entry
 // ---------------------------------------------------------------------------
 
 function POLookupStep({
@@ -150,12 +150,10 @@ function POLookupStep({
     }
   }
 
-  // Called by PackingSlipUpload when candidates are found at high confidence
   const handleCandidatesFound = useCallback((candidates: POCandidate[], poRef: string) => {
     onCandidatesFound(candidates, poRef)
   }, [onCandidatesFound])
 
-  // Called by PackingSlipUpload when lines are accepted but no PO candidate matched
   const handleSlipLinesAccepted = useCallback((lines: ParsedSlipLine[]) => {
     onSlipLinesReady(lines)
   }, [onSlipLinesReady])
@@ -164,11 +162,11 @@ function POLookupStep({
     <div className="space-y-5">
       <StepHeader
         step={1}
-        label="PO Resolution"
+        label="Upload Packing Slip"
         sub="Scan the packing slip to auto-identify the PO and pre-fill lines, or enter the PO number manually."
       />
 
-      {/* Scan path — shown by default, collapsible */}
+      {/* Scan path */}
       <div className="space-y-3">
         {!showScanner ? (
           <button
@@ -248,7 +246,6 @@ function POLookupStep({
 
 // ---------------------------------------------------------------------------
 // Step 1b: Fuzzy match confirmation
-// (also used when scan returns multiple high-confidence candidates)
 // ---------------------------------------------------------------------------
 
 function POFuzzyStep({
@@ -281,7 +278,7 @@ function POFuzzyStep({
         <div className="space-y-2">
           <p className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wide">Exact matches</p>
           {exact.map(po => (
-            <POCandidate key={po.id} po={po} onSelect={onSelect} />
+            <POCandidateRow key={po.id} po={po} onSelect={onSelect} />
           ))}
         </div>
       )}
@@ -290,7 +287,7 @@ function POFuzzyStep({
         <div className="space-y-2">
           <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Possible matches</p>
           {fuzzy.map(po => (
-            <POCandidate key={po.id} po={po} onSelect={onSelect} />
+            <POCandidateRow key={po.id} po={po} onSelect={onSelect} />
           ))}
         </div>
       )}
@@ -305,7 +302,7 @@ function POFuzzyStep({
   )
 }
 
-function POCandidate({ po, onSelect }: { po: POLookupResult; onSelect: (po: PurchaseOrder) => void }) {
+function POCandidateRow({ po, onSelect }: { po: POLookupResult; onSelect: (po: PurchaseOrder) => void }) {
   return (
     <button
       onClick={() => onSelect(po)}
@@ -734,10 +731,10 @@ function SummaryStep({
   executing: boolean
   error: string | null
 }) {
-  const existing = lines.filter(l => l.resolution === 'existing')
+  const existing    = lines.filter(l => l.resolution === 'existing')
   const newProducts = lines.filter(l => l.resolution === 'new')
-  const skipped = lines.filter(l => l.resolution === 'skipped')
-  const totalQty = lines.filter(l => l.resolution !== 'skipped').reduce((s, l) => s + l.quantity, 0)
+  const skipped     = lines.filter(l => l.resolution === 'skipped')
+  const totalQty    = lines.filter(l => l.resolution !== 'skipped').reduce((s, l) => s + l.quantity, 0)
 
   return (
     <div className="space-y-5">
@@ -887,8 +884,6 @@ export default function ReceivingEntryFlow() {
 
   const HQ_LOCATION_ID = 'gid://shopify/Location/40052293765'
 
-  // ── PO resolution handlers ───────────────────────────────────────────────
-
   const handleExactMatch = useCallback((po: PurchaseOrder) => {
     if (po.status === 'received') {
       setStep('po_received')
@@ -926,27 +921,18 @@ export default function ReceivingEntryFlow() {
     setStep('lines')
   }, [])
 
-  // ── Scan-driven PO resolution ────────────────────────────────────────────
-  // Called by PackingSlipUpload when parse-and-lookup returns high-confidence
-  // PO candidates. We coerce them to POLookupResult[] so the existing
-  // fuzzy-confirm step can render them without changes.
-
   const handleCandidatesFound = useCallback((candidates: POCandidate[], poRef: string) => {
     setSlipPoNumber(poRef)
 
     if (candidates.length === 1) {
-      // Single high-confidence match — treat as exact and navigate directly
       const c = candidates[0]
       if (c.status === 'received') {
-        // Reconstruct minimal PurchaseOrder shape for po_received step
         setExistingPO({ id: c.id, po_number: c.po_number, status: c.status } as PurchaseOrder)
         setStep('po_received')
       } else {
         navigate(`/receiving/wizard?po=${c.id}`)
       }
     } else {
-      // Multiple candidates — show fuzzy confirm step
-      // Coerce POCandidate[] → POLookupResult[] (match_type maps cleanly)
       const asLookupResults: POLookupResult[] = candidates.map(c => ({
         id: c.id,
         po_number: c.po_number,
@@ -956,8 +942,6 @@ export default function ReceivingEntryFlow() {
         account_label: c.account_label,
         supplier_account_id: c.supplier_account_id,
         destination_location_id: c.destination_location_id,
-        // POLookupResult uses 'exact' | 'fuzzy' but we have 'exact' | 'informal_ref'
-        // Map informal_ref → fuzzy so the confirmation UI labels it appropriately
         match_type: c.match_type === 'exact' ? 'exact' : 'fuzzy',
       } as POLookupResult))
       setFuzzyMatches(asLookupResults)
@@ -965,27 +949,8 @@ export default function ReceivingEntryFlow() {
     }
   }, [navigate])
 
-  // Called when scan produces lines but no PO match — go straight to supplier step
-  // with pre-loaded lines waiting in state
-  const handleSlipLinesReady = useCallback(async (slipLines: ParsedSlipLine[]) => {
-    // Load lines into state before transitioning so they're visible on the lines step
-    for (const sl of slipLines) {
-      if (!sl.isbn && !sl.title) continue
-      await addLine(
-        sl.isbn ?? '',
-        sl.quantity ?? 1,
-        sl.unit_cost ? String(sl.unit_cost) : '',
-        sl.title ?? '',
-      )
-    }
-    setStep('supplier')
-  }, []) // addLine added below
-
-  // ── Line management ──────────────────────────────────────────────────────
-
   const addLine = useCallback(async (isbn: string, qty: number, cost: string, titleFromSlip: string) => {
     const key = crypto.randomUUID()
-
     const pendingLine: SessionLine = {
       _key: key,
       isbn,
@@ -1006,21 +971,13 @@ export default function ReceivingEntryFlow() {
           title_from_slip: titleFromSlip || results[0].title,
         } : l))
       } else {
-        setLines(prev => prev.map(l => l._key === key ? {
-          ...l,
-          resolution: 'pending',
-        } : l))
+        setLines(prev => prev.map(l => l._key === key ? { ...l, resolution: 'pending' } : l))
       }
     } catch {
-      setLines(prev => prev.map(l => l._key === key ? {
-        ...l,
-        resolution: 'pending',
-      } : l))
+      setLines(prev => prev.map(l => l._key === key ? { ...l, resolution: 'pending' } : l))
     }
   }, [])
 
-  // Wire addLine into handleSlipLinesReady (defined before addLine above,
-  // so we use a ref-style workaround: re-assign with a stable callback)
   const handleSlipLinesReadyFull = useCallback(async (slipLines: ParsedSlipLine[]) => {
     for (const sl of slipLines) {
       if (!sl.isbn && !sl.title) continue
@@ -1032,6 +989,18 @@ export default function ReceivingEntryFlow() {
       )
     }
     setStep('supplier')
+  }, [addLine])
+
+  const handleSlipLinesAccepted = useCallback(async (slipLines: ParsedSlipLine[]) => {
+    for (const sl of slipLines) {
+      if (!sl.isbn && !sl.title) continue
+      await addLine(
+        sl.isbn ?? '',
+        sl.quantity ?? 1,
+        sl.unit_cost ? String(sl.unit_cost) : '',
+        sl.title ?? '',
+      )
+    }
   }, [addLine])
 
   const updateLine = useCallback((key: string, patch: Partial<SessionLine>) => {
@@ -1046,18 +1015,6 @@ export default function ReceivingEntryFlow() {
     setNewProductTargetKey(line._key)
     setStep('new_product')
   }, [])
-
-  const handleSlipLinesAccepted = useCallback(async (slipLines: ParsedSlipLine[]) => {
-    for (const sl of slipLines) {
-      if (!sl.isbn && !sl.title) continue
-      await addLine(
-        sl.isbn ?? '',
-        sl.quantity ?? 1,
-        sl.unit_cost ? String(sl.unit_cost) : '',
-        sl.title ?? '',
-      )
-    }
-  }, [addLine])
 
   const handleNewProductCreated = useCallback((
     productId: string,
@@ -1081,8 +1038,6 @@ export default function ReceivingEntryFlow() {
     setNewProductTargetKey(null)
     setStep('lines')
   }, [newProductTargetKey])
-
-  // ── Execute ──────────────────────────────────────────────────────────────
 
   const handleConfirm = useCallback(async () => {
     setExecuting(true)
@@ -1111,16 +1066,12 @@ export default function ReceivingEntryFlow() {
       }
 
       for (const line of activeLines) {
-        const inventoryItemId = line.existing_product?.inventory_item_id
-          ?? line.new_product?.inventory_item_id
-        const variantId = line.existing_product?.variant_id
-          ?? line.new_product?.variant_id
-
+        const inventoryItemId = line.existing_product?.inventory_item_id ?? line.new_product?.inventory_item_id
+        const variantId       = line.existing_product?.variant_id        ?? line.new_product?.variant_id
         if (!inventoryItemId || !variantId) continue
-
         await createPOLine(poId, {
           inventory_item_id: inventoryItemId,
-          variant_id:        variantId,
+          variant_id,
           quantity_ordered:  line.quantity,
           unit_cost:         line.unit_cost ? parseFloat(line.unit_cost) : undefined,
         })
@@ -1132,8 +1083,6 @@ export default function ReceivingEntryFlow() {
       setExecuting(false)
     }
   }, [lines, supplierDetail, existingPO, slipPoNumber, navigate])
-
-  // ── Render ───────────────────────────────────────────────────────────────
 
   if (step === 'new_product' && newProductTargetKey) {
     const targetLine = lines.find(l => l._key === newProductTargetKey)
@@ -1194,11 +1143,7 @@ export default function ReceivingEntryFlow() {
 
       {step === 'po_received' && existingPO && (
         <div className="space-y-5">
-          <StepHeader
-            step={1}
-            label="Already Received"
-            sub="This PO has already been fully received."
-          />
+          <StepHeader step={1} label="Already Received" sub="This PO has already been fully received." />
           <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
             <div className="px-4 py-3 bg-green-50 dark:bg-green-900/20 border-b dark:border-gray-700">
               <div className="flex items-center gap-2">

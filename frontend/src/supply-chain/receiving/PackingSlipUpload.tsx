@@ -218,9 +218,6 @@ export default function PackingSlipUpload({ onLinesAccepted, onPOCandidatesFound
           onChange={handleFileChange}
           className="hidden"
         />
-        <p className="text-xs text-gray-300 dark:text-gray-600">
-          Or skip and enter ISBNs manually below
-        </p>
       </div>
     )
   }
