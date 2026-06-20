@@ -1,5 +1,6 @@
 // SupplierDetailSidebar.tsx
 import React, { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   SupplierDetail, SupplierParty,
   SUPPLIER_ROLE_LABELS, ORDERING_METHOD_LABELS, CONTACT_ROLE_LABELS,
@@ -218,7 +219,7 @@ const SupplierDetailSidebar: React.FC<Props> = ({
   const existingChildIds = new Set(children.map(c => c.id))
   const canCreatePO = !!primaryAccount && primaryAccount.is_active && party.is_active
 
-  return (
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -481,7 +482,8 @@ const SupplierDetailSidebar: React.FC<Props> = ({
           </section>
         </div>
       </div>
-    </>
+    </>,
+    document.body
   )
 }
 

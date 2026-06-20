@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from "react"
+import { createPortal } from "react-dom"
 import { PreorderRow } from "../../types/preorderTypes"
 import { formatDate } from "../../utils/tableUtils"
 
@@ -115,7 +116,7 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
     }
   }
 
-  return (
+  return createPortal(
     <>
       <div
         className={`fixed inset-0 bg-black/30 backdrop-blur-sm z-40 transition-opacity duration-300 ${
@@ -370,7 +371,8 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
           )}
         </div>
       </div>
-    </>
+    </>,
+    document.body
   )
 }
 

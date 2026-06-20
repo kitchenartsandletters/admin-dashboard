@@ -2,6 +2,7 @@
 // Right-side drill-down for a backordered title: per-order lines (what is owed
 // to whom), action buttons, and the action history trail.
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom' // 1. Import createPortal
 import { X } from 'lucide-react'
 import type {
   BackorderProductRow,
@@ -85,7 +86,8 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
     })
   }
 
-  return (
+  // 2. Wrap the JSX layout inside createPortal, rendering to document.body
+  return createPortal(
     <>
       <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <aside className="fixed inset-y-0 right-0 z-50 w-full sm:w-[520px] bg-white dark:bg-gray-900 border-l dark:border-gray-700 shadow-xl overflow-y-auto">
@@ -234,6 +236,7 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
           </div>
         </div>
       </aside>
-    </>
+    </>,
+    document.body
   )
 }
