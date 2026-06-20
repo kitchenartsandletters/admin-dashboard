@@ -10,6 +10,7 @@
 // The sidebar syncs localLines from detail updates without toggling open state.
 
 import React, { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   PurchaseOrder, PurchaseOrderLine, PurchaseOrderDetail,
   Receipt, ReceiptLine,
@@ -627,7 +628,7 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
   // Sidebar width: wider for draft on desktop to accommodate split pane
   const sidebarWidth = (isDraft || wide) ? 'sm:w-[56rem]' : 'sm:w-[30rem]'
 
-  return (
+  return createPortal(
     <>
       <div
         className={`fixed inset-0 bg-black/30 backdrop-blur-sm z-40 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0'}`}
@@ -785,7 +786,8 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
           {transitionError && <p className="text-xs text-red-600 dark:text-red-400">{transitionError}</p>}
         </div>
       </div>
-    </>
+    </>,
+    document.body
   )
 }
 
