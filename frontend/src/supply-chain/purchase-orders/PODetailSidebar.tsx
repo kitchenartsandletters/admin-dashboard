@@ -300,7 +300,6 @@ function InlineLineEntry({ poId, existingItemIds, onLineAdded }: {
         variant_id: v.variant_id,
         quantity_ordered: Number(qty),
       }) as PurchaseOrderLine
-      // Enrich with title/isbn from the search result — the raw DB row has neither
       const enrichedLine: PurchaseOrderLine = {
         ...rawLine,
         title: rawLine.title ?? v.title ?? null,
@@ -482,7 +481,6 @@ function LinesPanel({ order, lines, onLineAdded, onQtyChange, onDelete }: {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* Lines list — scrollable */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {lines.length === 0 ? (
           <p className="text-xs text-gray-400 dark:text-gray-500 py-2">No lines on this PO.</p>
@@ -509,7 +507,6 @@ function LinesPanel({ order, lines, onLineAdded, onQtyChange, onDelete }: {
         )}
       </div>
 
-      {/* Add line — pinned below list */}
       {isDraft && (
         <div className="shrink-0 pt-3 border-t dark:border-gray-700 mt-3">
           <p className="kal-text-label text-gray-400 dark:text-gray-500 mb-1.5">
@@ -547,24 +544,19 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
     wasNullRef.current = isNull
 
     if (!isNull && wasNull) {
-      // Sidebar opening — new PO selected
       setMounted(true)
       setLocalLines(detail.lines ?? [])
       prevOrderIdRef.current = detail.order.id
       requestAnimationFrame(() => requestAnimationFrame(() => setIsOpen(true)))
     } else if (isNull && !wasNull) {
-      // Sidebar closing
       setIsOpen(false)
       const t = setTimeout(() => setMounted(false), 300)
       return () => clearTimeout(t)
     } else if (!isNull) {
       if (detail.order.id !== prevOrderIdRef.current) {
-        // Different PO selected — reset lines
         prevOrderIdRef.current = detail.order.id
         setLocalLines(detail.lines ?? [])
       } else {
-        // Same PO refreshed — sync lines only if backend has more than local
-        // (local may have optimistic additions not yet in backend response)
         if (detail.lines.length >= localLines.length) {
           setLocalLines(detail.lines)
         }
@@ -614,18 +606,16 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
   }
 
   const handleDownloadPdf = async () => {
-     setPdfDownloading(true)
-     try {
-       await downloadPOPdf(order.id, order.po_number)
-     } catch (e) {
-       // Surface error — could add a toast here
-       console.error('PDF download failed:', e)
-     } finally {
-       setPdfDownloading(false)
-     }
-   }
+    setPdfDownloading(true)
+    try {
+      await downloadPOPdf(order.id, order.po_number)
+    } catch (e) {
+      console.error('PDF download failed:', e)
+    } finally {
+      setPdfDownloading(false)
+    }
+  }
 
-  // Sidebar width: wider for draft on desktop to accommodate split pane
   const sidebarWidth = (isDraft || wide) ? 'sm:w-[56rem]' : 'sm:w-[30rem]'
 
   return createPortal(
@@ -667,23 +657,17 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
           </div>
         </div>
 
-        {/* Body — split pane for draft on desktop, single column otherwise */}
+        {/* Body */}
         {(isDraft || wide) ? (
-          // DRAFT: two-column layout on desktop
           <div className="flex-1 min-h-0 flex flex-col sm:flex-row">
-            {/* Left: Order details */}
             <div className="sm:w-64 shrink-0 border-b sm:border-b-0 sm:border-r dark:border-gray-800 overflow-y-auto p-5">
               <SectionLabel>Order</SectionLabel>
               <OrderDetailsPanel order={order} onRefresh={onRefresh} />
-
-              {/* Receipts — in left column for draft */}
               <div className="mt-6">
                 <SectionLabel>Receipts</SectionLabel>
                 <ReceiptSection poId={order.id} />
               </div>
             </div>
-
-            {/* Right: Lines + Add Line */}
             <div className="flex-1 min-w-0 min-h-0 flex flex-col p-5">
               <SectionLabel>Lines ({localLines.length})</SectionLabel>
               <div className="flex-1 min-h-0">
@@ -698,7 +682,6 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
             </div>
           </div>
         ) : (
-          // NON-DRAFT: single column
           <div className="flex-1 overflow-y-auto p-5 space-y-6 pb-4">
             <section>
               <SectionLabel>Order</SectionLabel>
@@ -727,56 +710,57 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
           </div>
         )}
 
-        {/* Actions — sticky footer */}
+        {/* Actions footer */}
         <div className="shrink-0 border-t dark:border-gray-800 bg-white dark:bg-gray-950 px-5 py-3 space-y-2">
-        {order.is_test && (
-          <div className="px-3 py-2 rounded bg-yellow-50 dark:bg-yellow-900/20
-                          border border-yellow-200 dark:border-yellow-800
-                          text-xs text-yellow-700 dark:text-yellow-300 text-center">
-            Test PO — receiving will simulate the flow without touching Shopify inventory
-          </div>
-        )}
-        {isDraft && (
-        <div className="space-y-2">
-          <button
-            onClick={async () => {
-              const succeeded = await handleTransition('submit')
-              if (succeeded) {
-                await handleDownloadPdf()
-              }
-            }}
-            disabled={transitioning || localLines.length === 0}
-            className="w-full px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700
-                        text-white text-sm font-semibold disabled:opacity-50 transition-colors"
-          >
-            {transitioning ? 'Submitting…' : 'Submit PO + Download PDF'}
-          </button>
-          <button
-            onClick={handleDownloadPdf}
-            disabled={pdfDownloading || localLines.length === 0}
-            className="w-full px-3 py-2 rounded-md border border-gray-300
-                        dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300
-                        hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50
-                        transition-colors"
-          >
-            {pdfDownloading ? 'Generating…' : 'Download draft PDF'}
-          </button>
-        </div>
-      )}
+          {order.is_test && (
+            <div className="px-3 py-2 rounded bg-yellow-50 dark:bg-yellow-900/20
+                            border border-yellow-200 dark:border-yellow-800
+                            text-xs text-yellow-700 dark:text-yellow-300 text-center">
+              Test PO — receiving will simulate the flow without touching Shopify inventory
+            </div>
+          )}
+          {isDraft && (
+            <div className="space-y-2">
+              <button
+                onClick={async () => {
+                  const succeeded = await handleTransition('submit')
+                  if (succeeded) await handleDownloadPdf()
+                }}
+                disabled={transitioning || localLines.length === 0}
+                className="w-full px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700
+                            text-white text-sm font-semibold disabled:opacity-50 transition-colors"
+              >
+                {transitioning ? 'Submitting…' : 'Submit PO + Download PDF'}
+              </button>
+              <button
+                onClick={handleDownloadPdf}
+                disabled={pdfDownloading || localLines.length === 0}
+                className="w-full px-3 py-2 rounded-md border border-gray-300
+                            dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300
+                            hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50
+                            transition-colors"
+              >
+                {pdfDownloading ? 'Generating…' : 'Download draft PDF'}
+              </button>
+            </div>
+          )}
 
-      {/* Download PDF for submitted/confirmed/received POs */}
-      {['submitted', 'confirmed', 'partial', 'received'].includes(order.status) && (
-        <button
-          onClick={handleDownloadPdf}
-          disabled={pdfDownloading}
-          className="w-full px-3 py-2 rounded-md border border-gray-300
-                      dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300
-                      hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50
-                      transition-colors"
-        >
-          {pdfDownloading ? 'Generating…' : 'Download PDF'}
-        </button>
-      )}
+          {/* PO PDF download for submitted / confirmed / partial / received orders.
+              Labelled explicitly "Download PO PDF" to distinguish from the receipt PDF
+              that appears in the wizard result phase after a receive. */}
+          {['submitted', 'confirmed', 'partial', 'received'].includes(order.status) && (
+            <button
+              onClick={handleDownloadPdf}
+              disabled={pdfDownloading}
+              className="w-full px-3 py-2 rounded-md border border-gray-300
+                          dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300
+                          hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50
+                          transition-colors"
+            >
+              {pdfDownloading ? 'Generating…' : 'Download PO PDF'}
+            </button>
+          )}
+
           {isDraft && localLines.length === 0 && (
             <p className="text-xs text-amber-600 dark:text-amber-400 text-center">Add lines before submitting</p>
           )}
