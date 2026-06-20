@@ -25,14 +25,16 @@ function TableSkeleton() {
     <div className="overflow-x-auto border rounded-md dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
       <table className="min-w-full border-collapse text-sm">
         <thead className="bg-gray-50 dark:bg-gray-800">
-          <tr>{['w-32','w-20','w-28','w-28','w-28'].map((w,i)=>(
-            <th key={i} className="px-4 py-3 border-b dark:border-gray-700">
-              <div className={`h-3 ${w} bg-gray-200 dark:bg-gray-700 rounded animate-pulse`}/>
-            </th>
-          ))}</tr>
+          <tr>
+            {['w-32','w-20','w-28','w-28','w-28'].map((w,i)=>(
+              <th key={i} className="px-4 py-3 border-b dark:border-gray-700">
+                <div className={`h-3 ${w} bg-gray-200 dark:bg-gray-700 rounded animate-pulse`}/>
+              </th>
+            ))}
+          </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-          {Array.from({length:8}).map((_,i)=>(
+          {Array.from({length: 8}).map((_,i)=>(
             <tr key={i}>
               <td className="px-4 py-3"><div className="h-3 w-32 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"/></td>
               <td className="px-4 py-3"><div className="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse"/></td>
@@ -71,18 +73,14 @@ export default function POService() {
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null)
   const [detail, setDetail] = useState<PurchaseOrderDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
-
   const [showBuilder, setShowBuilder] = useState(false)
-
   const [deletingId, setDeletingId] = useState<string | null>(null)
-
   const [archiving, setArchiving] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      // Fetch broadly — client-side filter handles 'open' meta-status
       const data = await fetchPurchaseOrders({ limit: 250 })
       setOrders(data)
     } catch (e) {
@@ -146,9 +144,7 @@ export default function POService() {
     setDeletingId(order.id)
     try {
       await cancelPurchaseOrder(order.id)
-      // Remove from local state immediately — don't reload (load() would bring it back in 'all' view)
       setOrders(prev => prev.filter(o => o.id !== order.id))
-      // If this PO was selected in the sidebar, close it
       if (selectedOrder?.id === order.id) {
         setSelectedOrder(null)
         setDetail(null)
@@ -168,7 +164,6 @@ export default function POService() {
     setArchiving(true)
     try {
       const result = await archiveTestPOs()
-      // Remove archived POs from local state immediately
       setOrders(prev => prev.filter(o => !o.is_test || o.archived_at))
       setSelectedOrder(null)
       setDetail(null)
@@ -181,31 +176,37 @@ export default function POService() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between">
+    <div className="p-4 sm:p-6 space-y-6 bg-white dark:bg-gray-950 min-h-screen">
+      {/* Header Container */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Purchase Orders</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+            Purchase Orders
+          </h1>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+            {loading ? 'Loading pipeline…' : `${orders.length} total orders`}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
           <button
             onClick={() => setShowBuilder(true)}
-            className="px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
+            className="w-full sm:w-auto px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm"
           >
             + New PO
           </button>
-             {statusFilter === 'test' && filtered.length > 0 && (
-                <button
-                  onClick={handleArchiveTestPOs}
-                  disabled={archiving}
-                  className="px-3 py-2 rounded-md border border-yellow-300 dark:border-yellow-700
-                              text-yellow-700 dark:text-yellow-300 text-sm font-semibold
-                              hover:bg-yellow-50 dark:hover:bg-yellow-900/20 disabled:opacity-50
-                              transition-colors"
-                >
-                  {archiving ? 'Archiving…' : `Archive all test POs (${filtered.length})`}
-                </button>
-              )}
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            {loading ? 'Loading…' : `${orders.length} total orders`}
-          </p>
+          {statusFilter === 'test' && filtered.length > 0 && (
+            <button
+              onClick={handleArchiveTestPOs}
+              disabled={archiving}
+              className="w-full sm:w-auto px-3 py-2 rounded-md border border-yellow-300 dark:border-yellow-700
+                          text-yellow-700 dark:text-yellow-300 text-xs sm:text-sm font-semibold
+                          hover:bg-yellow-50 dark:hover:bg-yellow-900/20 disabled:opacity-50
+                          transition-colors whitespace-nowrap"
+            >
+              {archiving ? 'Archiving…' : `Archive Test POs (${filtered.length})`}
+            </button>
+          )}
         </div>
       </div>
 
@@ -215,54 +216,64 @@ export default function POService() {
         </div>
       )}
 
-      {/* Filter bar */}
-      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-        <input
-          type="text"
-          placeholder="Search PO number, supplier, ISBN…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="px-3 py-2 border rounded text-sm bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none flex-1"
-        />
-        <div className="flex gap-1 flex-wrap">
-          {STATUS_FILTERS.map(f => (
-            <button
-              key={f.key}
-              onClick={() => {
-                setStatusFilter(f.key)
-                try {
-                  localStorage.setItem(PO_STATUS_FILTER_KEY, f.key)
-                } catch {}
-              }}
-              className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors whitespace-nowrap
-                ${statusFilter === f.key
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'
+      {/* Modern Filter Strip */}
+      <div className="flex flex-col gap-3">
+        {/* Horizontal scroll strip for status sub-tabs */}
+        <div className="flex gap-1 overflow-x-auto pb-1 text-xs scrollbar-none border-b dark:border-gray-800/60 sm:border-b-0">
+          <div className="inline-flex p-0.5 bg-gray-100 dark:bg-gray-800 rounded border dark:border-gray-700">
+            {STATUS_FILTERS.map(f => (
+              <button
+                key={f.key}
+                onClick={() => {
+                  setStatusFilter(f.key)
+                  try {
+                    localStorage.setItem(PO_STATUS_FILTER_KEY, f.key)
+                  } catch {}
+                }}
+                className={`px-3 py-1.5 rounded font-medium transition-all whitespace-nowrap ${
+                  statusFilter === f.key
+                    ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
                 }`}
-            >
-              {f.label}
-            </button>
-          ))}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Search Bar input matching Preorder Pipeline input layouts */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            type="text"
+            placeholder="Search PO number, supplier, reference or notes..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="flex-1 px-3 py-1.5 border rounded text-xs dark:bg-gray-900 dark:border-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500/20 outline-none"
+          />
         </div>
       </div>
 
       {!loading && (
-        <p className="text-xs text-gray-400 dark:text-gray-600">
-          {filtered.length} order{filtered.length !== 1 ? 's' : ''}
+        <p className="text-[11px] font-medium text-gray-400 dark:text-gray-600 uppercase tracking-wider">
+          Showing {filtered.length} order{filtered.length !== 1 ? 's' : ''}
         </p>
       )}
 
-      {loading ? <TableSkeleton /> : (
-        <POTable
-          orders={filtered}
-          sortConfig={sortConfig}
-          onSort={handleSort}
-          onRowClick={o => setSelectedOrder(prev => prev?.id === o.id ? null : o)}
-          selectedId={selectedOrder?.id ?? null}
-          onDeleteDraft={handleDeleteDraft}
-          deletingId={deletingId}
-        />
-      )}
+      {/* Main Table Content View */}
+      <div>
+        {loading ? <TableSkeleton /> : (
+          <POTable
+            orders={filtered}
+            sortConfig={sortConfig}
+            onSort={handleSort}
+            onRowClick={o => setSelectedOrder(prev => prev?.id === o.id ? null : o)}
+            selectedId={selectedOrder?.id ?? null}
+            onDeleteDraft={handleDeleteDraft}
+            deletingId={deletingId}
+          />
+        )}
+      </div>
 
       <PODetailSidebar
         detail={detail}
