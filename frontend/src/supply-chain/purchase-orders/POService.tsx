@@ -245,7 +245,7 @@ export default function POService() {
         {/* Search Bar input matching Preorder Pipeline input layouts */}
         <div className="flex flex-col sm:flex-row gap-2">
           <input
-            type="text"
+            type="search"
             placeholder="Search PO number, supplier, reference or notes..."
             value={search}
             onChange={e => setSearch(e.target.value)}
