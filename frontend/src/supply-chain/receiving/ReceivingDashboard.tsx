@@ -17,6 +17,7 @@ import { useNavigate } from 'react-router-dom'
 import PODetailSidebar from '../purchase-orders/PODetailSidebar'
 import { fetchPurchaseOrderDetail, fetchPurchaseOrders } from '../../api/supplyChainApi'
 import { PurchaseOrder, PurchaseOrderDetail } from '../purchase-orders/purchaseOrderTypes'
+import { SortConfig, SortIcon, nextSortDirection } from '../../utils/tableUtils'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,9 +55,7 @@ interface POReceivingGroup {
 
 interface RawReceiptRow {
   id: string
-  /** Receipt-level status (applied, test_applied, failed, etc.) */
   status: string
-  /** PO-level status (received, partial, submitted, etc.) — used for canonical_status */
   po_status?: string
   received_at: string
   notes: string | null
@@ -75,12 +74,11 @@ interface RawReceiptRow {
   is_test?: boolean
 }
 
+// Sortable keys on POReceivingGroup
+type SortKey = 'received_at' | 'supplier_name' | 'po_number' | 'canonical_status'
+
 // ---------------------------------------------------------------------------
 // Status config
-//
-// Two separate configs:
-//   PO_STATUS_CONFIG — for the canonical_status badge (PO-level, top-level row)
-//   RECEIPT_STATUS_CONFIG — for expanded attempt rows (receipt-level)
 // ---------------------------------------------------------------------------
 
 const PO_STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
@@ -146,10 +144,6 @@ function groupByPO(rows: RawReceiptRow[]): POReceivingGroup[] {
         informal_ref:      row.informal_ref,
         supplier_name:     row.supplier_name,
         account_label:     row.account_label,
-        // Use PO status as the canonical display status when available.
-        // Falls back to receipt status only if po_status isn't in the response
-        // (old backend versions). This ensures a partial PO always shows
-        // "Partial", never "Received", regardless of receipt-level outcome.
         canonical_status:  row.po_status ?? 'pending',
         canonical_receipt: null,
         attempts:          [],
@@ -174,10 +168,8 @@ function groupByPO(rows: RawReceiptRow[]): POReceivingGroup[] {
     }
     group.attempts.push(attempt)
 
-    // Update canonical group state from the most recent successful receipt
     if (row.status === 'applied' || row.status === 'partial' || row.status === 'test_applied') {
       group.canonical_receipt = attempt
-      // canonical_status always reflects PO state, updated from latest row
       group.canonical_status  = row.po_status ?? row.status
       group.total_units       = row.units_received
       group.total_lines       = row.line_count
@@ -194,19 +186,7 @@ function groupByPO(rows: RawReceiptRow[]): POReceivingGroup[] {
     }
   }
 
-  // Sort by PO status priority then most-recent-first within each status
-  return Array.from(map.values()).sort((a, b) => {
-    const order: Record<string, number> = {
-      received: 0, partial: 1, submitted: 2, confirmed: 3,
-      pending: 4, failed: 5, cancelled: 6,
-    }
-    const ao = order[a.canonical_status] ?? 9
-    const bo = order[b.canonical_status] ?? 9
-    if (ao !== bo) return ao - bo
-    const ad = a.canonical_receipt?.received_at ?? ''
-    const bd = b.canonical_receipt?.received_at ?? ''
-    return bd.localeCompare(ad)
-  })
+  return Array.from(map.values())
 }
 
 // ---------------------------------------------------------------------------
@@ -222,6 +202,38 @@ function StatCard({ label, value, sub, alert }: { label: string; value: string |
       <p className={`text-2xl font-bold tabular-nums ${alert ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>{value}</p>
       {sub && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{sub}</p>}
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Sortable column header
+// ---------------------------------------------------------------------------
+
+function ThSortable({
+  label,
+  sortKey,
+  sortConfig,
+  onSort,
+  align = 'left',
+}: {
+  label: string
+  sortKey: SortKey
+  sortConfig: SortConfig<POReceivingGroup> | null
+  onSort: (key: SortKey) => void
+  align?: 'left' | 'right'
+}) {
+  const active = sortConfig?.key === sortKey
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(sortKey)}
+      className={`text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide
+        hover:text-gray-700 dark:hover:text-gray-200 transition-colors select-none
+        ${align === 'right' ? 'text-right w-full block' : ''}`}
+    >
+      {label}
+      <SortIcon active={active} direction={sortConfig?.direction ?? 'asc'} />
+    </button>
   )
 }
 
@@ -311,7 +323,7 @@ function POGroupRow({ group, onRowClick }: { group: POReceivingGroup; onRowClick
         </div>
       </div>
 
-      {/* Expanded: previous receipt attempts — use receipt-level status badge here */}
+      {/* Expanded: receipt-level attempt rows */}
       {expanded && nonCanonical.length > 0 && (
         <div className="ml-7 mr-4 mb-2 border dark:border-gray-800 rounded-md overflow-hidden bg-gray-50/50 dark:bg-gray-900/30">
           {nonCanonical.map(attempt => (
@@ -358,6 +370,9 @@ export default function ReceivingDashboard() {
   const [loading, setLoading]             = useState(true)
   const [error, setError]                 = useState<string | null>(null)
   const [statusFilter, setStatusFilter]   = useState<string>('all')
+  const [sortConfig, setSortConfig]       = useState<SortConfig<POReceivingGroup> | null>({
+    key: 'received_at' as keyof POReceivingGroup, direction: 'desc',
+  })
   const [selectedPODetail, setSelectedPODetail] = useState<PurchaseOrderDetail | null>(null)
   const [submittedPOs, setSubmittedPOs]   = useState<PurchaseOrder[]>([])
   const [posLoading, setPosLoading]       = useState(true)
@@ -370,18 +385,45 @@ export default function ReceivingDashboard() {
   }, [])
 
   useEffect(() => {
-    // Include 'partial' so POs with outstanding lines appear in Awaiting Receipt
     fetchPurchaseOrders({ status: 'submitted,confirmed,partial', limit: 50 })
       .then(orders => setSubmittedPOs(orders))
       .catch(() => {})
       .finally(() => setPosLoading(false))
   }, [])
 
-  const filtered = useMemo(() => (
-    statusFilter === 'all'
+  const handleSort = (key: SortKey) => {
+    setSortConfig(prev => ({
+      key: key as keyof POReceivingGroup,
+      direction: prev?.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
+    }))
+  }
+
+  const filtered = useMemo(() => {
+    let list = statusFilter === 'all'
       ? groups
       : groups.filter(g => g.canonical_status === statusFilter)
-  ), [groups, statusFilter])
+
+    if (sortConfig) {
+      const { key, direction } = sortConfig
+      list = [...list].sort((a, b) => {
+        let av: string
+        let bv: string
+
+        if (key === 'received_at') {
+          av = a.canonical_receipt?.received_at ?? ''
+          bv = b.canonical_receipt?.received_at ?? ''
+        } else {
+          av = (a[key as keyof POReceivingGroup] as string) ?? ''
+          bv = (b[key as keyof POReceivingGroup] as string) ?? ''
+        }
+
+        const cmp = av.localeCompare(bv)
+        return direction === 'asc' ? cmp : -cmp
+      })
+    }
+
+    return list
+  }, [groups, statusFilter, sortConfig])
 
   const totalUnits    = groups.filter(g => ['received', 'partial'].includes(g.canonical_status)).reduce((s, g) => s + g.total_units, 0)
   const failedGroups  = groups.filter(g => g.canonical_status === 'failed')
@@ -401,6 +443,9 @@ export default function ReceivingDashboard() {
       setSelectedPODetail(detail)
     } catch { /* ignore */ }
   }
+
+  // Cast sortConfig key for ThSortable
+  const sortKey = sortConfig?.key as SortKey | undefined
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -505,7 +550,7 @@ export default function ReceivingDashboard() {
         </div>
       )}
 
-      {/* Filter tabs — now keyed on PO status values */}
+      {/* Filter tabs */}
       <div className="flex gap-1 border-b dark:border-gray-800">
         {([
           { key: 'all',      label: `All (${counts.all})` },
@@ -552,13 +597,32 @@ export default function ReceivingDashboard() {
       {/* PO-grouped receipt list */}
       {!loading && !error && filtered.length > 0 && (
         <div className="border dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-900">
+          {/* Sortable column headers */}
           <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
             <div className="w-4 shrink-0" />
-            <div className="w-24 shrink-0 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Date</div>
-            <div className="flex-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Supplier</div>
-            <div className="w-52 shrink-0 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">PO</div>
-            <div className="w-24 shrink-0 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Status</div>
-            <div className="w-24 shrink-0 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide text-right">Lines</div>
+            <div className="w-24 shrink-0">
+              <ThSortable label="Date" sortKey="received_at"
+                sortConfig={sortConfig ? { ...sortConfig, key: sortKey as keyof POReceivingGroup } : null}
+                onSort={handleSort} />
+            </div>
+            <div className="flex-1">
+              <ThSortable label="Supplier" sortKey="supplier_name"
+                sortConfig={sortConfig ? { ...sortConfig, key: sortKey as keyof POReceivingGroup } : null}
+                onSort={handleSort} />
+            </div>
+            <div className="w-52 shrink-0">
+              <ThSortable label="PO" sortKey="po_number"
+                sortConfig={sortConfig ? { ...sortConfig, key: sortKey as keyof POReceivingGroup } : null}
+                onSort={handleSort} />
+            </div>
+            <div className="w-24 shrink-0">
+              <ThSortable label="Status" sortKey="canonical_status"
+                sortConfig={sortConfig ? { ...sortConfig, key: sortKey as keyof POReceivingGroup } : null}
+                onSort={handleSort} />
+            </div>
+            <div className="w-24 shrink-0 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide text-right">
+              Lines
+            </div>
           </div>
           {filtered.map(group => (
             <POGroupRow key={group.po_id} group={group} onRowClick={handleRowClick} />
