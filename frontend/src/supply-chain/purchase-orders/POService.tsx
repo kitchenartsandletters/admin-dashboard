@@ -249,7 +249,9 @@ export default function POService() {
             placeholder="Search PO number, supplier, reference or notes..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="flex-1 px-3 py-1.5 border rounded text-xs dark:bg-gray-900 dark:border-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500/20 outline-none"
+            className="w-full pl-9 pr-4 py-1.5 border dark:border-gray-700 rounded-md text-xs sm:text-sm
+                     bg-white dark:bg-gray-900 dark:text-white
+                     focus:ring-2 focus:ring-blue-500/20 outline-none placeholder-gray-400 dark:placeholder-gray-500 shadow-sm"
           />
         </div>
       </div>
