@@ -42,7 +42,7 @@ interface LookupResult {
 
 const IMPORTABLE_FIELDS = [
   { key: "title",               label: "Title",            dest: "Product title" },
-  { key: "contributors",        label: "Contributors",     dest: "metafield: custom.author" },
+  { key: "contributors",        label: "Author(s)",        dest: "custom.author + variant.sku" },
   { key: "publisher",           label: "Publisher",        dest: "Vendor (via wizard)" },
   { key: "pub_date",            label: "Pub Date",         dest: "metafield: custom.pub_date + tag" },
   { key: "format",              label: "Format / Binding", dest: "metafield: custom.binding + tag" },
@@ -56,7 +56,7 @@ type FieldKey = typeof IMPORTABLE_FIELDS[number]["key"]
 
 const DEFAULT_SELECTED: Set<FieldKey> = new Set([
   "title", "contributors", "publisher", "pub_date", "format",
-  "description", "cover_image_url", "weight_lbs",
+  "description", "cover_image_url", "weight_lbs", "weight_lbs",
 ])
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -111,10 +111,20 @@ function renderValue(key: FieldKey, rec: EdelweissRecord): React.ReactNode {
   switch (key) {
     case "title":
       return <span className="font-medium">{rec.title ?? "—"}</span>
-    case "contributors":
-      return rec.contributors.length
-        ? rec.contributors.map(c => `${c.name} (${c.role})`).join(", ")
-        : "—"
+    case "contributors": {
+      const authors = rec.contributors.filter(c => c.role.toLowerCase() === "author")
+      const others  = rec.contributors.filter(c => c.role.toLowerCase() !== "author")
+      return (
+        <div>
+          <span>{authors.map(c => c.name).join(", ") || "—"}</span>
+          {others.length > 0 && (
+            <div className="text-gray-400 dark:text-gray-500 mt-0.5 text-[10px]">
+              Also: {others.map(c => `${c.name} (${c.role})`).join(", ")} — not mapped
+            </div>
+          )}
+        </div>
+      )
+    }
     case "publisher":
       return rec.publisher ?? "—"
     case "pub_date":
@@ -239,7 +249,7 @@ export default function EdelweissLookup() {
               <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-500 dark:text-gray-400">
                 {rec.publisher     && <span>📚 {rec.publisher}</span>}
                 {rec.pub_date_raw  && <span>📅 {rec.pub_date_raw}</span>}
-                {rec.format        && <span>📖 {rec.format}</span>}
+                {rec.format        && <span>📖 {rec.format} ({({Hardcover:"C",Paperback:"P",Flexibound:"F",Spiralbound:"S","Spiral bound":"S","Board book":"B"})[rec.format]||"P"})</span>}
                 {rec.weight_lbs != null && (
                   <span className="text-green-600 dark:text-green-400">⚖ {rec.weight_lbs} lbs</span>
                 )}
