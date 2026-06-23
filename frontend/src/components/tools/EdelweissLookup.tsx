@@ -28,6 +28,7 @@ interface EdelweissRecord {
   cover_image_url: string | null
   interior_image_urls: string[]
   weight_lbs: number | null
+  price_usd: string | null
   scraped_at: string
   selector_version: string
   scrape_warnings: string[]
@@ -50,13 +51,14 @@ const IMPORTABLE_FIELDS = [
   { key: "cover_image_url",     label: "Cover Image",      dest: "Product image (high-res)" },
   { key: "interior_image_urls", label: "Interior Images",  dest: "Additional images" },
   { key: "weight_lbs",          label: "Weight",           dest: "Inventory item weight (KAL rule)" },
+  { key: "price_usd",           label: "List Price",       dest: "product variant price (pre-fill)" },
 ] as const
 
 type FieldKey = typeof IMPORTABLE_FIELDS[number]["key"]
 
 const DEFAULT_SELECTED: Set<FieldKey> = new Set([
   "title", "contributors", "publisher", "pub_date", "format",
-  "description", "cover_image_url", "weight_lbs", "weight_lbs",
+  "description", "cover_image_url", "weight_lbs", "weight_lbs", "price_usd",
 ])
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -134,6 +136,10 @@ function renderValue(key: FieldKey, rec: EdelweissRecord): React.ReactNode {
     case "weight_lbs":
       return rec.weight_lbs != null
         ? <span className="font-mono text-green-700 dark:text-green-400">{rec.weight_lbs} lbs</span>
+        : <span className="text-amber-500">Not found — enter manually</span>
+    case "price_usd":
+      return rec.price_usd != null
+        ? <span className="font-mono text-green-700 dark:text-green-400">${rec.price_usd}</span>
         : <span className="text-amber-500">Not found — enter manually</span>
     case "description":
       return rec.description

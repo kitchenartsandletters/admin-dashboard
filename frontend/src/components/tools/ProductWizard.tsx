@@ -29,6 +29,8 @@ interface EdelweissRecord {
   cover_image_url: string | null
   interior_image_urls: string[]
   weight_lbs: number | null
+  // optional fields returned by the Edelweiss service
+  price_usd?: string | null
 }
 
 interface StepResult {
@@ -157,7 +159,7 @@ export default function ProductWizard({
   const [step, setStep]       = useState<WizardStep>("review")
   const [form, setForm]       = useState<WizardState>({
     vendor:          "",
-    price:           "",
+    price:           record.price_usd ?? "",
     weight:          record.weight_lbs ? String(record.weight_lbs) : "",
     inventoryPolicy: "DENY",
     languageTag:     "Ln_En",
