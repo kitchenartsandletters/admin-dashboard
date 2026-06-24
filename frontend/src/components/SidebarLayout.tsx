@@ -42,6 +42,7 @@ const navItems = [
       { label: 'Transfers',       path: '/transfers',       roles: ['admin','editor'] },
       { label: 'Vendors/Publishers',       path: '/suppliers',       roles: ['admin','editor'] },
       { label: 'Vendor Cosmology',       path: '/supply-chain/cosmology', roles: ['admin', 'editor'] },
+      { label: 'Catalog Gaps', path: '/suppliers/catalog-gaps', roles: ['admin'] },
     ],
   },
   {

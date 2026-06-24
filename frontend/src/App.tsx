@@ -32,6 +32,8 @@ import ReceivingEntryFlow from './supply-chain/receiving/ReceivingEntryFlow'
 import SupplierCosmologyMap from './supply-chain/cosmology/SupplierCosmologyMap'
 import ReceivingDashboard from './supply-chain/receiving/ReceivingDashboard'
 import ReceivingWizard from './supply-chain/receiving/ReceivingWizard'
+import CatalogGapView from './supply-chain/suppliers/CatalogGapView'
+
 
 const App = () => {
   const [dateTime, setDateTime] = useState({ date: "", time: "" });
@@ -205,6 +207,13 @@ const App = () => {
                         element={
                           <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
                             <SupplierCosmologyMap />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route path="/suppliers/catalog-gaps"
+                        element={
+                          <ProtectedRoute requiredRoles={['admin']}>
+                            <CatalogGapView />
                           </ProtectedRoute>
                         }
                       />
