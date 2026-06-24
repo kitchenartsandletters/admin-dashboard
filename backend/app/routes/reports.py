@@ -9,7 +9,12 @@ logger = logging.getLogger("uvicorn.error")
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
-VALID_REPORT_IDS = {"daily_sales", "weekly_maintenance", "lop_unfulfilled"}
+VALID_REPORT_IDS = {
+    "daily_sales_kal",
+    "daily_sales_nyfs",
+    "weekly_maintenance",
+    "lop_unfulfilled",
+}
 
 
 # ─── Pydantic models ──────────────────────────────────────────────────────────
@@ -29,6 +34,7 @@ class CalendarOverrideRequest(BaseModel):
     date:          str   # YYYY-MM-DD
     override_type: str   # 'holiday_closure' | 'special_open_sunday'
     label:         Optional[str] = None
+    location_id:   str = "kal"
 
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -239,7 +245,7 @@ def delete_schedule_override(override_id: str, request: Request):
 # ─── Calendar override routes ─────────────────────────────────────────────────
 
 @router.get("/calendar-overrides")
-def list_calendar_overrides(request: Request, year: Optional[int] = None):
+def list_calendar_overrides(request: Request, year: Optional[int] = None, location_id: str = "kal"):
     """
     Return all calendar overrides, optionally filtered by year.
     Used by BusinessCalendarPage to hydrate the calendar.
@@ -256,6 +262,7 @@ def list_calendar_overrides(request: Request, year: Optional[int] = None):
         )
         if year:
             q = q.eq("year", year)
+            q = q.eq("location_id", location_id)
         resp = q.execute()
         return resp.data or []
     except Exception as e:
@@ -283,6 +290,7 @@ def upsert_calendar_override(payload: CalendarOverrideRequest, request: Request)
             .select("id")
             .eq("date", payload.date)
             .eq("override_type", payload.override_type)
+            .eq("location_id", payload.location_id)
             .limit(1)
             .execute()
         )
@@ -304,6 +312,7 @@ def upsert_calendar_override(payload: CalendarOverrideRequest, request: Request)
                     "date":          payload.date,
                     "override_type": payload.override_type,
                     "label":         payload.label,
+                    "location_id":   payload.location_id,
                 })
                 .execute()
             )
@@ -321,6 +330,7 @@ def delete_calendar_override(
     request: Request,
     date: str,
     override_type: str,
+    location_id: str = "kal"
 ):
     """Remove a calendar override by date + type."""
     validate_admin_token(request)
@@ -332,6 +342,7 @@ def delete_calendar_override(
             .delete() \
             .eq("date", date) \
             .eq("override_type", override_type) \
+            .eq("location_id", location_id) \
             .execute()
         return {"success": True}
     except Exception as e:

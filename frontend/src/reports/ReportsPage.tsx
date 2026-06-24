@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthProvider';
+import { getDailySalesReports, getOtherReports } from './registry';
+import ReportCard, { RunParameters } from './ReportCard';
+import DailySalesGroup from './DailySalesGroup';
 import RightSidebar from '../components/RightSidebar';
-import { getReportsForRole } from './registry';
-import ReportCard, { RunParameters } from '../reports/ReportCard';
 
 export default function ReportsPage() {
   const { role } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const reports = role ? getReportsForRole(role) : [];
+
+  const dailySalesReports = role ? getDailySalesReports(role) : [];
+  const otherReports      = role ? getOtherReports(role)      : [];
 
   const handleRunReport = async (
     reportId: string,
@@ -28,11 +31,11 @@ export default function ReportsPage() {
       body: JSON.stringify({
         report_id: reportId,
         parameters: {
-          ...(params.start_date ? { start_date: params.start_date } : {}),
-          ...(params.end_date   ? { end_date:   params.end_date   } : {}),
-          delivery_method: params.delivery_method,
-          formats: params.formats,
-          ...(params.recipients        ? { recipients: params.recipients }             : {}),
+          ...(params.start_date        ? { start_date:        params.start_date        } : {}),
+          ...(params.end_date          ? { end_date:          params.end_date          } : {}),
+          delivery_method:               params.delivery_method,
+          formats:                       params.formats,
+          ...(params.recipients        ? { recipients:        params.recipients        } : {}),
           ...(params.ignore_exclusions ? { ignore_exclusions: params.ignore_exclusions } : {}),
         },
       }),
@@ -66,15 +69,24 @@ export default function ReportsPage() {
         </button>
       </header>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {reports.map(report => (
-          <ReportCard
-            key={report.id}
-            report={report}
-            onRun={handleRunReport}
-          />
-        ))}
-      </div>
+      {/* Daily Sales — grouped with location tabs */}
+      {dailySalesReports.length > 0 && (
+        <DailySalesGroup reports={dailySalesReports} onRun={handleRunReport} />
+      )}
+
+      {/* Other reports */}
+      {otherReports.length > 0 && (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {otherReports.map(report => (
+            <ReportCard
+              key={report.id}
+              report={report}
+              onRun={handleRunReport}
+            />
+          ))}
+        </div>
+      )}
+
       {sidebarOpen && (
         <RightSidebar
           docsFilePath="/docs/reports_help_docs.md"

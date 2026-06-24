@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthProvider';
 type DateString = string; // 'YYYY-MM-DD'
 type DayKind = 'open' | 'closed' | 'holiday' | 'special-open';
 type OverrideType = 'holiday_closure' | 'special_open_sunday';
+type LocationId = 'kal' | 'nyfs';
 
 interface CalendarOverride {
   id:            string;
@@ -20,8 +21,25 @@ interface DayInfo {
   isToday: boolean;
 }
 
+// ─── Location config ──────────────────────────────────────────────────────────
+
+const LOCATION_OPTIONS = [
+  { id: 'kal'  as LocationId, label: 'Kitchen Arts & Letters', address: '1435 Lexington Ave' },
+  { id: 'nyfs' as LocationId, label: 'New York Food Stories',  address: '111 Broadway' },
+] as const;
+
+// Open weekdays per location: KAL = Mon–Sat (dow 1–6), NYFS = Tue–Sun (dow 2–6 + 0)
+const LOCATION_OPEN_DAYS: Record<LocationId, Set<number>> = {
+  kal:  new Set([1, 2, 3, 4, 5, 6]),
+  nyfs: new Set([0, 2, 3, 4, 5, 6]),
+};
+
+// Report open/close times per location
+const LOCATION_OPEN_TIME:  Record<LocationId, string> = { kal: '10:00 AM', nyfs: '12:00 PM' };
+const LOCATION_CLOSE_TIME: Record<LocationId, string> = { kal: '9:59 AM',  nyfs: '11:59 AM' };
+
 // ─── Hardcoded baseline (mirrors business_calendar.py) ───────────────────────
-// DB overrides always win when a row exists for a given date.
+// Shared across both locations. DB overrides always win.
 
 const BASELINE_SPECIAL_OPEN_SUNDAYS: Record<number, Set<DateString>> = {
   2025: new Set(['2025-12-07', '2025-12-14', '2025-12-21']),
@@ -57,12 +75,10 @@ function parseLocal(s: DateString): Date {
 }
 
 function resolveCalendar(year: number, overrides: CalendarOverride[]) {
-  // Start from baseline
-  const holidays  = new Set(BASELINE_HOLIDAY_CLOSURES[year] ?? []);
-  const specials  = new Set(BASELINE_SPECIAL_OPEN_SUNDAYS[year] ?? []);
+  const holidays = new Set(BASELINE_HOLIDAY_CLOSURES[year] ?? []);
+  const specials = new Set(BASELINE_SPECIAL_OPEN_SUNDAYS[year] ?? []);
   const labels: Record<DateString, string> = { ...BASELINE_HOLIDAY_NAMES };
 
-  // DB overrides always win
   for (const ov of overrides) {
     const d = new Date(ov.date + 'T12:00:00');
     if (d.getFullYear() !== year) continue;
@@ -79,71 +95,83 @@ function resolveCalendar(year: number, overrides: CalendarOverride[]) {
   return { holidays, specials, labels };
 }
 
-function isBusinessDay(dStr: DateString, holidays: Set<DateString>, specials: Set<DateString>): boolean {
+function isBusinessDay(
+  dStr: DateString,
+  holidays: Set<DateString>,
+  specials: Set<DateString>,
+  loc: LocationId = 'kal',
+): boolean {
   if (holidays.has(dStr)) return false;
+  if (specials.has(dStr)) return true;
   const dow = parseLocal(dStr).getDay();
-  if (dow === 0) return specials.has(dStr);
-  return dow >= 1 && dow <= 6;
+  return LOCATION_OPEN_DAYS[loc].has(dow);
 }
 
-function findLastOpen(dStr: DateString, holidays: Set<DateString>, specials: Set<DateString>): DateString {
+function findLastOpen(
+  dStr: DateString,
+  holidays: Set<DateString>,
+  specials: Set<DateString>,
+  loc: LocationId = 'kal',
+): DateString {
   const d = parseLocal(dStr);
   d.setDate(d.getDate() - 1);
-  while (!isBusinessDay(toISO(d), holidays, specials)) d.setDate(d.getDate() - 1);
+  while (!isBusinessDay(toISO(d), holidays, specials, loc)) d.setDate(d.getDate() - 1);
   return toISO(d);
 }
 
 interface ReportWindowInfo {
-  runDate:      DateString;   // date the report runs (next business day)
-  windowStart:  DateString;   // start of coverage window (date only)
-  windowEnd:    DateString;   // end of coverage window = run date (date only)
-  displayStart: string;       // "Apr 13, 2026 10:00 AM ET"
-  displayEnd:   string;       // "Apr 14, 2026 9:59 AM ET"
+  runDate:      DateString;
+  windowStart:  DateString;
+  windowEnd:    DateString;
+  displayStart: string;
+  displayEnd:   string;
 }
 
 function fmtWithTime(dStr: DateString, time: string): string {
   return `${fmtDisplay(dStr)} ${time} ET`;
 }
 
-function findNextRunDate(fromDStr: DateString, holidays: Set<DateString>, specials: Set<DateString>): DateString {
-  // Walk forward from the day AFTER fromDStr to find the next business day
+function findNextRunDate(
+  fromDStr: DateString,
+  holidays: Set<DateString>,
+  specials: Set<DateString>,
+  loc: LocationId = 'kal',
+): DateString {
   const d = parseLocal(fromDStr);
   d.setDate(d.getDate() + 1);
-  while (!isBusinessDay(toISO(d), holidays, specials)) d.setDate(d.getDate() + 1);
+  while (!isBusinessDay(toISO(d), holidays, specials, loc)) d.setDate(d.getDate() + 1);
   return toISO(d);
 }
 
 function getReportWindowInfo(
   clickedDStr: DateString,
   holidays: Set<DateString>,
-  specials: Set<DateString>
+  specials: Set<DateString>,
+  loc: LocationId = 'kal',
 ): ReportWindowInfo {
-  // If the clicked day is open, the next report runs the FOLLOWING business day
-  // If the clicked day is closed, same — next business day after it
-  const runDate     = findNextRunDate(clickedDStr, holidays, specials);
-  const windowStart = findLastOpen(runDate, holidays, specials);
-  // Window end = run date (report captures up to 9:59 AM ET on run date)
+  const runDate     = findNextRunDate(clickedDStr, holidays, specials, loc);
+  const windowStart = findLastOpen(runDate, holidays, specials, loc);
   const windowEnd   = runDate;
 
   return {
     runDate,
     windowStart,
     windowEnd,
-    displayStart: fmtWithTime(windowStart, '10:00 AM'),
-    displayEnd:   fmtWithTime(windowEnd,   '9:59 AM'),
+    displayStart: fmtWithTime(windowStart, LOCATION_OPEN_TIME[loc]),
+    displayEnd:   fmtWithTime(windowEnd,   LOCATION_CLOSE_TIME[loc]),
   };
 }
 
 function dayKind(
   dStr: DateString,
   holidays: Set<DateString>,
-  specials: Set<DateString>
+  specials: Set<DateString>,
+  loc: LocationId = 'kal',
 ): DayKind {
   if (holidays.has(dStr)) return 'holiday';
+  if (specials.has(dStr)) return 'special-open';
   const dow = parseLocal(dStr).getDay();
-  if (dow === 0) return specials.has(dStr) ? 'special-open' : 'closed';
-  if (dow >= 1 && dow <= 6) return 'open';
-  return 'closed';
+  return LOCATION_OPEN_DAYS[loc].has(dow) ? 'open' : 'closed';
 }
 
 function fmtDisplay(dStr: DateString): string {
@@ -164,12 +192,13 @@ const KIND_CLASSES: Record<DayKind, string> = {
 };
 
 function MonthGrid({
-  year, month, today, holidays, specials, selected, onDayClick,
+  year, month, today, holidays, specials, selected, onDayClick, loc,
 }: {
   year: number; month: number; today: DateString;
   holidays: Set<DateString>; specials: Set<DateString>;
   selected: DateString | null;
   onDayClick: (info: DayInfo) => void;
+  loc: LocationId;
 }) {
   const firstDow    = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -189,7 +218,7 @@ function MonthGrid({
         {Array.from({ length: daysInMonth }, (_, i) => {
           const day  = i + 1;
           const dStr = `${year}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-          const kind = dayKind(dStr, holidays, specials);
+          const kind = dayKind(dStr, holidays, specials, loc);
           const isToday    = dStr === today;
           const isSelected = dStr === selected;
           return (
@@ -217,7 +246,7 @@ function MonthGrid({
 
 function EditPanel({
   dayInfo, holidays, specials, labels, overrides, isAdmin,
-  apiBase, token,
+  apiBase, token, loc,
   onOverrideAdded, onOverrideRemoved,
 }: {
   dayInfo: DayInfo;
@@ -226,17 +255,23 @@ function EditPanel({
   overrides: CalendarOverride[];
   isAdmin: boolean;
   apiBase: string; token: string;
+  loc: LocationId;
   onOverrideAdded:   (ov: CalendarOverride) => void;
   onOverrideRemoved: (date: DateString, type: OverrideType) => void;
 }) {
   const { dStr, kind } = dayInfo;
-  const d       = parseLocal(dStr);
-  const dayName = d.toLocaleDateString('en-US', { weekday: 'long' });
-  const isSunday = d.getDay() === 0;
+  const d        = parseLocal(dStr);
+  const dayName  = d.toLocaleDateString('en-US', { weekday: 'long' });
+  const dow      = d.getDay();
 
-  const [label, setLabel]     = useState('');
-  const [saving, setSaving]   = useState(false);
-  const [msg, setMsg]         = useState<string | null>(null);
+  // For KAL: only Sundays get the special-open toggle
+  // For NYFS: Sundays are always open (regular day), Mondays are always closed
+  const isSunday = dow === 0;
+  const isMonday = dow === 1;
+
+  const [label, setLabel]   = useState('');
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg]       = useState<string | null>(null);
 
   const existingOverride = overrides.find(
     ov => ov.date === dStr && (
@@ -245,7 +280,7 @@ function EditPanel({
     )
   ) ?? null;
 
-  const windowInfo = getReportWindowInfo(dStr, holidays, specials);
+  const windowInfo = getReportWindowInfo(dStr, holidays, specials, loc);
 
   const kindBadge: Record<DayKind, string> = {
     'open':         'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300',
@@ -260,12 +295,11 @@ function EditPanel({
 
   async function applyOverride(type: OverrideType, lbl: string | null) {
     setSaving(true); setMsg(null);
-    // Optimistic update handled by parent via onOverrideAdded
     try {
       const res = await fetch(`${apiBase}/api/reports/calendar-overrides`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ date: dStr, override_type: type, label: lbl || null }),
+        body: JSON.stringify({ date: dStr, override_type: type, label: lbl, location_id: loc }),
       });
       if (!res.ok) throw new Error(await res.text());
       const saved: CalendarOverride = await res.json();
@@ -282,7 +316,7 @@ function EditPanel({
     setSaving(true); setMsg(null);
     try {
       const res = await fetch(
-        `${apiBase}/api/reports/calendar-overrides?date=${dStr}&override_type=${type}`,
+        `${apiBase}/api/reports/calendar-overrides?date=${dStr}&override_type=${type}&location_id=${loc}`,
         { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }
       );
       if (!res.ok) throw new Error(await res.text());
@@ -294,6 +328,10 @@ function EditPanel({
       setSaving(false);
     }
   }
+
+  // Show open time from location config
+  const openTimeLabel = LOCATION_OPEN_TIME[loc];
+  const closeTimeLabel = LOCATION_CLOSE_TIME[loc];
 
   return (
     <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 space-y-3">
@@ -310,7 +348,7 @@ function EditPanel({
       <div className="text-xs space-y-2">
         <div className="space-y-0.5">
           <p className="text-gray-400 dark:text-gray-500">
-            {isBusinessDay(dStr, holidays, specials)
+            {isBusinessDay(dStr, holidays, specials, loc)
               ? 'Next scheduled report:'
               : 'Store closed — next scheduled report:'}
           </p>
@@ -318,16 +356,14 @@ function EditPanel({
             bg-white dark:bg-gray-900 text-xs text-gray-800 dark:text-gray-200 font-medium">
             {parseLocal(windowInfo.runDate).toLocaleDateString('en-US', {
               weekday: 'long', month: 'short', day: 'numeric', year: 'numeric'
-            })}, 10:00 AM ET
+            })}, {openTimeLabel} ET
           </span>
         </div>
         <div className="space-y-0.5">
           <p className="text-gray-400 dark:text-gray-500">Report will cover:</p>
           <span className="inline-block px-3 py-1 rounded border border-gray-200 dark:border-gray-600
             bg-white dark:bg-gray-900 text-xs text-gray-800 dark:text-gray-200 font-medium">
-            {windowInfo.windowStart === windowInfo.windowEnd
-              ? `${windowInfo.displayStart} → ${windowInfo.displayEnd}`
-              : `${windowInfo.displayStart} → ${windowInfo.displayEnd}`}
+            {windowInfo.displayStart} → {windowInfo.displayEnd}
           </span>
         </div>
       </div>
@@ -335,8 +371,8 @@ function EditPanel({
       {/* Admin edit controls */}
       {isAdmin && (
         <div className="pt-1 space-y-2 border-t border-gray-200 dark:border-gray-700">
-          {isSunday ? (
-            // Sunday: toggle special open
+          {/* Special open Sunday toggle — KAL only, not applicable for NYFS (Sun always open) */}
+          {isSunday && loc === 'kal' ? (
             kind === 'special-open' ? (
               <button
                 disabled={saving}
@@ -359,7 +395,6 @@ function EditPanel({
               </button>
             )
           ) : kind === 'holiday' ? (
-            // Holiday: remove closure
             <button
               disabled={saving}
               onClick={() => removeOverride('holiday_closure')}
@@ -370,7 +405,6 @@ function EditPanel({
               Remove closure — restore as open
             </button>
           ) : kind === 'open' ? (
-            // Open day: mark as closure with optional label
             <div className="space-y-2">
               <input
                 type="text"
@@ -414,17 +448,18 @@ export default function BusinessCalendarPage() {
   const apiBase = import.meta.env.VITE_API_BASE_URL;
   const token   = import.meta.env.VITE_ADMIN_TOKEN;
 
+  const [location, setLocation] = useState<LocationId>('kal');
   const [year, setYear]           = useState(CURRENT_YEAR);
   const [selected, setSelected]   = useState<DayInfo | null>(null);
   const [overrides, setOverrides] = useState<CalendarOverride[]>([]);
   const [loading, setLoading]     = useState(false);
 
-  const fetchOverrides = useCallback(async (y: number) => {
+  const fetchOverrides = useCallback(async (y: number, loc: LocationId) => {
     if (!apiBase || !token) return;
     setLoading(true);
     try {
       const res = await fetch(
-        `${apiBase}/api/reports/calendar-overrides?year=${y}`,
+        `${apiBase}/api/reports/calendar-overrides?year=${y}&location_id=${loc}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       if (res.ok) setOverrides(await res.json());
@@ -433,12 +468,12 @@ export default function BusinessCalendarPage() {
     }
   }, [apiBase, token]);
 
+  // Re-fetch when year or location changes
   useEffect(() => {
-    fetchOverrides(year);
+    fetchOverrides(year, location);
     setSelected(null);
-  }, [year, fetchOverrides]);
+  }, [year, location, fetchOverrides]);
 
-  // Optimistic update handlers
   function handleOverrideAdded(ov: CalendarOverride) {
     setOverrides(prev => {
       const filtered = prev.filter(
@@ -446,12 +481,11 @@ export default function BusinessCalendarPage() {
       );
       return [...filtered, ov];
     });
-    // Recompute selected day kind with new overrides
     if (selected?.dStr === ov.date) {
       const { holidays, specials } = resolveCalendar(year, [...overrides.filter(
         o => !(o.date === ov.date && o.override_type === ov.override_type)
       ), ov]);
-      setSelected(prev => prev ? { ...prev, kind: dayKind(prev.dStr, holidays, specials) } : null);
+      setSelected(prev => prev ? { ...prev, kind: dayKind(prev.dStr, holidays, specials, location) } : null);
     }
   }
 
@@ -460,7 +494,7 @@ export default function BusinessCalendarPage() {
     setOverrides(next);
     if (selected?.dStr === date) {
       const { holidays, specials } = resolveCalendar(year, next);
-      setSelected(prev => prev ? { ...prev, kind: dayKind(prev.dStr, holidays, specials) } : null);
+      setSelected(prev => prev ? { ...prev, kind: dayKind(prev.dStr, holidays, specials, location) } : null);
     }
   }
 
@@ -501,6 +535,27 @@ export default function BusinessCalendarPage() {
         </div>
       </header>
 
+      {/* Location selector */}
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-gray-500 dark:text-gray-400">Location:</span>
+        <div className="flex rounded border border-gray-200 dark:border-gray-700 overflow-hidden">
+          {LOCATION_OPTIONS.map(opt => (
+            <button
+              key={opt.id}
+              onClick={() => setLocation(opt.id)}
+              className={`px-4 py-1.5 text-sm transition-colors ${
+                location === opt.id
+                  ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
+                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+              }`}
+            >
+              {opt.label}
+              <span className="ml-1.5 text-xs opacity-60">{opt.address}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Legend */}
       <div className="flex flex-wrap gap-4 text-xs text-gray-500 dark:text-gray-400">
         {[
@@ -520,13 +575,12 @@ export default function BusinessCalendarPage() {
         </span>
       </div>
 
-      {/* Undefined year notice */}
       {!hasDefinedData && (
         <div className="rounded-md border border-amber-200 dark:border-amber-700
           bg-amber-50 dark:bg-amber-950/40 px-4 py-3 text-sm
           text-amber-800 dark:text-amber-300">
           Holiday closures and special open Sundays have not been defined for {year}.
-          Showing base schedule (Mon–Sat open, Sun closed).
+          Showing base schedule ({location === 'kal' ? 'Mon–Sat open, Sun closed' : 'Tue–Sun open, Mon closed'}).
           {isAdmin && ' Click any day to add closures or special open Sundays.'}
         </div>
       )}
@@ -535,7 +589,6 @@ export default function BusinessCalendarPage() {
         <p className="text-xs text-gray-400 dark:text-gray-500">Loading overrides…</p>
       )}
 
-      {/* Selected day detail + edit panel */}
       {selected && (
         <EditPanel
           dayInfo={selected}
@@ -546,6 +599,7 @@ export default function BusinessCalendarPage() {
           isAdmin={isAdmin}
           apiBase={apiBase}
           token={token}
+          loc={location}
           onOverrideAdded={handleOverrideAdded}
           onOverrideRemoved={handleOverrideRemoved}
         />
@@ -563,6 +617,7 @@ export default function BusinessCalendarPage() {
             specials={specials}
             selected={selected?.dStr ?? null}
             onDayClick={setSelected}
+            loc={location}
           />
         ))}
       </div>
