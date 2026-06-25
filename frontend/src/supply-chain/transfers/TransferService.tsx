@@ -329,7 +329,7 @@ export default function TransferService() {
 
   return (
     <>
-      <div className="space-y-4">
+      <div className="p-4 sm:p-6 space-y-6 bg-white dark:bg-gray-950 min-h-screen">
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Transfers</h1>
@@ -351,24 +351,28 @@ export default function TransferService() {
           </div>
         )}
 
-        {/* Search */}
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search transfer #, title, ISBN, variant, vendor, or location…"
-          className="w-full px-3 py-2 border rounded-md text-sm bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none"
-        />
+        {/* Filter strip */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border dark:border-gray-800">
+          <div className="flex gap-1 flex-wrap">
+            {STATUS_FILTERS.map(f => (
+              <button key={f.key} onClick={() => setStatusFilter(f.key)}
+                className={`px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap
+                  ${statusFilter === f.key
+                    ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm border border-transparent'
+                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 border border-transparent'}`}>
+                {f.label}
+              </button>
+            ))}
+          </div>
 
-        <div className="flex gap-1 flex-wrap">
-          {STATUS_FILTERS.map(f => (
-            <button key={f.key} onClick={() => setStatusFilter(f.key)}
-              className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors whitespace-nowrap
-                ${statusFilter === f.key
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'}`}>
-              {f.label}
-            </button>
-          ))}
+          <div className="flex-1 sm:max-w-xs relative">
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search transfer #, title, ISBN…"
+              className="w-full px-3 py-1.5 border rounded-md text-xs sm:text-sm bg-white dark:bg-gray-900 dark:text-white dark:border-gray-700 focus:ring-2 focus:ring-blue-500/20 outline-none placeholder-gray-400 dark:placeholder-gray-500 shadow-sm"
+            />
+          </div>
         </div>
 
         {loading ? (

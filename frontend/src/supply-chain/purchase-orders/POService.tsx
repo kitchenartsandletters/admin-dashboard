@@ -231,8 +231,8 @@ export default function POService() {
       )}
 
       {/* Filter strip */}
-      <div className="flex flex-col gap-3">
-        <div className="flex gap-1 overflow-x-auto pb-1 text-xs scrollbar-none border-b dark:border-gray-800/60 sm:border-b-0">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border dark:border-gray-800">
+        <div className="flex gap-1 overflow-x-auto pb-1 sm:pb-0 text-xs scrollbar-none">
           <div className="inline-flex p-0.5 bg-gray-100 dark:bg-gray-800 rounded border dark:border-gray-700">
             {STATUS_FILTERS.map(f => (
               <button
@@ -253,13 +253,13 @@ export default function POService() {
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-2">
+        <div className="flex-1 sm:max-w-xs relative">
           <input
             type="search"
             placeholder="Search PO number, supplier, reference or notes..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-1.5 border dark:border-gray-700 rounded-md text-xs sm:text-sm
+            className="w-full pl-3 pr-4 py-1.5 border dark:border-gray-700 rounded-md text-xs sm:text-sm
                      bg-white dark:bg-gray-900 dark:text-white
                      focus:ring-2 focus:ring-blue-500/20 outline-none placeholder-gray-400 dark:placeholder-gray-500 shadow-sm"
           />
