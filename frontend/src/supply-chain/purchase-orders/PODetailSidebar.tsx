@@ -9,15 +9,17 @@
 // POService passes `detail` directly (not `detailLoading ? null : detail`).
 // The sidebar syncs localLines from detail updates without toggling open state.
 //
-// #40: Receipt PDF download now available per receipt in the Receipts section.
-//      Each receipt row header shows a ↓ Receipt PDF button alongside the
-//      existing timestamp, so staff can re-download any receipt at any time
-//      without navigating away.
+// #40: Receipt PDF download available per receipt in the Receipts section.
+//      Each receipt row shows status + ID on the first line, and
+//      datetime + ↓ PDF on the second line — two-line layout avoids
+//      overlap in the narrow sidebar column.
 //
 // #41: LineItemRow now surfaces damage context for non-draft lines:
-//      - quantity_damaged > 0 shows an amber “X dmg” badge inline
-//      - damage_resolution shown as “credit” (green) or “repl.” (blue)
+//      - quantity_damaged > 0 shows an amber "X dmg" badge inline
+//      - damage_resolution shown as "credit" (green) or "repl." (blue)
 //      - quantity_received = 0 with damage does NOT show a green ✓ badge
+//      - Unresolved damage lines show a "Resolve" action that calls
+//        PATCH /api/receiving/lines/{po_line_id}/damage
 
 import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -25,6 +27,7 @@ import {
   PurchaseOrder, PurchaseOrderLine, PurchaseOrderDetail,
   Receipt, ReceiptLine,
   PO_STATUS_LABELS, PO_STATUS_COLORS, AD_HOC_SOURCE_LABELS,
+  DamageResolution,
 } from './purchaseOrderTypes'
 import {
   fetchReceiptsForPO,
@@ -37,6 +40,7 @@ import {
   updatePurchaseOrder,
   downloadPOPdf,
   downloadReceiptPdf,
+  resolveDamage,
 } from '../../api/supplyChainApi'
 import type { VariantSearchResult } from '../../api/supplyChainApi'
 import { useLocations } from '../hooks/useLocations'
@@ -112,12 +116,12 @@ function EditableOrderFields({ order, onSaved }: { order: PurchaseOrder; onSaved
   const handleSave = async () => {
     setSaving(true); setError(null)
     try {
-        await updatePurchaseOrder(order.id, {
-          ordered_at:   orderedAt  || undefined,
-          expected_at:  expectedAt || undefined,
-          informal_ref: informalRef || undefined,
-          notes:        notes || undefined,
-        })
+      await updatePurchaseOrder(order.id, {
+        ordered_at:   orderedAt  || undefined,
+        expected_at:  expectedAt || undefined,
+        informal_ref: informalRef || undefined,
+        notes:        notes || undefined,
+      })
       setEditing(false)
       onSaved()
     } catch (e) {
@@ -148,16 +152,9 @@ function EditableOrderFields({ order, onSaved }: { order: PurchaseOrder; onSaved
   return (
     <div className="space-y-2">
       <div>
-        <p className="text-[10px] uppercase tracking-wider font-bold
-                      text-gray-400 dark:text-gray-500 mb-1">Order date</p>
-        <input
-          type="date"
-          value={orderedAt}
-          onChange={e => setOrderedAt(e.target.value)}
-          className="w-full px-2.5 py-1.5 border rounded text-xs dark:bg-gray-900
-                      dark:text-white dark:border-gray-700 focus:ring-1
-                      focus:ring-blue-500 outline-none"
-        />
+        <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1">Order date</p>
+        <input type="date" value={orderedAt} onChange={e => setOrderedAt(e.target.value)}
+          className="w-full px-2.5 py-1.5 border rounded text-xs dark:bg-gray-900 dark:text-white dark:border-gray-700 focus:ring-1 focus:ring-blue-500 outline-none" />
       </div>
       <div>
         <p className="kal-text-label text-gray-400 dark:text-gray-500 mb-1">Expected arrival</p>
@@ -194,15 +191,18 @@ function EditableOrderFields({ order, onSaved }: { order: PurchaseOrder; onSaved
 // LineItemRow (#41: damage-aware display for non-draft lines)
 // ---------------------------------------------------------------------------
 
-function LineItemRow({ line, isDraft, onQtyChange, onDelete }: {
+function LineItemRow({ line, isDraft, onQtyChange, onDelete, onDamageResolved }: {
   line: PurchaseOrderLine
   isDraft: boolean
   onQtyChange: (id: string, qty: number) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  onDamageResolved?: (lineId: string, resolution: DamageResolution) => void
 }) {
   const [editQty, setEditQty] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [resolvingDamage, setResolvingDamage] = useState(false)
+  const [damageError, setDamageError] = useState<string | null>(null)
 
   const handleQtySave = async () => {
     if (editQty === null || editQty === line.quantity_ordered) { setEditQty(null); return }
@@ -217,79 +217,130 @@ function LineItemRow({ line, isDraft, onQtyChange, onDelete }: {
     finally { setDeleting(false) }
   }
 
-  const hasDamage = (line.quantity_damaged ?? 0) > 0
+  const handleResolve = async (resolution: DamageResolution) => {
+    setResolvingDamage(true)
+    setDamageError(null)
+    try {
+      await resolveDamage(line.id, resolution)
+      onDamageResolved?.(line.id, resolution)
+    } catch (e) {
+      setDamageError(e instanceof Error ? e.message : 'Failed to save resolution')
+    } finally {
+      setResolvingDamage(false)
+    }
+  }
+
+  const hasDamage      = (line.quantity_damaged ?? 0) > 0
   const isFullyDamaged = hasDamage && line.quantity_received === 0
+  const needsResolution = hasDamage && !line.damage_resolution
 
   return (
-    <div className={`py-2 flex items-start justify-between gap-2 border-b dark:border-gray-800 last:border-0 ${deleting ? 'opacity-40' : ''}`}>
-      <div className="min-w-0 flex-1">
-        <p className="text-[var(--text-body)] font-medium text-gray-900 dark:text-gray-100 truncate leading-snug">
-          {line.title ?? line.inventory_item_id.split('/').pop()}
-        </p>
-        {(line.isbn ?? line.supplier_sku) && (
-          <p className="text-[var(--text-mono)] font-mono text-gray-400 dark:text-gray-500">{line.isbn ?? line.supplier_sku}</p>
-        )}
-      </div>
-      {isDraft ? (
-        <div className="flex items-center gap-1 shrink-0">
-          {editQty !== null ? (
-            <>
-              <input type="number" min={1} value={editQty}
-                onChange={e => setEditQty(Math.max(1, parseInt(e.target.value) || 1))}
-                onKeyDown={e => { if (e.key === 'Enter') handleQtySave(); if (e.key === 'Escape') setEditQty(null) }}
-                className="w-12 px-1 py-0.5 border rounded text-xs text-center dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-1 focus:ring-blue-500 outline-none"
-                autoFocus />
-              <button type="button" onClick={handleQtySave} disabled={saving}
-                className="text-[var(--text-label)] text-blue-500 hover:underline disabled:opacity-50">{saving ? '…' : '✓'}</button>
-              <button type="button" onClick={() => setEditQty(null)}
-                className="text-[var(--text-label)] text-gray-400 hover:text-gray-600">✕</button>
-            </>
-          ) : (
-            <>
-              <button type="button" onClick={() => setEditQty(line.quantity_ordered)}
-                title="Click to edit"
-                className="text-xs font-semibold text-gray-700 dark:text-gray-300 hover:text-blue-500 tabular-nums w-8 text-right">
-                {line.quantity_ordered}
-              </button>
-              <button type="button" onClick={handleDelete} disabled={deleting}
-                title="Remove" className="text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400 text-sm leading-none ml-0.5 disabled:opacity-40">×</button>
-            </>
+    <div className={`py-2 border-b dark:border-gray-800 last:border-0 ${deleting ? 'opacity-40' : ''}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-[var(--text-body)] font-medium text-gray-900 dark:text-gray-100 truncate leading-snug">
+            {line.title ?? line.inventory_item_id.split('/').pop()}
+          </p>
+          {(line.isbn ?? line.supplier_sku) && (
+            <p className="text-[var(--text-mono)] font-mono text-gray-400 dark:text-gray-500">{line.isbn ?? line.supplier_sku}</p>
           )}
         </div>
-      ) : (
-        // Non-draft: show received/ordered with damage context (#41)
-        <div className="text-right shrink-0 ml-2 space-y-0.5">
-          <div className="flex items-center justify-end gap-1.5">
-            {/* Only show green checkmark when line is received and has no damage-only state */}
-            {line.status === 'received' && !isFullyDamaged && (
-              <span className="text-green-500 text-xs">✓</span>
+
+        {isDraft ? (
+          <div className="flex items-center gap-1 shrink-0">
+            {editQty !== null ? (
+              <>
+                <input type="number" min={1} value={editQty}
+                  onChange={e => setEditQty(Math.max(1, parseInt(e.target.value) || 1))}
+                  onKeyDown={e => { if (e.key === 'Enter') handleQtySave(); if (e.key === 'Escape') setEditQty(null) }}
+                  className="w-12 px-1 py-0.5 border rounded text-xs text-center dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-1 focus:ring-blue-500 outline-none"
+                  autoFocus />
+                <button type="button" onClick={handleQtySave} disabled={saving}
+                  className="text-[var(--text-label)] text-blue-500 hover:underline disabled:opacity-50">{saving ? '…' : '✓'}</button>
+                <button type="button" onClick={() => setEditQty(null)}
+                  className="text-[var(--text-label)] text-gray-400 hover:text-gray-600">✕</button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={() => setEditQty(line.quantity_ordered)}
+                  title="Click to edit"
+                  className="text-xs font-semibold text-gray-700 dark:text-gray-300 hover:text-blue-500 tabular-nums w-8 text-right">
+                  {line.quantity_ordered}
+                </button>
+                <button type="button" onClick={handleDelete} disabled={deleting}
+                  title="Remove" className="text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400 text-sm leading-none ml-0.5 disabled:opacity-40">×</button>
+              </>
             )}
-            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 tabular-nums">
-              {line.quantity_received}/{line.quantity_ordered}
-            </p>
           </div>
-          {hasDamage && (
-            <div className="flex items-center justify-end gap-1 flex-wrap">
-              <span className="text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 font-semibold">
-                {line.quantity_damaged} dmg
-              </span>
-              {line.damage_resolution === 'credit' && (
-                <span className="text-[10px] px-1 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 font-semibold">
-                  credit
-                </span>
+        ) : (
+          // Non-draft: received/ordered with damage context (#41)
+          <div className="text-right shrink-0 ml-2 space-y-0.5">
+            <div className="flex items-center justify-end gap-1.5">
+              {line.status === 'received' && !isFullyDamaged && (
+                <span className="text-green-500 text-xs">✓</span>
               )}
-              {line.damage_resolution === 'replacement_pending' && (
-                <span className="text-[10px] px-1 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-semibold">
-                  repl.
-                </span>
-              )}
-              {!line.damage_resolution && (
-                <span className="text-[10px] text-gray-400 dark:text-gray-500">TBD</span>
-              )}
+              <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 tabular-nums">
+                {line.quantity_received}/{line.quantity_ordered}
+              </p>
             </div>
-          )}
-          {!hasDamage && (
-            <p className="text-[var(--text-label)] text-gray-400 dark:text-gray-500">rcvd/ord</p>
+            {hasDamage && (
+              <div className="flex items-center justify-end gap-1 flex-wrap">
+                <span className="text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 font-semibold">
+                  {line.quantity_damaged} dmg
+                </span>
+                {line.damage_resolution === 'credit' && (
+                  <span className="text-[10px] px-1 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 font-semibold">
+                    credit
+                  </span>
+                )}
+                {line.damage_resolution === 'replacement_pending' && (
+                  <span className="text-[10px] px-1 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-semibold">
+                    repl.
+                  </span>
+                )}
+              </div>
+            )}
+            {!hasDamage && (
+              <p className="text-[var(--text-label)] text-gray-400 dark:text-gray-500">rcvd/ord</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Damage resolution picker — shown when damaged but not yet resolved (#41) */}
+      {!isDraft && needsResolution && (
+        <div className="mt-2 pt-2 border-t dark:border-gray-800">
+          <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold mb-1.5">
+            ⚠ {line.quantity_damaged} damaged — resolution needed
+          </p>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => handleResolve('credit')}
+              disabled={resolvingDamage}
+              className="flex-1 px-2 py-1.5 rounded text-[10px] font-semibold
+                         bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300
+                         border border-green-200 dark:border-green-800
+                         hover:bg-green-100 dark:hover:bg-green-900/40
+                         disabled:opacity-50 transition-colors"
+            >
+              {resolvingDamage ? '…' : '✓ Credit taken'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleResolve('replacement_pending')}
+              disabled={resolvingDamage}
+              className="flex-1 px-2 py-1.5 rounded text-[10px] font-semibold
+                         bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300
+                         border border-blue-200 dark:border-blue-800
+                         hover:bg-blue-100 dark:hover:bg-blue-900/40
+                         disabled:opacity-50 transition-colors"
+            >
+              {resolvingDamage ? '…' : '⟳ Replacement pending'}
+            </button>
+          </div>
+          {damageError && (
+            <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{damageError}</p>
           )}
         </div>
       )}
@@ -376,7 +427,7 @@ function InlineLineEntry({ poId, existingItemIds, onLineAdded }: {
       </div>
       {results.length > 0 && (
         <div className="border dark:border-gray-700 rounded overflow-hidden bg-white dark:bg-gray-900 shadow-lg max-h-48 overflow-y-auto">
-          {results.slice(0,10).map(r => {
+          {results.slice(0, 10).map(r => {
             const dup = existingItemIds.has(r.inventory_item_id)
             return (
               <button key={r.inventory_item_id} type="button"
@@ -400,7 +451,7 @@ function InlineLineEntry({ poId, existingItemIds, onLineAdded }: {
 }
 
 // ---------------------------------------------------------------------------
-// ReceiptPdfButton — reusable per-receipt PDF download (#40)
+// ReceiptPdfButton — per-receipt PDF download (#40)
 // ---------------------------------------------------------------------------
 
 function ReceiptPdfButton({ receiptId }: { receiptId: string }) {
@@ -408,7 +459,7 @@ function ReceiptPdfButton({ receiptId }: { receiptId: string }) {
   const [dlError, setDlError]         = useState(false)
 
   const handleDownload = async (e: React.MouseEvent) => {
-    e.stopPropagation()   // don't expand/collapse the receipt row
+    e.stopPropagation()
     setDownloading(true)
     setDlError(false)
     try {
@@ -426,28 +477,31 @@ function ReceiptPdfButton({ receiptId }: { receiptId: string }) {
       onClick={handleDownload}
       disabled={downloading}
       title={dlError ? 'Download failed — try again' : 'Download receipt PDF'}
-      className={`text-[10px] px-1.5 py-0.5 rounded font-medium transition-colors shrink-0
+      className={`text-[10px] font-medium transition-colors
         ${ dlError
           ? 'text-red-500 dark:text-red-400 hover:underline'
-          : 'text-gray-400 dark:text-gray-500 hover:text-blue-500 dark:hover:text-blue-400'
+          : 'text-blue-500 dark:text-blue-400 hover:underline'
         } disabled:opacity-50`}
     >
-      {downloading ? '…' : dlError ? '! retry' : '↓ PDF'}
+      {downloading ? '…' : dlError ? '↓ retry' : '↓ Receipt PDF'}
     </button>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Receipt section (#40: receipt PDF download per row)
+// Receipt section (#40: two-line receipt row layout, PDF per row)
 // ---------------------------------------------------------------------------
 
 function ReceiptSection({ poId }: { poId: string }) {
   const [receipts, setReceipts] = useState<Receipt[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading]   = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchReceiptsForPO(poId).then(setReceipts).catch(() => setReceipts([])).finally(() => setLoading(false))
+    fetchReceiptsForPO(poId)
+      .then(setReceipts)
+      .catch(() => setReceipts([]))
+      .finally(() => setLoading(false))
   }, [poId])
 
   if (loading) return <div className="h-8 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
@@ -455,37 +509,52 @@ function ReceiptSection({ poId }: { poId: string }) {
 
   return (
     <div className="space-y-1.5">
-      {receipts.map(r => (
-        <div key={r.id} className="border dark:border-gray-700 rounded overflow-hidden">
-          {/* Collapsed header: status badge + short ID + datetime + PDF button */}
-          <button type="button" onClick={() => setExpanded(p => p === r.id ? null : r.id)}
-            className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 text-left gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase shrink-0
-                ${ r.status === 'applied'
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                  : r.status === 'test_applied'
-                  ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
-                  : r.status === 'failed'
-                  ? 'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400'
-                  : 'bg-gray-100 text-gray-500'
-                }`}>
-                {r.status === 'test_applied' ? 'test run' : r.status}
-              </span>
-              <span className="text-xs font-mono text-gray-500 dark:text-gray-400 truncate">{r.id.slice(0, 8)}</span>
-            </div>
-            {/* Right side: timestamp + PDF download button */}
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[var(--text-secondary)] text-gray-400">{formatDateTime(r.received_at)}</span>
-              {/* Only applied/test_applied receipts have a PDF */}
-              {(r.status === 'applied' || r.status === 'test_applied') && (
-                <ReceiptPdfButton receiptId={r.id} />
-              )}
-            </div>
-          </button>
-          {expanded === r.id && <ReceiptLines receiptId={r.id} />}
-        </div>
-      ))}
+      {receipts.map(r => {
+        const hasPdf = r.status === 'applied' || r.status === 'test_applied'
+        return (
+          <div key={r.id} className="border dark:border-gray-700 rounded overflow-hidden">
+            {/*
+              Two-line receipt header — avoids superimposition in the narrow
+              256px sidebar column.
+
+              Line 1: status badge + short receipt ID  (left-aligned)
+              Line 2: datetime                         (left) · ↓ Receipt PDF (right)
+            */}
+            <button
+              type="button"
+              onClick={() => setExpanded(p => p === r.id ? null : r.id)}
+              className="w-full text-left px-3 py-2 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            >
+              {/* Row 1: badge + ID */}
+              <div className="flex items-center gap-2">
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase shrink-0
+                  ${ r.status === 'applied'
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                    : r.status === 'test_applied'
+                    ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+                    : r.status === 'failed'
+                    ? 'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400'
+                    : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
+                  }`}>
+                  {r.status === 'test_applied' ? 'test run' : r.status}
+                </span>
+                <span className="text-[11px] font-mono text-gray-400 dark:text-gray-500">
+                  {r.id.slice(0, 8)}
+                </span>
+              </div>
+              {/* Row 2: datetime + PDF link */}
+              <div className="flex items-center justify-between mt-1 gap-2">
+                <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                  {formatDateTime(r.received_at)}
+                </span>
+                {hasPdf && <ReceiptPdfButton receiptId={r.id} />}
+              </div>
+            </button>
+
+            {expanded === r.id && <ReceiptLines receiptId={r.id} />}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -503,14 +572,18 @@ function ReceiptLines({ receiptId }: { receiptId: string }) {
     })
   }, [receiptId])
 
-  if (loading) return <div className="px-3 py-2"><div className="h-4 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" /></div>
+  if (loading) return (
+    <div className="px-3 py-2">
+      <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+    </div>
+  )
 
   return (
     <div className="divide-y dark:divide-gray-800">
       {lines.map(line => {
-        const rcvd   = line.quantity_received ?? 0
-        const dmg    = (line as any).quantity_damaged ?? 0
-        const delta  = line.delta ?? rcvd
+        const rcvd  = line.quantity_received ?? 0
+        const dmg   = (line as any).quantity_damaged ?? 0
+        const delta = line.delta ?? rcvd
         return (
           <div key={line.id} className="px-3 py-1.5 flex items-center justify-between text-xs gap-2">
             <span className="text-gray-600 dark:text-gray-300 truncate flex-1">
@@ -536,7 +609,7 @@ function ReceiptLines({ receiptId }: { receiptId: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Order details panel (shared between both layout modes)
+// Order details panel
 // ---------------------------------------------------------------------------
 
 function OrderDetailsPanel({ order, onRefresh }: { order: PurchaseOrder; onRefresh?: () => void }) {
@@ -573,19 +646,20 @@ function OrderDetailsPanel({ order, onRefresh }: { order: PurchaseOrder; onRefre
 }
 
 // ---------------------------------------------------------------------------
-// Lines panel (shared between both layout modes)
+// Lines panel
 // ---------------------------------------------------------------------------
 
-function LinesPanel({ order, lines, onLineAdded, onQtyChange, onDelete }: {
+function LinesPanel({ order, lines, onLineAdded, onQtyChange, onDelete, onDamageResolved }: {
   order: PurchaseOrder
   lines: PurchaseOrderLine[]
   onLineAdded: (l: PurchaseOrderLine) => void
   onQtyChange: (id: string, qty: number) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  onDamageResolved?: (lineId: string, resolution: DamageResolution) => void
 }) {
   const isDraft = order.status === 'draft'
   const existingItemIds = new Set(lines.map(l => l.inventory_item_id))
-  const totalOrdered = lines.reduce((s, l) => s + l.quantity_ordered, 0)
+  const totalOrdered  = lines.reduce((s, l) => s + l.quantity_ordered, 0)
   const totalReceived = lines.reduce((s, l) => s + l.quantity_received, 0)
 
   return (
@@ -602,6 +676,7 @@ function LinesPanel({ order, lines, onLineAdded, onQtyChange, onDelete }: {
                 isDraft={isDraft}
                 onQtyChange={onQtyChange}
                 onDelete={onDelete}
+                onDamageResolved={onDamageResolved}
               />
             ))}
             <div className="pt-2 flex justify-between text-[var(--text-secondary)] text-gray-400 dark:text-gray-500">
@@ -618,9 +693,7 @@ function LinesPanel({ order, lines, onLineAdded, onQtyChange, onDelete }: {
 
       {isDraft && (
         <div className="shrink-0 pt-3 border-t dark:border-gray-700 mt-3">
-          <p className="kal-text-label text-gray-400 dark:text-gray-500 mb-1.5">
-            Add line
-          </p>
+          <p className="kal-text-label text-gray-400 dark:text-gray-500 mb-1.5">Add line</p>
           <InlineLineEntry
             poId={order.id}
             existingItemIds={existingItemIds}
@@ -637,18 +710,18 @@ function LinesPanel({ order, lines, onLineAdded, onQtyChange, onDelete }: {
 // ---------------------------------------------------------------------------
 
 const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefresh, wide }) => {
-  const [isOpen, setIsOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
+  const [isOpen, setIsOpen]           = useState(false)
+  const [mounted, setMounted]         = useState(false)
   const [transitioning, setTransitioning] = useState(false)
   const [transitionError, setTransitionError] = useState<string | null>(null)
-  const [localLines, setLocalLines] = useState<PurchaseOrderLine[]>([])
+  const [localLines, setLocalLines]   = useState<PurchaseOrderLine[]>([])
   const [pdfDownloading, setPdfDownloading] = useState(false)
 
-  const wasNullRef = useRef(true)
-  const prevOrderIdRef = useRef<string | null>(null)
+  const wasNullRef      = useRef(true)
+  const prevOrderIdRef  = useRef<string | null>(null)
 
   useEffect(() => {
-    const isNull = detail === null
+    const isNull  = detail === null
     const wasNull = wasNullRef.current
     wasNullRef.current = isNull
 
@@ -682,7 +755,7 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
   if (!mounted || !detail) return null
 
   const { order } = detail
-  const isDraft = order.status === 'draft'
+  const isDraft    = order.status === 'draft'
   const canReceive = ['submitted', 'confirmed', 'partial'].includes(order.status)
 
   const handleLineAdded = (newLine: PurchaseOrderLine) => {
@@ -697,6 +770,15 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
   const handleDeleteLine = async (lineId: string) => {
     await removePOLine(lineId)
     setLocalLines(prev => prev.filter(l => l.id !== lineId))
+  }
+
+  // Update local damage resolution optimistically after PATCH succeeds (#41)
+  const handleDamageResolved = (lineId: string, resolution: DamageResolution) => {
+    setLocalLines(prev => prev.map(l =>
+      l.id === lineId
+        ? { ...l, damage_resolution: resolution, status: resolution === 'credit' ? 'received' : l.status }
+        : l
+    ))
   }
 
   const handleTransition = async (action: 'submit' | 'confirm'): Promise<boolean> => {
@@ -716,13 +798,9 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
 
   const handleDownloadPdf = async () => {
     setPdfDownloading(true)
-    try {
-      await downloadPOPdf(order.id, order.po_number)
-    } catch (e) {
-      console.error('PDF download failed:', e)
-    } finally {
-      setPdfDownloading(false)
-    }
+    try { await downloadPOPdf(order.id, order.po_number) }
+    catch (e) { console.error('PDF download failed:', e) }
+    finally { setPdfDownloading(false) }
   }
 
   const sidebarWidth = (isDraft || wide) ? 'sm:w-[56rem]' : 'sm:w-[30rem]'
@@ -744,9 +822,7 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
               <StatusBadge status={order.status} />
               {order.is_ad_hoc && <AdHocBadge />}
               {order.is_test && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px]
-                                  font-bold bg-yellow-100 text-yellow-700
-                                  dark:bg-yellow-900/30 dark:text-yellow-300 uppercase tracking-wide">
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 uppercase tracking-wide">
                   Test
                 </span>
               )}
@@ -786,6 +862,7 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
                   onLineAdded={handleLineAdded}
                   onQtyChange={handleQtyChange}
                   onDelete={handleDeleteLine}
+                  onDamageResolved={handleDamageResolved}
                 />
               </div>
             </div>
@@ -804,6 +881,7 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
                 onLineAdded={handleLineAdded}
                 onQtyChange={handleQtyChange}
                 onDelete={handleDeleteLine}
+                onDamageResolved={handleDamageResolved}
               />
             </section>
             <section>
@@ -822,9 +900,7 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
         {/* Actions footer */}
         <div className="shrink-0 border-t dark:border-gray-800 bg-white dark:bg-gray-950 px-5 py-3 space-y-2">
           {order.is_test && (
-            <div className="px-3 py-2 rounded bg-yellow-50 dark:bg-yellow-900/20
-                            border border-yellow-200 dark:border-yellow-800
-                            text-xs text-yellow-700 dark:text-yellow-300 text-center">
+            <div className="px-3 py-2 rounded bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-xs text-yellow-700 dark:text-yellow-300 text-center">
               Test PO — receiving will simulate the flow without touching Shopify inventory
             </div>
           )}
@@ -836,38 +912,28 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
                   if (succeeded) await handleDownloadPdf()
                 }}
                 disabled={transitioning || localLines.length === 0}
-                className="w-full px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700
-                            text-white text-sm font-semibold disabled:opacity-50 transition-colors"
+                className="w-full px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
               >
                 {transitioning ? 'Submitting…' : 'Submit PO + Download PDF'}
               </button>
               <button
                 onClick={handleDownloadPdf}
                 disabled={pdfDownloading || localLines.length === 0}
-                className="w-full px-3 py-2 rounded-md border border-gray-300
-                            dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300
-                            hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50
-                            transition-colors"
+                className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
               >
                 {pdfDownloading ? 'Generating…' : 'Download draft PDF'}
               </button>
             </div>
           )}
-
-          {/* PO PDF for submitted / confirmed / partial / received orders */}
           {['submitted', 'confirmed', 'partial', 'received'].includes(order.status) && (
             <button
               onClick={handleDownloadPdf}
               disabled={pdfDownloading}
-              className="w-full px-3 py-2 rounded-md border border-gray-300
-                          dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300
-                          hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50
-                          transition-colors"
+              className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
             >
               {pdfDownloading ? 'Generating…' : 'Download PO PDF'}
             </button>
           )}
-
           {isDraft && localLines.length === 0 && (
             <p className="text-xs text-amber-600 dark:text-amber-400 text-center">Add lines before submitting</p>
           )}
