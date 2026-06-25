@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any
 from app.supabase_client import supabase
 import os
 import logging
+import requests
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -14,6 +15,12 @@ VALID_REPORT_IDS = {
     "daily_sales_nyfs",
     "weekly_maintenance",
     "lop_unfulfilled",
+}
+
+VALID_OVERRIDE_TYPES = {
+    "holiday_closure",
+    "special_open_sunday",
+    "open_override",
 }
 
 
@@ -32,7 +39,7 @@ class ScheduleOverrideRequest(BaseModel):
 
 class CalendarOverrideRequest(BaseModel):
     date:          str   # YYYY-MM-DD
-    override_type: str   # 'holiday_closure' | 'special_open_sunday'
+    override_type: str   # 'holiday_closure' | 'special_open_sunday' | 'open_override'
     label:         Optional[str] = None
     location_id:   str = "kal"
 
@@ -137,10 +144,6 @@ def get_schedule_override(
     report_id: str,
     scheduled_date: str,
 ):
-    """
-    Return the active (unconsumed) schedule override for a given report + date,
-    or null if none exists.
-    """
     validate_admin_token(request)
 
     try:
@@ -151,7 +154,7 @@ def get_schedule_override(
             .select("*")
             .eq("report_id", report_id)
             .eq("scheduled_date", scheduled_date)
-            .is_("used_at", "null")   # only unconsumed overrides
+            .is_("used_at", "null")
             .limit(1)
             .execute()
         )
@@ -164,10 +167,6 @@ def get_schedule_override(
 
 @router.post("/schedule-override")
 def upsert_schedule_override(payload: ScheduleOverrideRequest, request: Request):
-    """
-    Create or update the window override for a scheduled run.
-    Uses upsert on (report_id, scheduled_date).
-    """
     validate_admin_token(request)
 
     if payload.report_id not in VALID_REPORT_IDS:
@@ -178,7 +177,6 @@ def upsert_schedule_override(payload: ScheduleOverrideRequest, request: Request)
     try:
         table = supabase.schema("reports").table("report_schedule_overrides")
 
-        # Check if a row already exists for this report + scheduled_date
         existing = (
             table
             .select("id")
@@ -189,7 +187,6 @@ def upsert_schedule_override(payload: ScheduleOverrideRequest, request: Request)
         )
 
         if existing.data:
-            # Update existing row
             row_id = existing.data[0]["id"]
             resp = (
                 table
@@ -203,7 +200,6 @@ def upsert_schedule_override(payload: ScheduleOverrideRequest, request: Request)
                 .execute()
             )
         else:
-            # Insert new row
             resp = (
                 table
                 .insert({
@@ -226,7 +222,6 @@ def upsert_schedule_override(payload: ScheduleOverrideRequest, request: Request)
 
 @router.delete("/schedule-override/{override_id}")
 def delete_schedule_override(override_id: str, request: Request):
-    """Delete a schedule override by its UUID."""
     validate_admin_token(request)
 
     try:
@@ -245,11 +240,11 @@ def delete_schedule_override(override_id: str, request: Request):
 # ─── Calendar override routes ─────────────────────────────────────────────────
 
 @router.get("/calendar-overrides")
-def list_calendar_overrides(request: Request, year: Optional[int] = None, location_id: str = "kal"):
-    """
-    Return all calendar overrides, optionally filtered by year.
-    Used by BusinessCalendarPage to hydrate the calendar.
-    """
+def list_calendar_overrides(
+    request: Request,
+    year: Optional[int] = None,
+    location_id: str = "kal",
+):
     validate_admin_token(request)
 
     try:
@@ -258,11 +253,11 @@ def list_calendar_overrides(request: Request, year: Optional[int] = None, locati
             .schema("reports")
             .table("business_calendar_overrides")
             .select("id, date, year, override_type, label, created_at")
+            .eq("location_id", location_id)
             .order("date", desc=False)
         )
         if year:
             q = q.eq("year", year)
-            q = q.eq("location_id", location_id)
         resp = q.execute()
         return resp.data or []
     except Exception as e:
@@ -272,19 +267,17 @@ def list_calendar_overrides(request: Request, year: Optional[int] = None, locati
 
 @router.post("/calendar-overrides")
 def upsert_calendar_override(payload: CalendarOverrideRequest, request: Request):
-    """
-    Add or update a calendar override (holiday closure or special open Sunday).
-    Upserts on (date, override_type).
-    """
     validate_admin_token(request)
 
-    if payload.override_type not in ("holiday_closure", "special_open_sunday"):
-        raise HTTPException(status_code=422, detail="override_type must be 'holiday_closure' or 'special_open_sunday'")
+    if payload.override_type not in VALID_OVERRIDE_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"override_type must be one of: {sorted(VALID_OVERRIDE_TYPES)}",
+        )
 
     try:
         table = supabase.schema("reports").table("business_calendar_overrides")
 
-        # Check if a row already exists for this date + override_type
         existing = (
             table
             .select("id")
@@ -296,7 +289,6 @@ def upsert_calendar_override(payload: CalendarOverrideRequest, request: Request)
         )
 
         if existing.data:
-            # Update label on existing row
             row_id = existing.data[0]["id"]
             resp = (
                 table
@@ -305,7 +297,6 @@ def upsert_calendar_override(payload: CalendarOverrideRequest, request: Request)
                 .execute()
             )
         else:
-            # Insert new override row
             resp = (
                 table
                 .insert({
@@ -330,9 +321,8 @@ def delete_calendar_override(
     request: Request,
     date: str,
     override_type: str,
-    location_id: str = "kal"
+    location_id: str = "kal",
 ):
-    """Remove a calendar override by date + type."""
     validate_admin_token(request)
 
     try:
@@ -360,7 +350,6 @@ class ExclusionRequest(BaseModel):
 
 @router.get("/exclusions")
 def list_exclusions(request: Request):
-    """Return all report product exclusions, newest first."""
     validate_admin_token(request)
     try:
         resp = (
@@ -379,30 +368,25 @@ def list_exclusions(request: Request):
 
 @router.post("/exclusions")
 def add_exclusion(payload: ExclusionRequest, request: Request):
-    """
-    Add a product to the report exclusions list.
-    If product_title is not provided, attempts to resolve it from Shopify.
-    """
     validate_admin_token(request)
 
     product_title = payload.product_title
 
-    # Auto-resolve title from Shopify if not provided
     if not product_title:
         try:
             shop_url     = os.getenv("SHOP_URL", "")
             access_token = os.getenv("SHOPIFY_ACCESS_TOKEN", "")
-            api_version  = os.getenv("SHOPIFY_API_VERSION", "2025-01")
+            api_version  = os.getenv("SHOPIFY_API_VERSION", "2025-10")
 
             if shop_url and access_token:
-                # Extract numeric ID from GID if needed
                 numeric_id = payload.product_id.split("/")[-1]
                 gql_query  = """
                     query GetProduct($id: ID!) {
                       product(id: $id) { title }
                     }
                 """
-                gid = payload.product_id if payload.product_id.startswith("gid://")                     else f"gid://shopify/Product/{numeric_id}"
+                gid = payload.product_id if payload.product_id.startswith("gid://") \
+                    else f"gid://shopify/Product/{numeric_id}"
 
                 resp = requests.post(
                     f"https://{shop_url}/admin/api/{api_version}/graphql.json",
@@ -420,8 +404,8 @@ def add_exclusion(payload: ExclusionRequest, request: Request):
             logger.warning(f"Could not resolve product title from Shopify: {e}")
 
     try:
-        # Normalise to full GID
-        product_id = payload.product_id if payload.product_id.startswith("gid://")             else f"gid://shopify/Product/{payload.product_id}"
+        product_id = payload.product_id if payload.product_id.startswith("gid://") \
+            else f"gid://shopify/Product/{payload.product_id}"
 
         resp = (
             supabase
@@ -444,7 +428,6 @@ def add_exclusion(payload: ExclusionRequest, request: Request):
 
 @router.delete("/exclusions/{exclusion_id}")
 def remove_exclusion(exclusion_id: str, request: Request):
-    """Remove a product exclusion by its UUID."""
     validate_admin_token(request)
     try:
         supabase \

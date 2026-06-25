@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthProvider';
 
 type DateString = string; // 'YYYY-MM-DD'
 type DayKind = 'open' | 'closed' | 'holiday' | 'special-open';
-type OverrideType = 'holiday_closure' | 'special_open_sunday';
+type OverrideType = 'holiday_closure' | 'special_open_sunday' | 'open_override';
 type LocationId = 'kal' | 'nyfs';
 
 interface CalendarOverride {
@@ -86,7 +86,13 @@ function resolveCalendar(year: number, overrides: CalendarOverride[]) {
       holidays.add(ov.date);
       specials.delete(ov.date);
       if (ov.label) labels[ov.date] = ov.label;
+    } else if (ov.override_type === 'open_override') {
+      // Location is open despite baseline holiday — remove from holidays set
+      holidays.delete(ov.date);
+      specials.delete(ov.date);
+      if (ov.label) labels[ov.date] = ov.label;
     } else {
+      // special_open_sunday
       specials.add(ov.date);
       holidays.delete(ov.date);
     }
