@@ -14,7 +14,6 @@ const STATUS_FILTERS: { key: POStatus | 'all' | 'open' | 'test'; label: string }
   { key: 'open',      label: 'Open' },
   { key: 'draft',     label: 'Draft' },
   { key: 'submitted', label: 'Submitted' },
-  { key: 'confirmed', label: 'Confirmed' },
   { key: 'partial',   label: 'Partial' },
   { key: 'received',  label: 'Received' },
   { key: 'cancelled', label: 'Cancelled' },
@@ -75,7 +74,7 @@ export default function POService() {
   const [detail, setDetail] = useState<PurchaseOrderDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [showBuilder,   setShowBuilder]   = useState(false)
-  const [showCSVImport, setShowCSVImport] = useState(false)   // NEW
+  const [showCSVImport, setShowCSVImport] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [archiving, setArchiving] = useState(false)
 
@@ -137,6 +136,21 @@ export default function POService() {
     return list
   }, [orders, statusFilter, search, sortConfig])
 
+  // Count helper functions for dynamic badges modeled from ReceivingDashboard
+  const counts = useMemo(() => {
+    const activeOrders = orders.filter(o => !o.archived_at)
+    return {
+      all: activeOrders.length,
+      open: activeOrders.filter(o => !['received','cancelled'].includes(o.status)).length,
+      draft: activeOrders.filter(o => o.status === 'draft').length,
+      submitted: activeOrders.filter(o => o.status === 'submitted').length,
+      partial: activeOrders.filter(o => o.status === 'partial').length,
+      received: activeOrders.filter(o => o.status === 'received').length,
+      cancelled: activeOrders.filter(o => o.status === 'cancelled').length,
+      test: activeOrders.filter(o => o.is_test).length,
+    }
+  }, [orders])
+
   const handleSort = (key: keyof PurchaseOrder) => {
     setSortConfig(prev => ({ key, direction: nextSortDirection(prev, key) }))
   }
@@ -191,7 +205,6 @@ export default function POService() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Import from CSV — NEW */}
           <button
             onClick={() => setShowCSVImport(true)}
             className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600
@@ -201,7 +214,6 @@ export default function POService() {
             ↑ Import from CSV
           </button>
 
-          {/* New PO */}
           <button
             onClick={() => setShowBuilder(true)}
             className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm"
@@ -230,36 +242,41 @@ export default function POService() {
         </div>
       )}
 
-      {/* Filter strip */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border dark:border-gray-800">
-        <div className="flex gap-1 overflow-x-auto pb-1 sm:pb-0 text-xs scrollbar-none">
-          <div className="inline-flex p-0.5 bg-gray-100 dark:bg-gray-800 rounded border dark:border-gray-700">
-            {STATUS_FILTERS.map(f => (
-              <button
-                key={f.key}
-                onClick={() => {
-                  setStatusFilter(f.key)
-                  try { localStorage.setItem(PO_STATUS_FILTER_KEY, f.key) } catch {}
-                }}
-                className={`px-3 py-1.5 rounded font-medium transition-all whitespace-nowrap ${
-                  statusFilter === f.key
-                    ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
+      {/* Control row with separate filter strip and layout flow */}
+      <div className="space-y-4">
+        {/* Filter tabs */}
+        <div className="flex gap-1 overflow-x-auto pb-1 border-b dark:border-gray-800/80 scrollbar-none">
+          {STATUS_FILTERS.map(f => (
+            <button
+              key={f.key}
+              onClick={() => {
+                setStatusFilter(f.key)
+                try { localStorage.setItem(PO_STATUS_FILTER_KEY, f.key) } catch {}
+              }}
+              className={`px-3 py-1.5 text-xs font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap ${
+                statusFilter === f.key
+                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+            >
+              {f.label} ({counts[f.key as keyof typeof counts] ?? 0})
+            </button>
+          ))}
         </div>
 
-        <div className="flex-1 sm:max-w-xs relative">
+        {/* Search bar with leading icon */}
+        <div className="relative w-full sm:max-w-xs">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 dark:text-gray-500">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
           <input
             type="search"
             placeholder="Search PO number, supplier, reference or notes..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full pl-3 pr-4 py-1.5 border dark:border-gray-700 rounded-md text-xs sm:text-sm
+            className="w-full pl-9 pr-4 py-1.5 border dark:border-gray-700 rounded-md text-xs sm:text-sm
                      bg-white dark:bg-gray-900 dark:text-white
                      focus:ring-2 focus:ring-blue-500/20 outline-none placeholder-gray-400 dark:placeholder-gray-500 shadow-sm"
           />
@@ -312,7 +329,6 @@ export default function POService() {
         />
       )}
 
-      {/* CSV import modal — NEW */}
       {showCSVImport && (
         <POCSVImport
           onClose={() => setShowCSVImport(false)}

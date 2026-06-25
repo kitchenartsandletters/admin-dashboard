@@ -1,6 +1,4 @@
 // TransferService.tsx
-// Transfer list, detail sidebar, and dispatch/receive orchestration.
-
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import {
@@ -14,21 +12,16 @@ import TransferReceivePanel from './TransferReceivePanel'
 
 type LocMap = Record<string, Location>
 
-// Numeric tail of a Shopify GID, e.g. .../Location/40052293765 -> 40052293765
 const idTail = (gid: string) => gid.split('/').pop() ?? gid
-// Short form of a transfer UUID, for rows created before transfer numbers existed.
 const shortId = (id: string) => id.slice(0, 8)
-// Reference shown to staff: prefer the human-friendly number, fall back to short UUID.
 const transferRef = (t: InventoryTransfer) => t.transfer_number ?? shortId(t.id)
 
-// Small TEST pill reused in the table and the detail sidebar.
 const TestBadge = () => (
   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-yellow-200 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-200">
     Test
   </span>
 )
 
-// Location name prominent, numeric id small beneath.
 function LocationLabel({ id, locMap }: { id: string; locMap: LocMap }) {
   const name = locMap[id]?.name
   return (
@@ -38,10 +31,6 @@ function LocationLabel({ id, locMap }: { id: string; locMap: LocMap }) {
     </div>
   )
 }
-
-// ---------------------------------------------------------------------------
-// Transfer detail sidebar
-// ---------------------------------------------------------------------------
 
 function TransferDetailSidebar({ detail, locMap, onClose, onReceive }: {
   detail: TransferDetail | null
@@ -84,7 +73,6 @@ function TransferDetailSidebar({ detail, locMap, onClose, onReceive }: {
       />
       <div className={`fixed top-0 right-0 h-full w-full sm:w-[28rem] bg-white dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800 shadow-2xl z-50 transition-transform duration-300 transform ${isVisible ? 'translate-x-0' : 'translate-x-full'}`}>
 
-        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50">
           <div>
             <h3 className="font-bold text-lg text-gray-900 dark:text-white">Transfer</h3>
@@ -99,16 +87,13 @@ function TransferDetailSidebar({ detail, locMap, onClose, onReceive }: {
           <button onClick={handleClose} className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:underline">Close</button>
         </div>
 
-        {/* Content */}
         <div className="p-5 text-sm space-y-6 overflow-y-auto h-[calc(100%-5.5rem)] pb-10">
-
           {transfer.is_test && (
             <div className="px-3 py-2 rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 text-xs text-yellow-800 dark:text-yellow-200">
               Test transfer — statuses advance for rehearsal, but no Shopify inventory is changed.
             </div>
           )}
 
-          {/* Route */}
           <section>
             <h4 className="font-bold text-gray-900 dark:text-white uppercase text-[11px] tracking-widest border-l-2 border-blue-500 pl-2 mb-4">Route</h4>
             <div className="flex items-center gap-3 text-sm">
@@ -129,7 +114,6 @@ function TransferDetailSidebar({ detail, locMap, onClose, onReceive }: {
             </div>
           </section>
 
-          {/* Receive button */}
           {transfer.status === 'in_transit' && (
             <button
               onClick={e => { e.stopPropagation(); onReceive(transfer.id) }}
@@ -139,7 +123,6 @@ function TransferDetailSidebar({ detail, locMap, onClose, onReceive }: {
             </button>
           )}
 
-          {/* Lines */}
           <section>
             <h4 className="font-bold text-gray-900 dark:text-white uppercase text-[11px] tracking-widest border-l-2 border-purple-500 pl-2 mb-4">
               Lines ({lines.length})
@@ -181,10 +164,6 @@ function TransferDetailSidebar({ detail, locMap, onClose, onReceive }: {
     document.body
   )
 }
-
-// ---------------------------------------------------------------------------
-// Transfer table
-// ---------------------------------------------------------------------------
 
 function TransferTable({ transfers, locMap, sortConfig, onSort, onRowClick, selectedId }: {
   transfers:  InventoryTransfer[]
@@ -255,10 +234,6 @@ function TransferTable({ transfers, locMap, sortConfig, onSort, onRowClick, sele
   )
 }
 
-// ---------------------------------------------------------------------------
-// Page shell
-// ---------------------------------------------------------------------------
-
 export default function TransferService() {
   const [transfers, setTransfers] = useState<InventoryTransfer[]>([])
   const [locMap,    setLocMap]    = useState<LocMap>({})
@@ -297,8 +272,6 @@ export default function TransferService() {
     let list = transfers.filter(t => {
       if (statusFilter !== 'all' && t.status !== statusFilter) return false
       if (!q) return true
-      // search_blob (transfer #, titles, ISBNs, variant/item ids, vendor,
-      // supplier) comes from the server; location names are resolved here.
       const hay = [
         t.search_blob ?? '',
         locMap[t.from_location_id]?.name ?? '',
@@ -317,6 +290,17 @@ export default function TransferService() {
     }
     return list
   }, [transfers, statusFilter, search, sortConfig, locMap])
+
+  const counts = useMemo(() => {
+    return {
+      all: transfers.length,
+      pending: transfers.filter(t => t.status === 'pending').length,
+      in_transit: transfers.filter(t => t.status === 'in_transit').length,
+      partial: transfers.filter(t => t.status === 'partial').length,
+      received: transfers.filter(t => t.status === 'received').length,
+      cancelled: transfers.filter(t => t.status === 'cancelled').length,
+    }
+  }, [transfers])
 
   const STATUS_FILTERS: { key: TransferStatus | 'all'; label: string }[] = [
     { key: 'all',        label: 'All'        },
@@ -351,26 +335,33 @@ export default function TransferService() {
           </div>
         )}
 
-        {/* Filter strip */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border dark:border-gray-800">
-          <div className="flex gap-1 flex-wrap">
+        {/* Formatted controls following the requested pattern */}
+        <div className="space-y-4">
+          {/* Filter tabs */}
+          <div className="flex gap-1 overflow-x-auto pb-1 border-b dark:border-gray-800/80 scrollbar-none">
             {STATUS_FILTERS.map(f => (
               <button key={f.key} onClick={() => setStatusFilter(f.key)}
-                className={`px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap
+                className={`px-3 py-1.5 text-xs font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap
                   ${statusFilter === f.key
-                    ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm border border-transparent'
-                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 border border-transparent'}`}>
-                {f.label}
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+                {f.label} ({counts[f.key as keyof typeof counts] ?? 0})
               </button>
             ))}
           </div>
 
-          <div className="flex-1 sm:max-w-xs relative">
+          {/* Search field with leading magnifying glass */}
+          <div className="relative w-full sm:max-w-xs">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 dark:text-gray-500">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search transfer #, title, ISBN…"
-              className="w-full px-3 py-1.5 border rounded-md text-xs sm:text-sm bg-white dark:bg-gray-900 dark:text-white dark:border-gray-700 focus:ring-2 focus:ring-blue-500/20 outline-none placeholder-gray-400 dark:placeholder-gray-500 shadow-sm"
+              className="w-full pl-9 pr-4 py-1.5 border dark:border-gray-700 rounded-md text-xs sm:text-sm bg-white dark:bg-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 outline-none placeholder-gray-400 dark:placeholder-gray-500 shadow-sm"
             />
           </div>
         </div>
