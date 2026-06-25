@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import POTable from './POTable'
 import PODetailSidebar from './PODetailSidebar'
 import POBuilder from './POBuilder'
+import POCSVImport from './POCSVImport'
 import { PurchaseOrder, PurchaseOrderDetail, POStatus } from './purchaseOrderTypes'
 import { fetchPurchaseOrders, fetchPurchaseOrderDetail, cancelPurchaseOrder, archiveTestPOs } from '../../api/supplyChainApi'
 import { SortConfig, nextSortDirection } from '../../utils/tableUtils'
@@ -73,7 +74,8 @@ export default function POService() {
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null)
   const [detail, setDetail] = useState<PurchaseOrderDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
-  const [showBuilder, setShowBuilder] = useState(false)
+  const [showBuilder,   setShowBuilder]   = useState(false)
+  const [showCSVImport, setShowCSVImport] = useState(false)   // NEW
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [archiving, setArchiving] = useState(false)
 
@@ -177,7 +179,7 @@ export default function POService() {
 
   return (
     <div className="p-4 sm:p-6 space-y-6 bg-white dark:bg-gray-950 min-h-screen">
-      {/* Header Container */}
+      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
@@ -188,18 +190,30 @@ export default function POService() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Import from CSV — NEW */}
+          <button
+            onClick={() => setShowCSVImport(true)}
+            className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600
+                       text-gray-700 dark:text-gray-300 text-xs sm:text-sm font-semibold
+                       hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            ↑ Import from CSV
+          </button>
+
+          {/* New PO */}
           <button
             onClick={() => setShowBuilder(true)}
-            className="w-full sm:w-auto px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm"
+            className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm"
           >
             + New PO
           </button>
+
           {statusFilter === 'test' && filtered.length > 0 && (
             <button
               onClick={handleArchiveTestPOs}
               disabled={archiving}
-              className="w-full sm:w-auto px-3 py-2 rounded-md border border-yellow-300 dark:border-yellow-700
+              className="px-3 py-2 rounded-md border border-yellow-300 dark:border-yellow-700
                           text-yellow-700 dark:text-yellow-300 text-xs sm:text-sm font-semibold
                           hover:bg-yellow-50 dark:hover:bg-yellow-900/20 disabled:opacity-50
                           transition-colors whitespace-nowrap"
@@ -216,9 +230,8 @@ export default function POService() {
         </div>
       )}
 
-      {/* Modern Filter Strip */}
+      {/* Filter strip */}
       <div className="flex flex-col gap-3">
-        {/* Horizontal scroll strip for status sub-tabs */}
         <div className="flex gap-1 overflow-x-auto pb-1 text-xs scrollbar-none border-b dark:border-gray-800/60 sm:border-b-0">
           <div className="inline-flex p-0.5 bg-gray-100 dark:bg-gray-800 rounded border dark:border-gray-700">
             {STATUS_FILTERS.map(f => (
@@ -226,9 +239,7 @@ export default function POService() {
                 key={f.key}
                 onClick={() => {
                   setStatusFilter(f.key)
-                  try {
-                    localStorage.setItem(PO_STATUS_FILTER_KEY, f.key)
-                  } catch {}
+                  try { localStorage.setItem(PO_STATUS_FILTER_KEY, f.key) } catch {}
                 }}
                 className={`px-3 py-1.5 rounded font-medium transition-all whitespace-nowrap ${
                   statusFilter === f.key
@@ -242,7 +253,6 @@ export default function POService() {
           </div>
         </div>
 
-        {/* Search Bar input matching Preorder Pipeline input layouts */}
         <div className="flex flex-col sm:flex-row gap-2">
           <input
             type="search"
@@ -262,7 +272,6 @@ export default function POService() {
         </p>
       )}
 
-      {/* Main Table Content View */}
       <div>
         {loading ? <TableSkeleton /> : (
           <POTable
@@ -297,8 +306,21 @@ export default function POService() {
           onCreated={async (poId) => {
             setShowBuilder(false)
             await load()
-            const detail = await fetchPurchaseOrderDetail(poId)
-            setSelectedOrder(detail.order)
+            const d = await fetchPurchaseOrderDetail(poId)
+            setSelectedOrder(d.order)
+          }}
+        />
+      )}
+
+      {/* CSV import modal — NEW */}
+      {showCSVImport && (
+        <POCSVImport
+          onClose={() => setShowCSVImport(false)}
+          onCreated={async (poId) => {
+            setShowCSVImport(false)
+            await load()
+            const d = await fetchPurchaseOrderDetail(poId)
+            setSelectedOrder(d.order)
           }}
         />
       )}
