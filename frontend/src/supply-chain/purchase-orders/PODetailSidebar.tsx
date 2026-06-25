@@ -8,6 +8,16 @@
 // Refresh fix: sidebar never receives null during a refresh.
 // POService passes `detail` directly (not `detailLoading ? null : detail`).
 // The sidebar syncs localLines from detail updates without toggling open state.
+//
+// #40: Receipt PDF download now available per receipt in the Receipts section.
+//      Each receipt row header shows a ↓ Receipt PDF button alongside the
+//      existing timestamp, so staff can re-download any receipt at any time
+//      without navigating away.
+//
+// #41: LineItemRow now surfaces damage context for non-draft lines:
+//      - quantity_damaged > 0 shows an amber “X dmg” badge inline
+//      - damage_resolution shown as “credit” (green) or “repl.” (blue)
+//      - quantity_received = 0 with damage does NOT show a green ✓ badge
 
 import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -25,7 +35,8 @@ import {
   updatePOLine,
   removePOLine,
   updatePurchaseOrder,
-  downloadPOPdf
+  downloadPOPdf,
+  downloadReceiptPdf,
 } from '../../api/supplyChainApi'
 import type { VariantSearchResult } from '../../api/supplyChainApi'
 import { useLocations } from '../hooks/useLocations'
@@ -180,7 +191,7 @@ function EditableOrderFields({ order, onSaved }: { order: PurchaseOrder; onSaved
 }
 
 // ---------------------------------------------------------------------------
-// LineItemRow
+// LineItemRow (#41: damage-aware display for non-draft lines)
 // ---------------------------------------------------------------------------
 
 function LineItemRow({ line, isDraft, onQtyChange, onDelete }: {
@@ -205,6 +216,9 @@ function LineItemRow({ line, isDraft, onQtyChange, onDelete }: {
     try { await onDelete(line.id) }
     finally { setDeleting(false) }
   }
+
+  const hasDamage = (line.quantity_damaged ?? 0) > 0
+  const isFullyDamaged = hasDamage && line.quantity_received === 0
 
   return (
     <div className={`py-2 flex items-start justify-between gap-2 border-b dark:border-gray-800 last:border-0 ${deleting ? 'opacity-40' : ''}`}>
@@ -243,11 +257,40 @@ function LineItemRow({ line, isDraft, onQtyChange, onDelete }: {
           )}
         </div>
       ) : (
-        <div className="text-right shrink-0 ml-2">
-          <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 tabular-nums">
-            {line.quantity_received}/{line.quantity_ordered}
-          </p>
-          <p className="text-[var(--text-label)] text-gray-400 dark:text-gray-500">rcvd/ord</p>
+        // Non-draft: show received/ordered with damage context (#41)
+        <div className="text-right shrink-0 ml-2 space-y-0.5">
+          <div className="flex items-center justify-end gap-1.5">
+            {/* Only show green checkmark when line is received and has no damage-only state */}
+            {line.status === 'received' && !isFullyDamaged && (
+              <span className="text-green-500 text-xs">✓</span>
+            )}
+            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 tabular-nums">
+              {line.quantity_received}/{line.quantity_ordered}
+            </p>
+          </div>
+          {hasDamage && (
+            <div className="flex items-center justify-end gap-1 flex-wrap">
+              <span className="text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 font-semibold">
+                {line.quantity_damaged} dmg
+              </span>
+              {line.damage_resolution === 'credit' && (
+                <span className="text-[10px] px-1 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 font-semibold">
+                  credit
+                </span>
+              )}
+              {line.damage_resolution === 'replacement_pending' && (
+                <span className="text-[10px] px-1 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-semibold">
+                  repl.
+                </span>
+              )}
+              {!line.damage_resolution && (
+                <span className="text-[10px] text-gray-400 dark:text-gray-500">TBD</span>
+              )}
+            </div>
+          )}
+          {!hasDamage && (
+            <p className="text-[var(--text-label)] text-gray-400 dark:text-gray-500">rcvd/ord</p>
+          )}
         </div>
       )}
     </div>
@@ -357,7 +400,45 @@ function InlineLineEntry({ poId, existingItemIds, onLineAdded }: {
 }
 
 // ---------------------------------------------------------------------------
-// Receipt section
+// ReceiptPdfButton — reusable per-receipt PDF download (#40)
+// ---------------------------------------------------------------------------
+
+function ReceiptPdfButton({ receiptId }: { receiptId: string }) {
+  const [downloading, setDownloading] = useState(false)
+  const [dlError, setDlError]         = useState(false)
+
+  const handleDownload = async (e: React.MouseEvent) => {
+    e.stopPropagation()   // don't expand/collapse the receipt row
+    setDownloading(true)
+    setDlError(false)
+    try {
+      await downloadReceiptPdf(receiptId)
+    } catch {
+      setDlError(true)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleDownload}
+      disabled={downloading}
+      title={dlError ? 'Download failed — try again' : 'Download receipt PDF'}
+      className={`text-[10px] px-1.5 py-0.5 rounded font-medium transition-colors shrink-0
+        ${ dlError
+          ? 'text-red-500 dark:text-red-400 hover:underline'
+          : 'text-gray-400 dark:text-gray-500 hover:text-blue-500 dark:hover:text-blue-400'
+        } disabled:opacity-50`}
+    >
+      {downloading ? '…' : dlError ? '! retry' : '↓ PDF'}
+    </button>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Receipt section (#40: receipt PDF download per row)
 // ---------------------------------------------------------------------------
 
 function ReceiptSection({ poId }: { poId: string }) {
@@ -376,22 +457,31 @@ function ReceiptSection({ poId }: { poId: string }) {
     <div className="space-y-1.5">
       {receipts.map(r => (
         <div key={r.id} className="border dark:border-gray-700 rounded overflow-hidden">
+          {/* Collapsed header: status badge + short ID + datetime + PDF button */}
           <button type="button" onClick={() => setExpanded(p => p === r.id ? null : r.id)}
-            className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 text-left">
-            <div className="flex items-center gap-2">
-              <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase
-                ${r.status === 'applied'
+            className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 text-left gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase shrink-0
+                ${ r.status === 'applied'
                   ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
                   : r.status === 'test_applied'
                   ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
                   : r.status === 'failed'
                   ? 'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400'
-                  : 'bg-gray-100 text-gray-500'}`}>
+                  : 'bg-gray-100 text-gray-500'
+                }`}>
                 {r.status === 'test_applied' ? 'test run' : r.status}
               </span>
-              <span className="text-xs font-mono text-gray-500 dark:text-gray-400">{r.id.slice(0, 8)}</span>
+              <span className="text-xs font-mono text-gray-500 dark:text-gray-400 truncate">{r.id.slice(0, 8)}</span>
             </div>
-            <span className="text-[var(--text-secondary)] text-gray-400">{formatDateTime(r.received_at)}</span>
+            {/* Right side: timestamp + PDF download button */}
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[var(--text-secondary)] text-gray-400">{formatDateTime(r.received_at)}</span>
+              {/* Only applied/test_applied receipts have a PDF */}
+              {(r.status === 'applied' || r.status === 'test_applied') && (
+                <ReceiptPdfButton receiptId={r.id} />
+              )}
+            </div>
           </button>
           {expanded === r.id && <ReceiptLines receiptId={r.id} />}
         </div>
@@ -406,7 +496,10 @@ function ReceiptLines({ receiptId }: { receiptId: string }) {
 
   useEffect(() => {
     import('../../api/supplyChainApi').then(({ fetchReceipt }) => {
-      fetchReceipt(receiptId).then(r => setLines(r.lines as ReceiptLine[])).catch(() => setLines([])).finally(() => setLoading(false))
+      fetchReceipt(receiptId)
+        .then(r => setLines(r.lines as ReceiptLine[]))
+        .catch(() => setLines([]))
+        .finally(() => setLoading(false))
     })
   }, [receiptId])
 
@@ -414,14 +507,30 @@ function ReceiptLines({ receiptId }: { receiptId: string }) {
 
   return (
     <div className="divide-y dark:divide-gray-800">
-      {lines.map(line => (
-        <div key={line.id} className="px-3 py-1.5 flex items-center justify-between text-xs">
-          <span className="kal-text-mono text-gray-400 truncate">{line.inventory_item_id.split('/').pop()}</span>
-          <span className={`font-semibold ${(line.delta ?? line.quantity_received) > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
-            +{line.delta ?? line.quantity_received}
-          </span>
-        </div>
-      ))}
+      {lines.map(line => {
+        const rcvd   = line.quantity_received ?? 0
+        const dmg    = (line as any).quantity_damaged ?? 0
+        const delta  = line.delta ?? rcvd
+        return (
+          <div key={line.id} className="px-3 py-1.5 flex items-center justify-between text-xs gap-2">
+            <span className="text-gray-600 dark:text-gray-300 truncate flex-1">
+              {(line as any).title ?? line.inventory_item_id.split('/').pop()}
+            </span>
+            <div className="flex items-center gap-1 shrink-0">
+              {delta > 0 && (
+                <span className="font-semibold text-green-600 dark:text-green-400 tabular-nums">
+                  +{delta}
+                </span>
+              )}
+              {dmg > 0 && (
+                <span className="text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 font-semibold">
+                  {dmg} dmg
+                </span>
+              )}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -745,9 +854,7 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
             </div>
           )}
 
-          {/* PO PDF download for submitted / confirmed / partial / received orders.
-              Labelled explicitly "Download PO PDF" to distinguish from the receipt PDF
-              that appears in the wizard result phase after a receive. */}
+          {/* PO PDF for submitted / confirmed / partial / received orders */}
           {['submitted', 'confirmed', 'partial', 'received'].includes(order.status) && (
             <button
               onClick={handleDownloadPdf}

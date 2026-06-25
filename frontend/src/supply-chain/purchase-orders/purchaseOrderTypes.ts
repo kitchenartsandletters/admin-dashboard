@@ -1,6 +1,8 @@
 // purchaseOrderTypes.ts
 // Type definitions for purchase orders and lines.
 // Reflects the full database schema including ad hoc fields added in migration 005.
+// Damage fields (#29) added: quantity_damaged and damage_resolution on
+// PurchaseOrderLine and ReceiptLine.
 
 export type POStatus =
   | 'draft'
@@ -24,6 +26,8 @@ export type AdHocSource =
   | 'packing_slip'
   | 'verbal'
   | 'other'
+
+export type DamageResolution = 'credit' | 'replacement_pending'
 
 export const AD_HOC_SOURCE_LABELS: Record<AdHocSource, string> = {
   email:        'Email',
@@ -90,7 +94,7 @@ export interface PurchaseOrder {
   is_test: boolean
   archived_at: string | null
 
-  // For display purposes, we populate this from supplier_accounts.account_number but it is not guaranteed to be present on all POs
+  // For display purposes, we populate this from supplier_accounts.account_number
   account_number?: string     // supplier_accounts.account_number
 }
 
@@ -104,6 +108,11 @@ export interface PurchaseOrderLine {
   quantity_received: number
   quantity_backordered: number
   quantity_cancelled: number
+  // Damage fields (#29): quantity_received is ALWAYS undamaged copies only.
+  // quantity_damaged tracks copies that arrived damaged (not restocked to Shopify).
+  // damage_resolution records the publisher's response.
+  quantity_damaged: number
+  damage_resolution: DamageResolution | null
   status: POLineStatus
   notes: string | null
   created_at: string
@@ -135,7 +144,8 @@ export interface ReceiptLine {
   receipt_id: string
   purchase_order_line_id: string
   inventory_item_id: string
-  quantity_received: number
+  quantity_received: number     // undamaged copies only
+  quantity_damaged: number      // damaged copies (no Shopify mutation)
   restock_applied_at: string | null
   damage_applied_at: string | null
   status: string
@@ -143,4 +153,7 @@ export interface ReceiptLine {
   // Joined from inventory_events
   shopify_group_id?: string
   delta?: number
+  // Populated by API from supplier_products (available when fetched via receipt detail)
+  title?: string | null
+  isbn?: string | null
 }
