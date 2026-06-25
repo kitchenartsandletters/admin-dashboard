@@ -20,6 +20,10 @@
 //      - quantity_received = 0 with damage does NOT show a green ✓ badge
 //      - Unresolved damage lines show a "Resolve" action that calls
 //        PATCH /api/receiving/lines/{po_line_id}/damage
+//
+// #46: LinesPanel sorts lines alphabetically by title (leading-article agnostic:
+//      strips "A ", "An ", "The " before comparing). Non-draft POs split into
+//      two collapsible groups — Pending (0 received) above Received/Done below.
 
 import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -98,6 +102,65 @@ function formatDate(iso: string | null | undefined): string {
 function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+// ---------------------------------------------------------------------------
+// Article-agnostic sort key (#46)
+// Strips leading "A ", "An ", "The " (case-insensitive) before alphabetic
+// comparison so "The Art of Fermentation" sorts under A, not T.
+// ---------------------------------------------------------------------------
+
+function titleSortKey(line: PurchaseOrderLine): string {
+  const raw = (line.title ?? line.isbn ?? line.inventory_item_id ?? '').toLowerCase()
+  return raw.replace(/^(a |an |the )/i, '').trim()
+}
+
+function sortLines(lines: PurchaseOrderLine[]): PurchaseOrderLine[] {
+  return [...lines].sort((a, b) => titleSortKey(a).localeCompare(titleSortKey(b)))
+}
+
+// A line is "done" if it has received all its copies, OR if it's damage-credit
+// closed (status === 'received' even though quantity_received === 0).
+function isLineDone(line: PurchaseOrderLine): boolean {
+  return line.status === 'received' || line.quantity_received >= line.quantity_ordered
+}
+
+// ---------------------------------------------------------------------------
+// LineGroupHeader — collapsible section header for Pending / Received groups
+// ---------------------------------------------------------------------------
+
+function LineGroupHeader({
+  label, count, expanded, onToggle, accent,
+}: {
+  label: string
+  count: number
+  expanded: boolean
+  onToggle: () => void
+  accent: 'amber' | 'green' | 'gray'
+}) {
+  const dotColor = {
+    amber: 'bg-amber-400',
+    green: 'bg-green-500',
+    gray:  'bg-gray-400',
+  }[accent]
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="w-full flex items-center justify-between py-1.5 text-left group"
+    >
+      <div className="flex items-center gap-2">
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} />
+        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+          {label} ({count})
+        </span>
+      </div>
+      <span className="text-[10px] text-gray-300 dark:text-gray-600 group-hover:text-gray-500 dark:group-hover:text-gray-400 transition-colors">
+        {expanded ? '▾' : '▸'}
+      </span>
+    </button>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -230,8 +293,8 @@ function LineItemRow({ line, isDraft, onQtyChange, onDelete, onDamageResolved }:
     }
   }
 
-  const hasDamage      = (line.quantity_damaged ?? 0) > 0
-  const isFullyDamaged = hasDamage && line.quantity_received === 0
+  const hasDamage       = (line.quantity_damaged ?? 0) > 0
+  const isFullyDamaged  = hasDamage && line.quantity_received === 0
   const needsResolution = hasDamage && !line.damage_resolution
 
   return (
@@ -513,13 +576,6 @@ function ReceiptSection({ poId }: { poId: string }) {
         const hasPdf = r.status === 'applied' || r.status === 'test_applied'
         return (
           <div key={r.id} className="border dark:border-gray-700 rounded overflow-hidden">
-            {/*
-              Two-line receipt header — avoids superimposition in the narrow
-              256px sidebar column.
-
-              Line 1: status badge + short receipt ID  (left-aligned)
-              Line 2: datetime                         (left) · ↓ Receipt PDF (right)
-            */}
             <button
               type="button"
               onClick={() => setExpanded(p => p === r.id ? null : r.id)}
@@ -646,7 +702,7 @@ function OrderDetailsPanel({ order, onRefresh }: { order: PurchaseOrder; onRefre
 }
 
 // ---------------------------------------------------------------------------
-// Lines panel
+// Lines panel (#46: alphabetical sort, pending/received split for non-draft)
 // ---------------------------------------------------------------------------
 
 function LinesPanel({ order, lines, onLineAdded, onQtyChange, onDelete, onDamageResolved }: {
@@ -662,30 +718,80 @@ function LinesPanel({ order, lines, onLineAdded, onQtyChange, onDelete, onDamage
   const totalOrdered  = lines.reduce((s, l) => s + l.quantity_ordered, 0)
   const totalReceived = lines.reduce((s, l) => s + l.quantity_received, 0)
 
+  // Collapsible group state — both start open
+  const [pendingOpen, setPendingOpen] = useState(true)
+  const [doneOpen,    setDoneOpen]    = useState(true)
+
+  const sorted = sortLines(lines)
+
+  // For non-draft: split into pending (still needs stock) and done
+  const pendingLines = !isDraft ? sorted.filter(l => !isLineDone(l)) : []
+  const doneLines    = !isDraft ? sorted.filter(l =>  isLineDone(l)) : []
+
+  const renderRow = (line: PurchaseOrderLine) => (
+    <LineItemRow
+      key={line.id}
+      line={line}
+      isDraft={isDraft}
+      onQtyChange={onQtyChange}
+      onDelete={onDelete}
+      onDamageResolved={onDamageResolved}
+    />
+  )
+
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="flex-1 overflow-y-auto min-h-0">
         {lines.length === 0 ? (
           <p className="text-xs text-gray-400 dark:text-gray-500 py-2">No lines on this PO.</p>
-        ) : (
+        ) : isDraft ? (
+          // Draft: single flat alphabetical list, no groups
           <div>
-            {lines.map(line => (
-              <LineItemRow
-                key={line.id}
-                line={line}
-                isDraft={isDraft}
-                onQtyChange={onQtyChange}
-                onDelete={onDelete}
-                onDamageResolved={onDamageResolved}
-              />
-            ))}
+            {sorted.map(renderRow)}
             <div className="pt-2 flex justify-between text-[var(--text-secondary)] text-gray-400 dark:text-gray-500">
               <span>{lines.length} line{lines.length !== 1 ? 's' : ''}</span>
-              <span className="tabular-nums">
-                {isDraft
-                  ? `${totalOrdered} ordered`
-                  : `${totalReceived} / ${totalOrdered} received`}
-              </span>
+              <span className="tabular-nums">{totalOrdered} ordered</span>
+            </div>
+          </div>
+        ) : (
+          // Non-draft: Pending group first, then Received/Done
+          <div>
+            {/* Pending group */}
+            {pendingLines.length > 0 && (
+              <div className="mb-1">
+                <div className="border-b dark:border-gray-800 mb-1">
+                  <LineGroupHeader
+                    label="Pending"
+                    count={pendingLines.length}
+                    expanded={pendingOpen}
+                    onToggle={() => setPendingOpen(v => !v)}
+                    accent="amber"
+                  />
+                </div>
+                {pendingOpen && pendingLines.map(renderRow)}
+              </div>
+            )}
+
+            {/* Received / done group */}
+            {doneLines.length > 0 && (
+              <div className="mt-2">
+                <div className="border-b dark:border-gray-800 mb-1">
+                  <LineGroupHeader
+                    label="Received"
+                    count={doneLines.length}
+                    expanded={doneOpen}
+                    onToggle={() => setDoneOpen(v => !v)}
+                    accent="green"
+                  />
+                </div>
+                {doneOpen && doneLines.map(renderRow)}
+              </div>
+            )}
+
+            {/* Totals footer */}
+            <div className="pt-2 mt-1 border-t dark:border-gray-800 flex justify-between text-[var(--text-secondary)] text-gray-400 dark:text-gray-500">
+              <span>{lines.length} line{lines.length !== 1 ? 's' : ''}</span>
+              <span className="tabular-nums">{totalReceived} / {totalOrdered} received</span>
             </div>
           </div>
         )}
