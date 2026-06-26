@@ -9,6 +9,7 @@ import { fetchTransfers, fetchTransferDetail, fetchLocations, Location } from '.
 import { formatDate, SortConfig, SortIcon, nextSortDirection } from '../../utils/tableUtils'
 import TransferDispatchForm from './TransferDispatchForm'
 import TransferReceivePanel from './TransferReceivePanel'
+import RightSidebar from '../../components/RightSidebar'
 
 type LocMap = Record<string, Location>
 
@@ -246,6 +247,7 @@ export default function TransferService() {
   const [detail,    setDetail]    = useState<TransferDetail | null>(null)
   const [showDispatchForm,   setShowDispatchForm]   = useState(false)
   const [receivingTransferId, setReceivingTransferId] = useState<string | null>(null)
+  const [docsFilePath, setDocsFilePath] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -321,12 +323,20 @@ export default function TransferService() {
               {loading ? 'Loading…' : `${transfers.length} total transfers`}
             </p>
           </div>
-          <button
-            onClick={() => setShowDispatchForm(true)}
-            className="px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
-          >
-            + New transfer
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setDocsFilePath('/docs/supply-chain-transfers.md')}
+              className="px-3 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              View Help Guide
+            </button>
+            <button
+              onClick={() => setShowDispatchForm(true)}
+              className="px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
+            >
+              + New transfer
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -401,6 +411,14 @@ export default function TransferService() {
           transferId={receivingTransferId}
           onClose={() => setReceivingTransferId(null)}
           onReceived={async () => { setReceivingTransferId(null); await load() }}
+        />
+      )}
+
+      {docsFilePath && (
+        <RightSidebar
+          title="Transfers Guide"
+          docsFilePath={docsFilePath}
+          onClose={() => setDocsFilePath(null)}
         />
       )}
     </>
