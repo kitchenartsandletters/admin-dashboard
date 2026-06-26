@@ -46,7 +46,7 @@ export default function SlipReconciliationView({ candidate, onConfirm, onBack }:
   const [editQtys, setEditQtys] = useState<Record<string, number>>(() => {
     const init: Record<string, number> = {}
     for (const line of candidate.reconciliation) {
-      if (line.status === 'matched' && line.isbn) {
+      if ((line.status === 'matched' || line.status === 'matched_fuzzy') && line.isbn) {
         // Default to the smaller of slip qty and PO remaining
         init[line.isbn] = Math.min(line.slip_qty, line.po_qty)
       }
@@ -54,7 +54,7 @@ export default function SlipReconciliationView({ candidate, onConfirm, onBack }:
     return init
   })
 
-  const matched     = candidate.reconciliation.filter(l => l.status === 'matched')
+  const matched     = candidate.reconciliation.filter(l => l.status === 'matched' || l.status === 'matched_fuzzy')
   const onSlipOnly  = candidate.reconciliation.filter(l => l.status === 'on_slip_only')
   const onPOOnly    = candidate.reconciliation.filter(l => l.status === 'on_po_only')
 
@@ -125,8 +125,20 @@ export default function SlipReconciliationView({ candidate, onConfirm, onBack }:
                   </p>
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     {line.isbn && <span className="text-[11px] font-mono text-gray-400 dark:text-gray-500">{line.isbn}</span>}
+                    {line.status === 'matched_fuzzy' && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 uppercase">
+                        Recovered — confirm
+                      </span>
+                    )}
                     <DeltaBadge delta={line.delta} slipQty={line.slip_qty} poQty={line.po_qty} />
                   </div>
+                  {line.status === 'matched_fuzzy' && line.recovered_isbn && (
+                    <p className="text-[11px] text-purple-600 dark:text-purple-400 mt-0.5">
+                      OCR read <span className="font-mono">{line.original_slip_isbn ?? line.isbn}</span> → matched <span className="font-mono">{line.recovered_isbn}</span>
+                      {line.match_method === 'fuzzy_title' ? ' by title' : line.match_method === 'fuzzy_isbn' ? ' by near-ISBN' : ' by ISBN + title'}
+                      {typeof line.match_score === 'number' ? ` (${Math.round(line.match_score * 100)}%)` : ''}. Verify before receiving.
+                    </p>
+                  )}
                   <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
                     Slip: {line.slip_qty} · PO remaining: {line.po_qty}
                   </p>
