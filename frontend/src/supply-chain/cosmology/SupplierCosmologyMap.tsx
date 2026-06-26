@@ -9,6 +9,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, forwardRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import RightSidebar from '../../components/RightSidebar'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -874,6 +875,7 @@ export default function SupplierCosmologyMap() {
   const [selectedNode, setSelectedNode] = useState<CosmologyNode | null>(null)
   const [showDeprecated, setShowDeprecated] = useState(false)
   const [showUnclassified, setShowUnclassified] = useState(false)
+  const [docsFilePath, setDocsFilePath] = useState<string | null>(null)
 
   useEffect(() => {
     fetchCosmology()
@@ -924,6 +926,12 @@ export default function SupplierCosmologyMap() {
             />
             Show deprecated
           </label>
+          <button
+            onClick={() => setDocsFilePath('/docs/supply-chain-cosmology.md')}
+            className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
+          >
+            View Help Guide
+          </button>
         </div>
       </div>
 
@@ -1042,6 +1050,14 @@ export default function SupplierCosmologyMap() {
             <CodeLookup flat={flat} />
           )}
         </>
+      )}
+
+      {docsFilePath && (
+        <RightSidebar
+          title="Cosmology Map Guide"
+          docsFilePath={docsFilePath}
+          onClose={() => setDocsFilePath(null)}
+        />
       )}
     </div>
   )
