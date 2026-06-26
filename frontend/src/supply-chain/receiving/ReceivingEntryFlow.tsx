@@ -711,13 +711,14 @@ export default function ReceivingEntryFlow() {
     // DISJOINT set of slip ISBNs, this is a multi-PO slip — open the dashboard
     // rather than forcing a single winner.
     //
-    // "Owns" = candidate has a `matched` reconciliation row for that ISBN.
+    // "Owns" = candidate has a `matched` (or OCR-recovered `matched_fuzzy`)
+    // reconciliation row for that ISBN.
     // Multi-PO when: ≥2 candidates each own ≥2 slip lines, and cross-candidate
     // ISBN overlap is low (each ISBN belongs predominantly to one PO).
     const ownedByCandidate = candidates.map(c => {
       const set = new Set<string>()
       for (const r of c.reconciliation) {
-        if (r.status === 'matched' && r.isbn) set.add(r.isbn.trim())
+        if ((r.status === 'matched' || r.status === 'matched_fuzzy') && r.isbn) set.add(r.isbn.trim())
       }
       return set
     })

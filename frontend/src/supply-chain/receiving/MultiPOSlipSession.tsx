@@ -43,10 +43,18 @@ import type {
 
 type SegmentStatus = 'pending' | 'in_progress' | 'received' | 'partial' | 'skipped'
 
+interface FuzzyRecovery {
+  method:        'fuzzy_isbn' | 'fuzzy_title' | 'fuzzy_isbn+title'
+  score:         number
+  recovered_isbn: string         // the real catalog ISBN matched
+  slip_isbn:     string | null   // the misread ISBN the slip carried (may be '')
+}
+
 interface SlipAssignment {
   isbn:       string
   title:      string | null
   slip_qty:   number
+  fuzzy?:     FuzzyRecovery       // present when this line was OCR-recovered (#24)
 }
 
 interface POSegment {
@@ -84,14 +92,26 @@ interface Segmentation {
 
 function segmentSlip(slipLines: ParsedSlipLine[], candidates: SlipMatchCandidate[]): Segmentation {
   // Build ISBN → best-owning-candidate index from each candidate's matched rows.
+  // Both 'matched' (exact) and 'matched_fuzzy' (OCR-recovered, #24) rows route a
+  // slip ISBN to a PO. Fuzzy rows are keyed by the SLIP's (misread) ISBN — the
+  // same value carried on the slip line — so the join below works for both.
   const owner = new Map<string, { idx: number; coverage: number }>()
+  const fuzzyByIsbn = new Map<string, FuzzyRecovery>()
   candidates.forEach((c, idx) => {
     for (const recon of c.reconciliation) {
-      if (recon.status !== 'matched' || !recon.isbn) continue
+      if ((recon.status !== 'matched' && recon.status !== 'matched_fuzzy') || !recon.isbn) continue
       const isbn = recon.isbn.trim()
       const prev = owner.get(isbn)
       if (!prev || c.slip_coverage > prev.coverage) {
         owner.set(isbn, { idx, coverage: c.slip_coverage })
+      }
+      if (recon.status === 'matched_fuzzy' && recon.recovered_isbn) {
+        fuzzyByIsbn.set(isbn, {
+          method:         recon.match_method ?? 'fuzzy_isbn',
+          score:          recon.match_score ?? 0,
+          recovered_isbn: recon.recovered_isbn,
+          slip_isbn:      recon.original_slip_isbn ?? isbn,
+        })
       }
     }
   })
@@ -106,6 +126,7 @@ function segmentSlip(slipLines: ParsedSlipLine[], candidates: SlipMatchCandidate
       isbn,
       title: line.title ?? null,
       slip_qty: line.quantity ?? 0,
+      fuzzy: fuzzyByIsbn.get(isbn),
     }
     const o = owner.get(isbn)
     if (o) buckets[o.idx].push(assignment)
@@ -170,6 +191,7 @@ interface PanelLine {
   damage_disposal: DamageDisposal | null
   damage_resolution: DamageResolution | null
   on_slip: boolean
+  fuzzy?: FuzzyRecovery   // set when the slip line for this PO line was OCR-recovered (#24)
 }
 
 function SegmentReceivePanel({
@@ -198,6 +220,16 @@ function SegmentReceivePanel({
     return m
   }, [segment.assignments])
 
+  // Fuzzy recoveries are keyed by the REAL catalog ISBN (recovered_isbn), since
+  // that's what the PO line carries — the slip line's own ISBN was the misread.
+  const fuzzyByRecoveredIsbn = useMemo(() => {
+    const m: Record<string, FuzzyRecovery> = {}
+    for (const a of segment.assignments) {
+      if (a.fuzzy?.recovered_isbn) m[a.fuzzy.recovered_isbn.trim()] = a.fuzzy
+    }
+    return m
+  }, [segment.assignments])
+
   // Load PO detail once
   if (!loadStarted) {
     setLoadStarted(true)
@@ -208,7 +240,15 @@ function SegmentReceivePanel({
         setLines(active.map(l => {
           const remaining = l.quantity_ordered - l.quantity_received
           const isbn = l.isbn ?? null
-          const slipQty = isbn ? (slipQtyByIsbn[isbn] ?? 0) : 0
+          const fuzzy = isbn ? fuzzyByRecoveredIsbn[isbn.trim()] : undefined
+          // Exact lines prefill from slipQtyByIsbn (keyed by slip ISBN == PO ISBN).
+          // Fuzzy lines: the slip ISBN differs from the PO ISBN, so resolve the
+          // slip qty through the recovered mapping instead.
+          let slipQty = isbn ? (slipQtyByIsbn[isbn] ?? 0) : 0
+          if (slipQty === 0 && fuzzy) {
+            const a = segment.assignments.find(x => x.fuzzy?.recovered_isbn?.trim() === isbn?.trim())
+            slipQty = a?.slip_qty ?? 0
+          }
           const prefill = Math.min(slipQty, remaining)
           return {
             purchase_order_line_id: l.id,
@@ -221,6 +261,7 @@ function SegmentReceivePanel({
             damage_disposal: null,
             damage_resolution: null,
             on_slip: slipQty > 0,
+            fuzzy,
           }
         }))
         const ref = (d.order as any).informal_ref
@@ -351,19 +392,32 @@ function SegmentReceivePanel({
                 className={`rounded-md border px-4 py-3 ${
                   l.quantity_damaged > 0
                     ? 'border-amber-400 dark:border-amber-600'
+                    : l.fuzzy ? 'border-purple-300 dark:border-purple-700 bg-purple-50/30 dark:bg-purple-900/10'
                     : l.on_slip ? 'dark:border-gray-700' : 'border-gray-200 dark:border-gray-800 opacity-70'
                 }`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{l.title}</p>
-                      {!l.on_slip && (
+                      {l.fuzzy && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 uppercase shrink-0">
+                          Recovered — confirm
+                        </span>
+                      )}
+                      {!l.on_slip && !l.fuzzy && (
                         <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 uppercase shrink-0">
                           Not on slip
                         </span>
                       )}
                     </div>
                     {l.isbn && <p className="text-[11px] font-mono text-gray-400 dark:text-gray-500 mt-0.5">{l.isbn}</p>}
+                    {l.fuzzy && (
+                      <p className="text-[11px] text-purple-600 dark:text-purple-400 mt-0.5">
+                        Matched from slip{l.fuzzy.slip_isbn ? <> ISBN <span className="font-mono">{l.fuzzy.slip_isbn}</span></> : ' line'}
+                        {' '}via {l.fuzzy.method === 'fuzzy_title' ? 'title' : l.fuzzy.method === 'fuzzy_isbn' ? 'near-ISBN' : 'ISBN + title'}
+                        {' '}({Math.round(l.fuzzy.score * 100)}%). Verify this is correct before receiving.
+                      </p>
+                    )}
                     <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">Remaining: {l.remaining}</p>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
@@ -539,6 +593,12 @@ export default function MultiPOSlipSession({ slipLines, candidates, locationName
                       <span className="text-green-600 dark:text-green-400"> · {seg.units_received} received{seg.units_damaged ? `, ${seg.units_damaged} damaged` : ''}</span>
                     )}
                   </p>
+                  {seg.assignments.some(a => a.fuzzy) && (
+                    <p className="text-[11px] text-purple-600 dark:text-purple-400 mt-0.5 flex items-center gap-1">
+                      <span aria-hidden>⤷</span>
+                      {seg.assignments.filter(a => a.fuzzy).length} line{seg.assignments.filter(a => a.fuzzy).length !== 1 ? 's' : ''} recovered from OCR — confirm on receive
+                    </p>
+                  )}
                 </div>
                 <div className="shrink-0 flex flex-col items-end gap-1.5">
                   {seg.status === 'pending' || seg.status === 'in_progress' ? (

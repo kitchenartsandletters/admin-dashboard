@@ -354,12 +354,16 @@ export default function PackingSlipUpload({ onLinesAccepted, onPOCandidatesFound
       setState('matching')
       const isbns     = merged.map(l => l.isbn).filter(Boolean) as string[]
       const quantities: Record<string, number> = {}
+      const titles: Record<string, string> = {}
       for (const l of merged) {
         if (l.isbn && l.quantity != null) quantities[l.isbn] = l.quantity
+        // Send the slip title alongside each ISBN so the backend can recover
+        // OCR-misread lines by title when the ISBN itself didn't match (#24).
+        if (l.isbn && l.title) titles[l.isbn] = l.title
       }
 
       try {
-        const matchResult = await matchSlipToPO({ isbns, quantities })
+        const matchResult = await matchSlipToPO({ isbns, quantities, titles })
         if (matchResult.candidates.length > 0) {
           onISBNMatchFound(matchResult.candidates, matchResult.strong_match, merged)
           setState('reviewing')
