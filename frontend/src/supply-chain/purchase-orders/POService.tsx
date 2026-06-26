@@ -3,6 +3,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import POTable from './POTable'
 import PODetailSidebar from './PODetailSidebar'
+import RightSidebar from '../../components/RightSidebar'
 import POBuilder from './POBuilder'
 import POCSVImport from './POCSVImport'
 import { PurchaseOrder, PurchaseOrderDetail, POStatus } from './purchaseOrderTypes'
@@ -77,6 +78,7 @@ export default function POService() {
   const [showCSVImport, setShowCSVImport] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [archiving, setArchiving] = useState(false)
+  const [docsFilePath, setDocsFilePath] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -205,6 +207,13 @@ export default function POService() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setDocsFilePath('/docs/supply-chain-purchase-orders.md')}
+            className="px-3 py-2 text-xs sm:text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
+          >
+            View Help Guide
+          </button>
+
           <button
             onClick={() => setShowCSVImport(true)}
             className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600
@@ -338,6 +347,14 @@ export default function POService() {
             const d = await fetchPurchaseOrderDetail(poId)
             setSelectedOrder(d.order)
           }}
+        />
+      )}
+
+      {docsFilePath && (
+        <RightSidebar
+          title="Purchase Orders Guide"
+          docsFilePath={docsFilePath}
+          onClose={() => setDocsFilePath(null)}
         />
       )}
     </div>
