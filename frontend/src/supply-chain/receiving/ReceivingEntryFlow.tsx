@@ -40,7 +40,6 @@ import {
   VariantSearchResult,
   POCandidate,
   SlipMatchCandidate,
-  PurchaseOrder as PurchaseOrderType,
 } from '../../api/supplyChainApi'
 import { SupplierAccount, SupplierParty, SupplierDetail } from '../suppliers/supplierTypes'
 import { PurchaseOrder } from '../purchase-orders/purchaseOrderTypes'
