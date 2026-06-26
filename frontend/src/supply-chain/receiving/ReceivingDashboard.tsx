@@ -15,6 +15,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PODetailSidebar from '../purchase-orders/PODetailSidebar'
+import RightSidebar from '../../components/RightSidebar'
 import {
   fetchPurchaseOrderDetail,
   fetchPurchaseOrders,
@@ -246,6 +247,7 @@ export default function ReceivingDashboard() {
   const [searchQuery, setSearchQuery]   = useState('')
   const [searching, setSearching]       = useState(false)
   const [selectedPODetail, setSelectedPODetail] = useState<PurchaseOrderDetail | null>(null)
+  const [docsFilePath, setDocsFilePath] = useState<string | null>(null)
   const [submittedPOs, setSubmittedPOs] = useState<PurchaseOrder[]>([])
   const [posLoading, setPosLoading]     = useState(true)
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -352,10 +354,16 @@ export default function ReceivingDashboard() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">Receiving</h1>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5">Incoming stock history and receipt management.</p>
         </div>
-        <button onClick={() => navigate('/receiving/new')}
-          className="w-full sm:w-auto px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm flex items-center justify-center gap-1.5">
-          <span>+ New Receipt</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setDocsFilePath('/docs/supply-chain-receiving.md')}
+            className="px-3 py-2 text-xs sm:text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
+            View Help Guide
+          </button>
+          <button onClick={() => navigate('/receiving/new')}
+            className="w-full sm:w-auto px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm flex items-center justify-center gap-1.5">
+            <span>+ New Receipt</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -636,6 +644,14 @@ export default function ReceivingDashboard() {
         onReceive={poId => navigate(`/receiving/wizard?po=${poId}`)}
         wide={true}
       />
+
+      {docsFilePath && (
+        <RightSidebar
+          title="Receiving Guide"
+          docsFilePath={docsFilePath}
+          onClose={() => setDocsFilePath(null)}
+        />
+      )}
     </div>
   )
 }
