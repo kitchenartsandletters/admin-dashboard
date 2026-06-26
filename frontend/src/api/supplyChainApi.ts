@@ -115,59 +115,68 @@ export async function searchVariants(query: string): Promise<VariantSearchResult
 export async function lookupProductByISBN(isbn: string): Promise<VariantSearchResult[]> { return sc(`/api/suppliers/products/search${qs({ q: isbn, limit: 5 })}`) }
 
 export interface ShopifyLookupResult {
-  inventory_item_id: string
-  variant_id: string
-  product_id: string
-  title: string
-  variant_title: string | null
-  isbn: string | null
-  sku: string | null
-  vendor: string | null
-  price: string | null
-  image_url: string | null
+  found: boolean
+  registered: boolean
+  not_in_shopify?: boolean
+  unrecognized_vendor?: boolean
+  vendor?: string
+  title?: string
+  isbn?: string
+  inventory_item_id?: string
+  variant_id?: string
+  shopify_status?: string
+  record?: { id: string; inventory_item_id: string; variant_id: string; title: string | null; isbn: string | null; vendor: string | null; is_active: boolean }
 }
-export async function lookupShopifyVariant(isbn: string): Promise<ShopifyLookupResult | null> {
-  const results = await sc<ShopifyLookupResult[]>(`/api/shopify/lookup${qs({ isbn })}`)
-  return results.length > 0 ? results[0] : null
+export async function searchShopifyByISBN(isbn: string): Promise<ShopifyLookupResult> { return sc(`/api/suppliers/products/search-shopify${qs({ isbn })}`) }
+export async function syncSingleProduct(isbn: string): Promise<{ synced: boolean; not_in_shopify?: boolean; unrecognized_vendor?: boolean; vendor?: string; title?: string; inventory_item_id?: string; record?: unknown }> {
+  return sc(`/api/suppliers/sync/product${qs({ isbn })}`, { method: 'POST' })
 }
 
 // ===========================================================================
 // PURCHASE ORDERS
 // ===========================================================================
-export async function fetchPurchaseOrders(opts: { status?: string; supplierAccountId?: string; includeArchived?: boolean; includeTest?: boolean; limit?: number; offset?: number } = {}): Promise<PurchaseOrder[]> {
-  return sc(`/api/purchase-orders${qs({ status: opts.status, supplier_account_id: opts.supplierAccountId, include_archived: opts.includeArchived, include_test: opts.includeTest, limit: opts.limit ?? 100, offset: opts.offset ?? 0 })}`)
+export async function fetchPurchaseOrders(opts: { status?: string; supplierAccountId?: string; locationId?: string; isAdHoc?: boolean; search?: string; limit?: number; offset?: number } = {}): Promise<PurchaseOrder[]> {
+  return sc(`/api/purchase-orders${qs({ status: opts.status, supplier_account_id: opts.supplierAccountId, location_id: opts.locationId, is_ad_hoc: opts.isAdHoc, search: opts.search, limit: opts.limit ?? 100, offset: opts.offset ?? 0 })}`)
 }
 export async function fetchPurchaseOrderDetail(poId: string): Promise<PurchaseOrderDetail> { return sc(`/api/purchase-orders/${poId}`) }
-export async function createPurchaseOrder(body: { supplier_account_id: string; destination_location_id: string; informal_ref?: string; expected_date?: string; notes?: string; is_ad_hoc?: boolean; is_test?: boolean; lines: Array<{ inventory_item_id: string; variant_id: string; quantity_ordered: number; unit_cost: number }> }): Promise<PurchaseOrderDetail> {
+export async function createPurchaseOrder(body: { supplier_account_id: string; destination_location_id: string; status?: string; po_number?: string; ordered_at?: string; expected_at?: string; notes?: string; is_ad_hoc?: boolean; ad_hoc_source?: string; informal_ref?: string; is_drop_ship?: boolean; drop_ship_venue_id?: string; drop_ship_address?: string; is_test?: boolean }): Promise<PurchaseOrder> {
   return sc('/api/purchase-orders', { method: 'POST', body: JSON.stringify(body) })
 }
-export async function updatePurchaseOrderStatus(poId: string, status: string): Promise<PurchaseOrder> {
-  return sc(`/api/purchase-orders/${poId}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })
-}
-export async function updatePurchaseOrder(poId: string, body: Partial<{ informal_ref: string; expected_date: string; notes: string; destination_location_id: string }>): Promise<PurchaseOrderDetail> {
+export async function updatePurchaseOrder(poId: string, body: Partial<{ status: string; ordered_at: string; expected_at: string; notes: string; po_number: string; is_ad_hoc: boolean; ad_hoc_source: string; informal_ref: string }>): Promise<PurchaseOrder> {
   return sc(`/api/purchase-orders/${poId}`, { method: 'PATCH', body: JSON.stringify(body) })
 }
-export async function addPurchaseOrderLine(poId: string, body: { inventory_item_id: string; variant_id: string; quantity_ordered: number; unit_cost: number }): Promise<PurchaseOrderLine> {
-  return sc(`/api/purchase-orders/${poId}/lines`, { method: 'POST', body: JSON.stringify(body) })
+export async function cancelPurchaseOrder(poId: string): Promise<void> { return sc(`/api/purchase-orders/${poId}`, { method: 'DELETE' }) }
+export async function submitPurchaseOrder(poId: string): Promise<PurchaseOrder> { return sc(`/api/purchase-orders/${poId}/submit`, { method: 'POST' }) }
+export async function confirmPurchaseOrder(poId: string): Promise<PurchaseOrder> { return sc(`/api/purchase-orders/${poId}/confirm`, { method: 'POST' }) }
+export async function archiveTestPOs(): Promise<{ archived_count: number }> { return sc('/api/purchase-orders/archive-test-pos', { method: 'POST' }) }
+export const submitPO = submitPurchaseOrder
+export async function addPOLine(poId: string, body: Omit<PurchaseOrderLine, 'id' | 'purchase_order_id' | 'quantity_received' | 'quantity_backordered' | 'quantity_cancelled' | 'status' | 'created_at'>): Promise<void> {
+  return sc(`/api/purchase-orders/${poId}/lines`, { method: 'POST', body: JSON.stringify({ ...body, purchase_order_id: poId }) })
 }
-export async function updatePurchaseOrderLine(poId: string, lineId: string, body: Partial<{ quantity_ordered: number; unit_cost: number }>): Promise<PurchaseOrderLine> {
-  return sc(`/api/purchase-orders/${poId}/lines/${lineId}`, { method: 'PATCH', body: JSON.stringify(body) })
+export async function createPOLine(poId: string, body: { inventory_item_id: string; variant_id: string; quantity_ordered: number; unit_cost?: number; notes?: string }): Promise<PurchaseOrderLine> {
+  return sc(`/api/purchase-orders/${poId}/lines`, { method: 'POST', body: JSON.stringify({ ...body, purchase_order_id: poId }) })
 }
-export async function deletePurchaseOrderLine(poId: string, lineId: string): Promise<void> {
-  return sc(`/api/purchase-orders/${poId}/lines/${lineId}`, { method: 'DELETE' })
+export async function updatePOLine(lineId: string, body: Partial<{ unit_cost: number; quantity_ordered: number; quantity_backordered: number; quantity_cancelled: number; status: string; notes: string }>): Promise<void> {
+  return sc(`/api/purchase-orders/lines/${lineId}`, { method: 'PATCH', body: JSON.stringify(body) })
 }
-export async function archivePurchaseOrder(poId: string): Promise<void> { return sc(`/api/purchase-orders/${poId}`, { method: 'DELETE' }) }
-export async function downloadPurchaseOrderPDF(poId: string, poNumber: string): Promise<void> {
-  return _downloadBlob(`/api/purchase-orders/${poId}/pdf`, `PO-${poNumber}.pdf`)
+export async function removePOLine(lineId: string): Promise<void> { return sc(`/api/purchase-orders/lines/${lineId}`, { method: 'DELETE' }) }
+export interface POLookupResult extends PurchaseOrder { match_type: 'exact' | 'fuzzy' }
+export async function lookupPurchaseOrders(opts: { poNumber?: string; supplierName?: string }): Promise<POLookupResult[]> {
+  return sc(`/api/purchase-orders/lookup${qs({ po_number: opts.poNumber, supplier_name: opts.supplierName })}`)
+}
+export async function downloadPOPdf(poId: string, poNumber: string): Promise<void> { return _downloadBlob(`/api/purchase-orders/${poId}/pdf`, `KAL-${poNumber}.pdf`) }
+export async function downloadReceiptPdf(receiptId: string): Promise<void> {
+  const shortId = receiptId.slice(0, 8).toUpperCase()
+  return _downloadBlob(`/api/receiving/${receiptId}/pdf`, `KAL-RECEIPT-${shortId}.pdf`)
 }
 
 // ===========================================================================
 // RECEIVING
 // ===========================================================================
-export async function receiveOrder(body: ReceiveRequest): Promise<ReceiveResult> {
-  return sc('/api/receiving', { method: 'POST', body: JSON.stringify(body) })
-}
-export async function fetchReceiptHistory(opts: { limit?: number; status?: string; search?: string } = {}): Promise<Receipt[]> {
+export async function receiveOrder(body: ReceiveRequest): Promise<ReceiveResult> { return sc('/api/receiving', { method: 'POST', body: JSON.stringify(body) }) }
+export async function fetchReceiptsForPO(poId: string): Promise<Receipt[]> { return sc(`/api/receiving/po/${poId}`) }
+export async function fetchReceipt(receiptId: string): Promise<{ receipt: Receipt; lines: unknown[] }> { return sc(`/api/receiving/${receiptId}`) }
+export async function fetchReceiptHistory(opts: { limit?: number; status?: string; search?: string } = {}): Promise<unknown[]> {
   return sc(`/api/receiving/history${qs({ limit: opts.limit ?? 100, status: opts.status, search: opts.search })}`)
 }
 export async function resolveDamage(poLineId: string, resolution: DamageResolution): Promise<{ po_line_id: string; damage_resolution: DamageResolution; line_status: string; po_status: string; updated: boolean }> {
