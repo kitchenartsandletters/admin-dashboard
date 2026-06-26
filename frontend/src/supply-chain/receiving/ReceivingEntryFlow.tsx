@@ -49,6 +49,7 @@ import NewProductWizard from '../receiving/NewProductWizard'
 import PackingSlipUpload, { ParsedSlipLine } from '../receiving/PackingSlipUpload'
 import SupplierAccountPicker, { resolveAccountForLocation } from '../suppliers/SupplierAccountPicker'
 import SlipReconciliationView from '../receiving/SlipReconciliationView'
+import RightSidebar from '../../components/RightSidebar'
 
 // ---------------------------------------------------------------------------
 // Session types
@@ -613,6 +614,7 @@ export default function ReceivingEntryFlow() {
   const { locationName } = useLocations()
 
   const [step, setStep]                   = useState<FlowStep>('po_lookup')
+  const [docsFilePath, setDocsFilePath]   = useState<string | null>(null)
   const [slipPoNumber, setSlipPoNumber]   = useState('')
   const [fuzzyMatches, setFuzzyMatches]   = useState<POLookupResult[]>([])
   const [isbnCandidates, setIsbnCandidates] = useState<SlipMatchCandidate[]>([])
@@ -815,9 +817,15 @@ export default function ReceivingEntryFlow() {
           <span className="text-base leading-none">←</span> Receiving
         </button>
       </div>
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">New Receipt</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Receive stock from a packing slip — standard PO or ad hoc.</p>
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">New Receipt</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Receive stock from a packing slip — standard PO or ad hoc.</p>
+        </div>
+        <button onClick={() => setDocsFilePath('/docs/supply-chain-receiving-intake.md')}
+          className="shrink-0 px-3 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
+          View Help Guide
+        </button>
       </div>
 
       {step === 'po_lookup' && (
@@ -909,6 +917,14 @@ export default function ReceivingEntryFlow() {
           slipPoNumber={slipPoNumber} locationName={locationName}
           onBack={() => setStep('lines')} onConfirm={handleConfirm}
           executing={executing} error={execError} />
+      )}
+
+      {docsFilePath && (
+        <RightSidebar
+          title="Receiving Intake Guide"
+          docsFilePath={docsFilePath}
+          onClose={() => setDocsFilePath(null)}
+        />
       )}
     </div>
   )
