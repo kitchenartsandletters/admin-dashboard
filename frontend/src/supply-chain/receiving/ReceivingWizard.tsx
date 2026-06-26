@@ -186,8 +186,8 @@ function WizardSlipScanner({
 //   4. Choose disposal method (for notes record)
 //   5. Choose resolution (credit closes the line; replacement keeps it open)
 //
-//   "I don't know yet" is valid for resolution — staff can set it post-receive
-//   via the PODetailSidebar resolve-damage action.
+// "I don't know yet" is valid for resolution — staff can set it post-receive
+// via the PODetailSidebar resolve-damage action.
 // ---------------------------------------------------------------------------
 
 function DamageSection({
