@@ -80,7 +80,7 @@ type ComponentState =
 interface Props {
   onLinesAccepted:      (lines: ParsedSlipLine[]) => void
   onPOCandidatesFound?: (candidates: POCandidate[], poReference: string) => void
-  onISBNMatchFound?:    (candidates: SlipMatchCandidate[], strongMatch: string | null) => void
+  onISBNMatchFound?:    (candidates: SlipMatchCandidate[], strongMatch: string | null, slipLines: ParsedSlipLine[]) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -361,7 +361,7 @@ export default function PackingSlipUpload({ onLinesAccepted, onPOCandidatesFound
       try {
         const matchResult = await matchSlipToPO({ isbns, quantities })
         if (matchResult.candidates.length > 0) {
-          onISBNMatchFound(matchResult.candidates, matchResult.strong_match)
+          onISBNMatchFound(matchResult.candidates, matchResult.strong_match, merged)
           setState('reviewing')
           return
         }
