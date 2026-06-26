@@ -4,6 +4,7 @@ import SupplierTable from './SupplierTable'
 import SupplierDetailSidebar from './SupplierDetailSidebar'
 import SupplierForm from './SupplierForm'
 import POBuilder from '../purchase-orders/POBuilder'
+import RightSidebar from '../../components/RightSidebar'
 import { SupplierParty, SupplierDetail, SupplierRole, SUPPLIER_ROLE_LABELS } from './supplierTypes'
 import { fetchSuppliers, fetchSupplierDetail } from '../../api/supplyChainApi'
 import { SortConfig, sortTitle, nextSortDirection } from '../../utils/tableUtils'
@@ -80,6 +81,7 @@ export default function SupplierService() {
   const [detail, setDetail] = useState<SupplierDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [formMode, setFormMode] = useState<'create' | 'edit' | null>(null)
+  const [docsFilePath, setDocsFilePath] = useState<string | null>(null)
   const [showPOBuilder, setShowPOBuilder] = useState(false)
 
   const handleSetRoleFilter = (f: RoleFilter) => {
@@ -236,12 +238,20 @@ export default function SupplierService() {
               {loading ? 'Loading pipeline…' : `${counts.all} total profiles`}
             </p>
           </div>
-          <button
-            onClick={() => { setPartyStack([]); setFormMode('create') }}
-            className="w-full sm:w-auto px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm text-center"
-          >
-            + New Profile
-          </button>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              onClick={() => setDocsFilePath('/docs/supply-chain-suppliers.md')}
+              className="px-3 py-2 text-xs sm:text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              View Help Guide
+            </button>
+            <button
+              onClick={() => { setPartyStack([]); setFormMode('create') }}
+              className="flex-1 sm:flex-none px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm text-center"
+            >
+              + New Profile
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -406,6 +416,14 @@ export default function SupplierService() {
           initialSupplier={detail}
           onClose={() => setShowPOBuilder(false)}
           onCreated={async () => { setShowPOBuilder(false) }}
+        />
+      )}
+
+      {docsFilePath && (
+        <RightSidebar
+          title="Suppliers Guide"
+          docsFilePath={docsFilePath}
+          onClose={() => setDocsFilePath(null)}
         />
       )}
     </>
