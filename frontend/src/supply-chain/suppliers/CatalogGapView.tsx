@@ -12,6 +12,7 @@
 //   3. Unrecognized vendors — vendor codes in Shopify with no supplier mapping
 
 import { useState, useEffect } from 'react'
+import RightSidebar from '../../components/RightSidebar'
 import {
   fetchSupplierSyncLog,
   triggerSupplierSync,
@@ -282,19 +283,34 @@ function RegisterByISBN() {
 // ---------------------------------------------------------------------------
 
 export default function CatalogGapView() {
+  const [docsFilePath, setDocsFilePath] = useState<string | null>(null)
   return (
     <div className="space-y-6 max-w-2xl">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Catalog coverage</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-          The supply chain catalog is a local mirror of Shopify products. If a product
-          isn't appearing in the PO builder or receive flow, it's not in the catalog yet.
-          Use these tools to fix gaps without waiting for the nightly sync.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Catalog coverage</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+            The supply chain catalog is a local mirror of Shopify products. If a product
+            isn't appearing in the PO builder or receive flow, it's not in the catalog yet.
+            Use these tools to fix gaps without waiting for the nightly sync.
+          </p>
+        </div>
+        <button onClick={() => setDocsFilePath('/docs/supply-chain-catalog-gaps.md')}
+          className="shrink-0 px-3 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
+          View Help Guide
+        </button>
       </div>
 
       <SyncPanel />
       <RegisterByISBN />
+
+      {docsFilePath && (
+        <RightSidebar
+          title="Catalog Gaps Guide"
+          docsFilePath={docsFilePath}
+          onClose={() => setDocsFilePath(null)}
+        />
+      )}
     </div>
   )
 }
