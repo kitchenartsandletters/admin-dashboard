@@ -24,6 +24,10 @@
 //     Ranked list of ISBN match candidates when coverage < 80%.
 //     Staff select the correct PO → 'reconcile'.
 //
+//   Step 'slip_session' (NEW #50):
+//     One slip fulfilling several POs (distributor carton). Dashboard to
+//     receive each PO in any order. See MultiPOSlipSession.
+//
 //   Step 2 (ad hoc only): Supplier identification (#19)
 //   Step 3: Line item entry
 //   Step 4: Session summary → create PO + lines → redirect to wizard
@@ -48,6 +52,7 @@ import NewProductWizard from '../receiving/NewProductWizard'
 import PackingSlipUpload, { ParsedSlipLine } from '../receiving/PackingSlipUpload'
 import SupplierAccountPicker, { resolveAccountForLocation } from '../suppliers/SupplierAccountPicker'
 import SlipReconciliationView from '../receiving/SlipReconciliationView'
+import MultiPOSlipSession from '../receiving/MultiPOSlipSession'
 import RightSidebar from '../../components/RightSidebar'
 
 // ---------------------------------------------------------------------------
@@ -78,6 +83,7 @@ type FlowStep =
   | 'po_lookup'
   | 'isbn_match'   // NEW: ranked list of ISBN-based candidates
   | 'reconcile'    // NEW: side-by-side slip vs PO review
+  | 'slip_session' // NEW (#50): one slip → multiple POs, dashboard
   | 'po_fuzzy'
   | 'po_received'
   | 'supplier'
@@ -126,10 +132,12 @@ function ISBNMatchStep({
   candidates,
   onSelect,
   onReject,
+  onReceiveAsMultiple,
 }: {
   candidates: SlipMatchCandidate[]
   onSelect:   (c: SlipMatchCandidate) => void
   onReject:   () => void
+  onReceiveAsMultiple?: () => void
 }) {
   return (
     <div className="space-y-5">
@@ -138,6 +146,19 @@ function ISBNMatchStep({
         label="Possible PO matches"
         sub="The packing slip ISBNs partially match these open POs. Select the correct one or continue without a PO match."
       />
+      {onReceiveAsMultiple && candidates.length >= 2 && (
+        <div className="px-4 py-3 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-between gap-3">
+          <p className="text-xs text-indigo-800 dark:text-indigo-200">
+            Looks like this slip may cover <strong>several POs</strong> at once (one carton, multiple orders).
+          </p>
+          <button
+            onClick={onReceiveAsMultiple}
+            className="shrink-0 px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors"
+          >
+            Receive as multiple POs →
+          </button>
+        </div>
+      )}
       <div className="space-y-2">
         {candidates.map(c => (
           <button
@@ -191,7 +212,7 @@ function POLookupStep({
   onNoMatch:          (poNumber: string) => void
   onSlipLinesReady:   (lines: ParsedSlipLine[]) => void
   onCandidatesFound:  (candidates: POCandidate[], poReference: string) => void
-  onISBNMatchFound:   (candidates: SlipMatchCandidate[], strong: string | null) => void
+  onISBNMatchFound:   (candidates: SlipMatchCandidate[], strong: string | null, slipLines: ParsedSlipLine[]) => void
 }) {
   const [query, setQuery]         = useState('')
   const [results, setResults]     = useState<PurchaseOrder[]>([])
@@ -230,8 +251,8 @@ function POLookupStep({
   }
 
   // Called by PackingSlipUpload when ISBN-based matching completes (#35)
-  const handleISBNMatchFromUpload = useCallback((candidates: SlipMatchCandidate[], strong: string | null) => {
-    onISBNMatchFound(candidates, strong)
+  const handleISBNMatchFromUpload = useCallback((candidates: SlipMatchCandidate[], strong: string | null, slipLines: ParsedSlipLine[]) => {
+    onISBNMatchFound(candidates, strong, slipLines)
   }, [onISBNMatchFound])
 
   return (
@@ -618,6 +639,8 @@ export default function ReceivingEntryFlow() {
   const [fuzzyMatches, setFuzzyMatches]   = useState<POLookupResult[]>([])
   const [isbnCandidates, setIsbnCandidates] = useState<SlipMatchCandidate[]>([])
   const [reconcileCandidate, setReconcileCandidate] = useState<SlipMatchCandidate | null>(null)
+  const [sessionCandidates, setSessionCandidates] = useState<SlipMatchCandidate[]>([])
+  const [sessionSlipLines, setSessionSlipLines]   = useState<ParsedSlipLine[]>([])
   const [existingPO, setExistingPO]       = useState<PurchaseOrder | null>(null)
   const [supplierDetail, setSupplierDetail] = useState<SupplierDetail | null>(null)
   const [lines, setLines]                 = useState<SessionLine[]>([])
@@ -672,21 +695,63 @@ export default function ReceivingEntryFlow() {
     }
   }, [navigate])
 
-  // ISBN-based PO match from PackingSlipUpload (#35)
-  const handleISBNMatchFound = useCallback((candidates: SlipMatchCandidate[], strongMatch: string | null) => {
+  // ISBN-based PO match from PackingSlipUpload (#35, #50)
+  const handleISBNMatchFound = useCallback((candidates: SlipMatchCandidate[], strongMatch: string | null, slipLines: ParsedSlipLine[]) => {
     if (candidates.length === 0) {
       // No ISBN match at all — fall through to ad hoc
       setStep('supplier')
       return
     }
+
+    // ── Split-slip detection (#50) ──────────────────────────────────────────
+    // One physical slip can fulfill several POs placed against different
+    // ordering parties (e.g. a Hachette carton covering Hachette + C&H/Abrams +
+    // Chronicle POs). The matcher returns each as a candidate keyed on ISBN
+    // overlap. If two or more candidates each own a meaningful, largely
+    // DISJOINT set of slip ISBNs, this is a multi-PO slip — open the dashboard
+    // rather than forcing a single winner.
+    //
+    // "Owns" = candidate has a `matched` reconciliation row for that ISBN.
+    // Multi-PO when: ≥2 candidates each own ≥2 slip lines, and cross-candidate
+    // ISBN overlap is low (each ISBN belongs predominantly to one PO).
+    const ownedByCandidate = candidates.map(c => {
+      const set = new Set<string>()
+      for (const r of c.reconciliation) {
+        if (r.status === 'matched' && r.isbn) set.add(r.isbn.trim())
+      }
+      return set
+    })
+    const substantial = ownedByCandidate.filter(s => s.size >= 2)
+    let isMultiPO = false
+    if (substantial.length >= 2) {
+      // Measure overlap: how many ISBNs appear in more than one candidate's set
+      const seen = new Map<string, number>()
+      for (const set of substantial) for (const isbn of set) seen.set(isbn, (seen.get(isbn) ?? 0) + 1)
+      const shared = [...seen.values()].filter(n => n > 1).length
+      const distinct = seen.size
+      // Disjoint enough if shared ISBNs are a small minority of distinct ISBNs
+      isMultiPO = distinct > 0 && shared / distinct < 0.25
+    }
+
+    if (isMultiPO) {
+      setSessionCandidates(candidates)
+      setSessionSlipLines(slipLines)
+      setStep('slip_session')
+      return
+    }
+
     if (strongMatch && candidates.length >= 1) {
-      // Strong match: go straight to reconciliation
+      // Single strong match: go straight to reconciliation
       const top = candidates.find(c => c.po_id === strongMatch) ?? candidates[0]
       setReconcileCandidate(top)
       setStep('reconcile')
     } else {
-      // Weak / multiple: show ranked list
+      // Weak / multiple but not cleanly disjoint: show ranked list.
+      // Keep slip lines + candidates around so staff can manually promote to a
+      // multi-PO session if auto-detection was too conservative.
       setIsbnCandidates(candidates)
+      setSessionCandidates(candidates)
+      setSessionSlipLines(slipLines)
       setStep('isbn_match')
     }
   }, [])
@@ -844,6 +909,7 @@ export default function ReceivingEntryFlow() {
           candidates={isbnCandidates}
           onSelect={handleISBNCandidateSelect}
           onReject={() => setStep('supplier')}
+          onReceiveAsMultiple={() => setStep('slip_session')}
         />
       )}
 
@@ -856,6 +922,16 @@ export default function ReceivingEntryFlow() {
             // Back to whichever step preceded reconcile
             setStep(isbnCandidates.length > 1 ? 'isbn_match' : 'po_lookup')
           }}
+        />
+      )}
+
+      {/* Multi-PO slip session dashboard (#50) */}
+      {step === 'slip_session' && (
+        <MultiPOSlipSession
+          slipLines={sessionSlipLines}
+          candidates={sessionCandidates}
+          locationName={locationName}
+          onExit={() => setStep('po_lookup')}
         />
       )}
 
