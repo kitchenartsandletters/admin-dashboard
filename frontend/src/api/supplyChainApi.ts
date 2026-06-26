@@ -192,7 +192,10 @@ export async function resolveDamage(poLineId: string, resolution: DamageResoluti
 export interface ReconciliationLine {
   isbn:               string | null
   title:              string | null
-  status:             'matched' | 'on_slip_only' | 'on_po_only'
+  // 'matched_fuzzy' = recovered from an OCR-misread slip line via backend fuzzy
+  // matching (#24). Treated like 'matched' for receiving, but surfaced for human
+  // confirmation since the slip ISBN/title didn't exactly match the catalog.
+  status:             'matched' | 'matched_fuzzy' | 'on_slip_only' | 'on_po_only'
   slip_qty:           number
   po_qty:             number       // remaining to receive on the PO line
   po_ordered?:        number
@@ -200,6 +203,12 @@ export interface ReconciliationLine {
   delta:              number | null // slip_qty - po_qty; null for on_po_only
   po_line_id:         string | null
   inventory_item_id:  string | null
+  // Fuzzy-recovery metadata — present only when status === 'matched_fuzzy'.
+  match_method?:        'fuzzy_isbn' | 'fuzzy_title' | 'fuzzy_isbn+title'
+  match_score?:         number       // 0–1 recovery confidence, for display
+  recovered_isbn?:      string        // the real catalog ISBN that was matched
+  original_slip_isbn?:  string        // the misread ISBN the slip actually carried
+  original_slip_title?: string | null // the slip title that aided recovery
 }
 
 export interface SlipMatchCandidate {
@@ -228,6 +237,7 @@ export interface SlipMatchResult {
 export async function matchSlipToPO(body: {
   isbns: string[]
   quantities: Record<string, number>
+  titles?: Record<string, string>   // isbn → slip title; enables OCR fuzzy recovery (#24)
 }): Promise<SlipMatchResult> {
   return sc('/api/receiving/match-slip', { method: 'POST', body: JSON.stringify(body) })
 }
