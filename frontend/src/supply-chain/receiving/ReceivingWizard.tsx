@@ -33,6 +33,7 @@ import {
 } from '../../api/supplyChainApi'
 import { useLocations } from '../hooks/useLocations'
 import { formatDate } from '../../utils/tableUtils'
+import RightSidebar from '../../components/RightSidebar'
 
 type Phase = 'idle' | 'review' | 'confirm' | 'confirming' | 'result'
 type ScanState = 'idle' | 'scanning' | 'done' | 'error'
@@ -185,8 +186,8 @@ function WizardSlipScanner({
 //   4. Choose disposal method (for notes record)
 //   5. Choose resolution (credit closes the line; replacement keeps it open)
 //
-// "I don't know yet" is valid for resolution — staff can set it post-receive
-// via the PODetailSidebar resolve-damage action.
+//   "I don't know yet" is valid for resolution — staff can set it post-receive
+//   via the PODetailSidebar resolve-damage action.
 // ---------------------------------------------------------------------------
 
 function DamageSection({
@@ -713,6 +714,7 @@ export default function ReceivingWizard() {
   const { locationName } = useLocations()
 
   const [phase,         setPhase]         = useState<Phase>('idle')
+  const [docsFilePath,  setDocsFilePath]  = useState<string | null>(null)
   const [poDetail,      setPoDetail]      = useState<PurchaseOrderDetail | null>(null)
   const [lines,         setLines]         = useState<WizardLine[]>([])
   const [completedLines, setCompletedLines] = useState<Array<{
@@ -879,9 +881,15 @@ export default function ReceivingWizard() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Receive Stock</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Record stock received against a purchase order.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Receive Stock</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Record stock received against a purchase order.</p>
+        </div>
+        <button onClick={() => setDocsFilePath('/docs/supply-chain-receiving-wizard.md')}
+          className="shrink-0 px-3 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
+          View Help Guide
+        </button>
       </div>
 
       {/* ── IDLE ─────────────────────────────────────────────────── */}
@@ -1060,6 +1068,14 @@ export default function ReceivingWizard() {
             Receive another order
           </button>
         </div>
+      )}
+
+      {docsFilePath && (
+        <RightSidebar
+          title="Receiving — Counting Books In"
+          docsFilePath={docsFilePath}
+          onClose={() => setDocsFilePath(null)}
+        />
       )}
     </div>
   )
