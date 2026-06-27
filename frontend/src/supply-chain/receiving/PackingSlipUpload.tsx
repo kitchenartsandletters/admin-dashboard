@@ -385,6 +385,22 @@ export default function PackingSlipUpload({ onLinesAccepted, onPOCandidatesFound
     setEditedLines(prev => prev.map((l, i) => i === idx ? { ...l, quantity: Math.max(1, qty) } : l))
   }
 
+  // ISBN correction: strip non-digits, cap at 13 chars, mark as manually edited.
+  // The corrected ISBN flows through to matchSlipToPO and downstream exactly like
+  // an OCR-read one. Clearing needs_review signals the line has been reviewed.
+  const updateIsbn = (idx: number, raw: string) => {
+    const normalized = raw.replace(/\D/g, '').slice(0, 13)
+    setEditedLines(prev => prev.map((l, i) =>
+      i === idx ? { ...l, isbn: normalized || null, needs_review: false, _isbn_edited: true } : l
+    ))
+  }
+
+  const updateTitle = (idx: number, title: string) => {
+    setEditedLines(prev => prev.map((l, i) =>
+      i === idx ? { ...l, title: title || null, _title_edited: true } : l
+    ))
+  }
+
   const removeLine = (idx: number) => {
     setEditedLines(prev => prev.filter((_, i) => i !== idx))
   }
@@ -675,51 +691,81 @@ export default function PackingSlipUpload({ onLinesAccepted, onPOCandidatesFound
 
         {/* Line list */}
         <div className="divide-y dark:divide-gray-800 max-h-80 overflow-y-auto">
-          {editedLines.map((line, idx) => (
-            <div
-              key={idx}
-              className={`px-4 py-2.5 flex items-center gap-3 ${
-                line.needs_review ? 'bg-amber-50/50 dark:bg-amber-900/10' : ''
-              }`}
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
-                    {line.isbn ?? '—'}
-                  </span>
-                  <ConfidenceBadge confidence={line.confidence} />
+          {editedLines.map((line, idx) => {
+            const isbnEdited  = !!(line as any)._isbn_edited
+            const titleEdited = !!(line as any)._title_edited
+            return (
+              <div
+                key={idx}
+                className={`px-4 py-2.5 flex items-start gap-3 ${
+                  isbnEdited
+                    ? 'bg-amber-50/60 dark:bg-amber-900/10 border-l-2 border-amber-400 dark:border-amber-600'
+                    : line.needs_review ? 'bg-amber-50/50 dark:bg-amber-900/10' : ''
+                }`}
+              >
+                <div className="flex-1 min-w-0 space-y-1">
+                  {/* ISBN row — editable */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={line.isbn ?? ''}
+                      onChange={e => updateIsbn(idx, e.target.value)}
+                      placeholder="ISBN"
+                      className={`w-36 px-1.5 py-0.5 rounded border text-xs font-mono dark:bg-gray-800 dark:text-gray-100
+                        focus:ring-1 focus:ring-amber-400 outline-none transition-colors ${
+                        isbnEdited
+                          ? 'border-amber-400 dark:border-amber-500 text-amber-800 dark:text-amber-200'
+                          : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400'
+                      }`}
+                    />
+                    {isbnEdited
+                      ? <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 font-bold">✎ corrected</span>
+                      : <ConfidenceBadge confidence={line.confidence} />
+                    }
+                  </div>
+                  {/* Title row — editable */}
+                  <input
+                    type="text"
+                    value={line.title ?? ''}
+                    onChange={e => updateTitle(idx, e.target.value)}
+                    placeholder="Title (optional)"
+                    className={`w-full px-1.5 py-0.5 rounded border text-sm dark:bg-gray-800 dark:text-gray-200
+                      focus:ring-1 focus:ring-blue-400 outline-none transition-colors ${
+                      titleEdited
+                        ? 'border-blue-300 dark:border-blue-600'
+                        : 'border-transparent dark:border-transparent bg-transparent'
+                    }`}
+                  />
+                  {line.unit_cost && (
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500">${line.unit_cost.toFixed(2)} ea</p>
+                  )}
                 </div>
-                <p className="text-sm text-gray-800 dark:text-gray-200 truncate mt-0.5">
-                  {line.title ?? <span className="italic text-gray-400">No title extracted</span>}
-                </p>
-                {line.unit_cost && (
-                  <p className="text-[11px] text-gray-400 dark:text-gray-500">${line.unit_cost.toFixed(2)} ea</p>
-                )}
+                <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                  <input
+                    type="number" min={1} value={line.quantity ?? ''}
+                    onChange={e => updateQty(idx, parseInt(e.target.value) || 1)}
+                    className={`w-16 px-2 py-1 border rounded text-sm text-center dark:bg-gray-800 dark:text-white focus:ring-1 focus:ring-blue-500 outline-none ${
+                      line.needs_review ? 'border-amber-400 dark:border-amber-600' : 'dark:border-gray-600'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeLine(idx)}
+                    className="text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400 text-lg leading-none"
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <input
-                  type="number" min={1} value={line.quantity ?? ''}
-                  onChange={e => updateQty(idx, parseInt(e.target.value) || 1)}
-                  className={`w-16 px-2 py-1 border rounded text-sm text-center dark:bg-gray-800 dark:text-white focus:ring-1 focus:ring-blue-500 outline-none ${
-                    line.needs_review ? 'border-amber-400 dark:border-amber-600' : 'dark:border-gray-600'
-                  }`}
-                />
-                <button
-                  type="button"
-                  onClick={() => removeLine(idx)}
-                  className="text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400 text-lg leading-none"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* Accept bar */}
         <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-t dark:border-gray-700 flex items-center justify-between">
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Adjust quantities if needed, then accept to continue.
+            Edit ISBNs, titles, or quantities if needed, then accept.
           </p>
           <button
             type="button"
