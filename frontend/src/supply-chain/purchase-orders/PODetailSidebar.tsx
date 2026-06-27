@@ -28,6 +28,12 @@
 // #47: LinesPanel has a search input that filters by title, ISBN, or supplier SKU.
 //      When a query is active the Pending/Received split collapses to a single
 //      flat list of matching lines. Clearing the query restores the grouped view.
+//
+// #32: LineItemRow now surfaces supply status for non-draft open/partial lines.
+//      - Tap "supply issue?" to open inline panel with three buttons:
+//        Backordered / Out of stock / Out of print + optional note field.
+//      - Existing supply status shown as a tappable badge (tap to edit/clear).
+//      - Calls PATCH /api/receiving/lines/{id}/supply; optimistic local update.
 
 import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -49,8 +55,9 @@ import {
   downloadPOPdf,
   downloadReceiptPdf,
   resolveDamage,
+  updateSupplyStatus,
 } from '../../api/supplyChainApi'
-import type { VariantSearchResult } from '../../api/supplyChainApi'
+import type { VariantSearchResult, SupplyStatus } from '../../api/supplyChainApi'
 import { useLocations } from '../hooks/useLocations'
 
 interface Props {
@@ -250,20 +257,27 @@ function EditableOrderFields({ order, onSaved }: { order: PurchaseOrder; onSaved
 }
 
 // ---------------------------------------------------------------------------
-// LineItemRow (#41: damage-aware display for non-draft lines)
+// LineItemRow (#41: damage-aware, #32: supply-status-aware)
 // ---------------------------------------------------------------------------
 
-function LineItemRow({ line, isDraft, onQtyChange, onDelete, onDamageResolved }: {
+function LineItemRow({ line, isDraft, onQtyChange, onDelete, onDamageResolved, onSupplyStatusChanged }: {
   line: PurchaseOrderLine; isDraft: boolean
   onQtyChange: (id: string, qty: number) => Promise<void>
   onDelete: (id: string) => Promise<void>
   onDamageResolved?: (lineId: string, resolution: DamageResolution) => void
+  onSupplyStatusChanged?: (lineId: string, status: SupplyStatus | null, note: string | null) => void
 }) {
   const [editQty, setEditQty]           = useState<number | null>(null)
   const [saving, setSaving]             = useState(false)
   const [deleting, setDeleting]         = useState(false)
   const [resolvingDamage, setResolvingDamage] = useState(false)
   const [damageError, setDamageError]   = useState<string | null>(null)
+  // Supply status state (#32)
+  const [supplyOpen, setSupplyOpen]     = useState(false)
+  const [pendingSupply, setPendingSupply] = useState<SupplyStatus | null>(null)
+  const [supplyNote, setSupplyNote]     = useState('')
+  const [savingSupply, setSavingSupply] = useState(false)
+  const [supplyError, setSupplyError]   = useState<string | null>(null)
 
   const handleQtySave = async () => {
     if (editQty === null || editQty === line.quantity_ordered) { setEditQty(null); return }
@@ -280,10 +294,53 @@ function LineItemRow({ line, isDraft, onQtyChange, onDelete, onDamageResolved }:
     catch (e) { setDamageError(e instanceof Error ? e.message : 'Failed to save resolution') }
     finally { setResolvingDamage(false) }
   }
+  const handleSaveSupply = async () => {
+    setSavingSupply(true); setSupplyError(null)
+    try {
+      await updateSupplyStatus(line.id, {
+        supply_status: pendingSupply ?? 'clear',
+        note: supplyNote.trim() || undefined,
+      })
+      onSupplyStatusChanged?.(line.id, pendingSupply, supplyNote.trim() || null)
+      setSupplyOpen(false)
+    } catch (e) {
+      setSupplyError(e instanceof Error ? e.message : 'Failed to save')
+    } finally { setSavingSupply(false) }
+  }
+  const handleClearSupply = async () => {
+    setSavingSupply(true); setSupplyError(null)
+    try {
+      await updateSupplyStatus(line.id, { supply_status: 'clear' })
+      onSupplyStatusChanged?.(line.id, null, null)
+      setPendingSupply(null); setSupplyNote(''); setSupplyOpen(false)
+    } catch (e) {
+      setSupplyError(e instanceof Error ? e.message : 'Failed to clear')
+    } finally { setSavingSupply(false) }
+  }
+
+  // Open supply panel pre-filled with existing status
+  const openSupplyPanel = () => {
+    setPendingSupply((line.supply_status as SupplyStatus | null) ?? null)
+    setSupplyNote(line.supply_status_note ?? '')
+    setSupplyError(null)
+    setSupplyOpen(true)
+  }
 
   const hasDamage       = (line.quantity_damaged ?? 0) > 0
   const isFullyDamaged  = hasDamage && line.quantity_received === 0
   const needsResolution = hasDamage && !line.damage_resolution
+
+  // Show supply status affordance on open/partial/backordered/out_of_stock lines
+  // (not on received, cancelled, out_of_print, or draft)
+  const canHaveSupplyStatus = !isDraft && ['open', 'partial', 'backordered', 'out_of_stock'].includes(line.status)
+  const hasSupplyStatus     = !!line.supply_status && line.supply_status !== null
+
+  // Labels for existing supply status badge
+  const supplyStatusLabel: Record<string, { label: string; cls: string }> = {
+    backordered:  { label: 'Backordered',   cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' },
+    out_of_stock: { label: 'Out of stock',  cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' },
+    out_of_print: { label: 'Out of print',  cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' },
+  }
 
   return (
     <div className={`py-2 border-b dark:border-gray-800 last:border-0 ${deleting ? 'opacity-40' : ''}`}>
@@ -294,6 +351,15 @@ function LineItemRow({ line, isDraft, onQtyChange, onDelete, onDamageResolved }:
           </p>
           {(line.isbn ?? line.supplier_sku) && (
             <p className="text-[var(--text-mono)] font-mono text-gray-400 dark:text-gray-500">{line.isbn ?? line.supplier_sku}</p>
+          )}
+          {/* Existing supply status badge — tap to edit */}
+          {canHaveSupplyStatus && hasSupplyStatus && !supplyOpen && (
+            <button type="button" onClick={openSupplyPanel}
+              className={`mt-0.5 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-semibold ${supplyStatusLabel[line.supply_status!]?.cls ?? ''}`}>
+              {supplyStatusLabel[line.supply_status!]?.label}
+              {line.supply_status_note && <span className="opacity-70 font-normal truncate max-w-[10rem]">· {line.supply_status_note}</span>}
+              <span className="opacity-50 ml-0.5">✎</span>
+            </button>
           )}
         </div>
         {isDraft ? (
@@ -347,9 +413,18 @@ function LineItemRow({ line, isDraft, onQtyChange, onDelete, onDamageResolved }:
             {!hasDamage && (
               <p className="text-[var(--text-label)] text-gray-400 dark:text-gray-500">rcvd/ord</p>
             )}
+            {/* Supply issue link — shown on eligible lines when no status set yet */}
+            {canHaveSupplyStatus && !hasSupplyStatus && !supplyOpen && (
+              <button type="button" onClick={openSupplyPanel}
+                className="text-[10px] text-gray-400 dark:text-gray-500 hover:text-orange-500 dark:hover:text-orange-400 hover:underline leading-none">
+                supply issue?
+              </button>
+            )}
           </div>
         )}
       </div>
+
+      {/* Damage resolution */}
       {!isDraft && needsResolution && (
         <div className="mt-2 pt-2 border-t dark:border-gray-800">
           <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold mb-1.5">
@@ -366,6 +441,61 @@ function LineItemRow({ line, isDraft, onQtyChange, onDelete, onDamageResolved }:
             </button>
           </div>
           {damageError && <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{damageError}</p>}
+        </div>
+      )}
+
+      {/* Supply status panel (#32) — inline, tap to open/close */}
+      {canHaveSupplyStatus && supplyOpen && (
+        <div className="mt-2 pt-2 border-t border-orange-100 dark:border-orange-900/30 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Supply issue</p>
+            <button type="button" onClick={() => setSupplyOpen(false)}
+              className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">cancel</button>
+          </div>
+          <div className="flex gap-1.5">
+            {([
+              { value: 'backordered',  label: 'Backordered'  },
+              { value: 'out_of_stock', label: 'Out of stock' },
+              { value: 'out_of_print', label: 'Out of print' },
+            ] as const).map(opt => (
+              <button key={opt.value} type="button"
+                onClick={() => setPendingSupply(pendingSupply === opt.value ? null : opt.value)}
+                className={`flex-1 px-1.5 py-1.5 rounded border text-[10px] font-semibold transition-colors ${
+                  pendingSupply === opt.value
+                    ? opt.value === 'out_of_print'
+                      ? 'border-red-400 dark:border-red-700 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'
+                      : 'border-orange-400 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300'
+                    : 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-gray-300'
+                }`}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {pendingSupply && (
+            <input type="text"
+              placeholder={pendingSupply === 'out_of_print' ? 'Note (e.g. discontinued per Hachette rep)' : 'Note (e.g. supplier said Q4 restock)'}
+              value={supplyNote}
+              onChange={e => setSupplyNote(e.target.value)}
+              className="w-full px-2 py-1.5 text-xs border rounded dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 focus:ring-1 focus:ring-orange-400 outline-none"
+            />
+          )}
+          {pendingSupply === 'out_of_print' && (
+            <p className="text-[10px] text-red-600 dark:text-red-400">This will close the line permanently.</p>
+          )}
+          {supplyError && <p className="text-[10px] text-red-600 dark:text-red-400">{supplyError}</p>}
+          <div className="flex gap-1.5">
+            {hasSupplyStatus && (
+              <button type="button" onClick={handleClearSupply} disabled={savingSupply}
+                className="px-2 py-1.5 rounded border border-gray-200 dark:border-gray-700 text-[10px] text-gray-400 hover:text-gray-600 disabled:opacity-50 transition-colors">
+                {savingSupply ? '…' : 'Clear'}
+              </button>
+            )}
+            <button type="button" onClick={handleSaveSupply}
+              disabled={savingSupply || !pendingSupply}
+              className="flex-1 px-2 py-1.5 rounded border border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300 text-[10px] font-semibold disabled:opacity-50 transition-colors">
+              {savingSupply ? 'Saving…' : 'Save'}
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -601,12 +731,13 @@ function OrderDetailsPanel({ order, onRefresh }: { order: PurchaseOrder; onRefre
 // Lines panel (#46 + #47: sort, pending/received split, line search)
 // ---------------------------------------------------------------------------
 
-function LinesPanel({ order, lines, onLineAdded, onQtyChange, onDelete, onDamageResolved }: {
+function LinesPanel({ order, lines, onLineAdded, onQtyChange, onDelete, onDamageResolved, onSupplyStatusChanged }: {
   order: PurchaseOrder; lines: PurchaseOrderLine[]
   onLineAdded: (l: PurchaseOrderLine) => void
   onQtyChange: (id: string, qty: number) => Promise<void>
   onDelete: (id: string) => Promise<void>
   onDamageResolved?: (lineId: string, resolution: DamageResolution) => void
+  onSupplyStatusChanged?: (lineId: string, status: SupplyStatus | null, note: string | null) => void
 }) {
   const isDraft = order.status === 'draft'
   const existingItemIds = new Set(lines.map(l => l.inventory_item_id))
@@ -627,7 +758,9 @@ function LinesPanel({ order, lines, onLineAdded, onQtyChange, onDelete, onDamage
 
   const renderRow = (line: PurchaseOrderLine) => (
     <LineItemRow key={line.id} line={line} isDraft={isDraft}
-      onQtyChange={onQtyChange} onDelete={onDelete} onDamageResolved={onDamageResolved} />
+      onQtyChange={onQtyChange} onDelete={onDelete}
+      onDamageResolved={onDamageResolved}
+      onSupplyStatusChanged={onSupplyStatusChanged} />
   )
 
   return (
@@ -793,6 +926,23 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
       l.id === lineId ? { ...l, damage_resolution: resolution, status: resolution === 'credit' ? 'received' : l.status } : l
     ))
   }
+  const handleSupplyStatusChanged = (lineId: string, status: SupplyStatus | null, note: string | null) => {
+    setLocalLines(prev => prev.map(l =>
+      l.id === lineId
+        ? {
+            ...l,
+            supply_status: status,
+            supply_status_note: note,
+            supply_status_noted_at: status ? new Date().toISOString() : null,
+            // out_of_print closes the line; others keep it open/partial
+            status: status === 'out_of_print' ? 'out_of_print'
+                  : status === 'backordered'  ? 'backordered'
+                  : status === 'out_of_stock' ? 'out_of_stock'
+                  : (l.quantity_received > 0 ? 'partial' : 'open'),
+          }
+        : l
+    ))
+  }
   const handleTransition = async (action: 'submit' | 'confirm'): Promise<boolean> => {
     setTransitioning(true); setTransitionError(null)
     try {
@@ -855,7 +1005,9 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
               <SectionLabel>Lines ({localLines.length})</SectionLabel>
               <div className="flex-1 min-h-0">
                 <LinesPanel order={order} lines={localLines} onLineAdded={handleLineAdded}
-                  onQtyChange={handleQtyChange} onDelete={handleDeleteLine} onDamageResolved={handleDamageResolved} />
+                  onQtyChange={handleQtyChange} onDelete={handleDeleteLine}
+                  onDamageResolved={handleDamageResolved}
+                  onSupplyStatusChanged={handleSupplyStatusChanged} />
               </div>
             </div>
           </div>
@@ -865,7 +1017,9 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
             <section>
               <SectionLabel>Lines ({localLines.length})</SectionLabel>
               <LinesPanel order={order} lines={localLines} onLineAdded={handleLineAdded}
-                onQtyChange={handleQtyChange} onDelete={handleDeleteLine} onDamageResolved={handleDamageResolved} />
+                onQtyChange={handleQtyChange} onDelete={handleDeleteLine}
+                onDamageResolved={handleDamageResolved}
+                onSupplyStatusChanged={handleSupplyStatusChanged} />
             </section>
             <section><SectionLabel>Receipts</SectionLabel><ReceiptSection poId={order.id} /></section>
             {(order.supersedes_ids?.length > 0 || order.superseded_by) && (
