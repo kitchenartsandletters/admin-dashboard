@@ -183,6 +183,19 @@ export async function resolveDamage(poLineId: string, resolution: DamageResoluti
   return sc(`/api/receiving/lines/${poLineId}/damage`, { method: 'PATCH', body: JSON.stringify({ damage_resolution: resolution }) })
 }
 
+// Supply status — records publisher-side fulfillment issues noted during receiving (#32).
+// backordered:  supplier has stock, will ship later — line stays open
+// out_of_stock: supplier temporarily has no stock, no committed date — line stays open
+// out_of_print: title discontinued, line will not fulfill — terminal, closes the line
+export type SupplyStatus = 'backordered' | 'out_of_stock' | 'out_of_print'
+
+export async function updateSupplyStatus(
+  poLineId: string,
+  body: { supply_status: SupplyStatus | 'clear'; quantity_affected?: number; note?: string }
+): Promise<{ po_line_id: string; supply_status: string; quantity_affected: number; line_status: string; po_status: string; note: string | null; updated: boolean }> {
+  return sc(`/api/receiving/lines/${poLineId}/supply`, { method: 'PATCH', body: JSON.stringify(body) })
+}
+
 /**
  * ISBN-based PO matching (#35).
  * Sends ISBNs extracted from a scanned slip to the backend, which scores
