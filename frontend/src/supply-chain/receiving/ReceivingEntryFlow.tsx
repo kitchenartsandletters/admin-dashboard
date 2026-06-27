@@ -81,9 +81,10 @@ interface SessionLine {
 
 type FlowStep =
   | 'po_lookup'
-  | 'isbn_match'   // NEW: ranked list of ISBN-based candidates
-  | 'reconcile'    // NEW: side-by-side slip vs PO review
-  | 'slip_session' // NEW (#50): one slip → multiple POs, dashboard
+  | 'routing_confirm' // Staff confirms/overrides auto-detected PO routing before proceeding
+  | 'isbn_match'      // ranked list of ISBN-based candidates
+  | 'reconcile'       // side-by-side slip vs PO review
+  | 'slip_session'    // one slip → multiple POs, dashboard
   | 'po_fuzzy'
   | 'po_received'
   | 'supplier'
@@ -92,6 +93,14 @@ type FlowStep =
   | 'summary'
   | 'executing'
   | 'done'
+
+// The routing decision the system made from ISBN matching — stored so
+// RoutingConfirmStep can show it and staff can confirm or override.
+type PendingRouting =
+  | { type: 'multi_po' }
+  | { type: 'single';    strongMatch: string }
+  | { type: 'ambiguous' }
+  | { type: 'no_match'  }
 
 // ---------------------------------------------------------------------------
 // Small shared primitives
@@ -627,6 +636,209 @@ function SummaryStep({ lines, supplierDetail, existingPO, slipPoNumber, location
 }
 
 // ---------------------------------------------------------------------------
+// RoutingConfirmStep — shown after ISBN matching, before any navigation.
+//
+// Tells staff what the system found and where it intends to go, and lets
+// them confirm, pick a different single PO, switch to multi-PO mode, or
+// go ad hoc. This is the override point for all ISBN-match routing.
+// ---------------------------------------------------------------------------
+
+function RoutingConfirmStep({
+  pending,
+  candidates,
+  slipLines,
+  onConfirm,
+  onOverrideSingle,
+  onOverrideMulti,
+  onAdHoc,
+  onBack,
+}: {
+  pending:          PendingRouting
+  candidates:       SlipMatchCandidate[]
+  slipLines:        ParsedSlipLine[]
+  onConfirm:        () => void
+  onOverrideSingle: (c: SlipMatchCandidate) => void
+  onOverrideMulti:  (candidates: SlipMatchCandidate[]) => void
+  onAdHoc:          () => void
+  onBack:           () => void
+}) {
+  const [mode, setMode] = useState<'confirm' | 'pick_single' | 'pick_multi'>('confirm')
+  // For multi-PO override: staff toggle which candidates to include
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    () => new Set(candidates.map(c => c.po_id))
+  )
+
+  const toggleCandidate = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  // Human-readable description of what was detected
+  const detectionLabel = (() => {
+    if (pending.type === 'no_match') return { icon: '○', color: 'text-gray-500 dark:text-gray-400', text: 'No matching POs found', sub: 'No open PO lines matched the ISBNs on this slip.' }
+    if (pending.type === 'multi_po') return { icon: '⊞', color: 'text-indigo-600 dark:text-indigo-400', text: `Multi-PO slip — ${candidates.length} POs detected`, sub: 'The ISBNs split cleanly across multiple open POs. Will open the multi-PO receive dashboard.' }
+    if (pending.type === 'single') {
+      const top = candidates[0]
+      return { icon: '✓', color: 'text-green-600 dark:text-green-400', text: `Matched to ${top.po_number}`, sub: `${Math.round(top.slip_coverage * 100)}% of slip ISBNs found · ${top.supplier_name ?? top.account_label}${top.informal_ref ? ` · ${top.informal_ref}` : ''}` }
+    }
+    return { icon: '~', color: 'text-amber-600 dark:text-amber-400', text: `${candidates.length} possible PO${candidates.length !== 1 ? 's' : ''} — no clear winner`, sub: 'Coverage below 80% for all candidates. Review and select the correct PO.' }
+  })()
+
+  if (mode === 'pick_single') {
+    return (
+      <div className="space-y-4">
+        <StepHeader step={1} label="Select PO" sub="Choose which PO this slip belongs to." />
+        <div className="space-y-2">
+          {candidates.map(c => (
+            <button key={c.po_id} onClick={() => onOverrideSingle(c)}
+              className="w-full text-left border dark:border-gray-700 rounded-lg px-4 py-3
+                         hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono font-semibold text-gray-900 dark:text-gray-100 text-sm">{c.po_number}</span>
+                <span className={`text-xs font-bold tabular-nums ${c.slip_coverage >= 0.6 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400'}`}>
+                  {Math.round(c.slip_coverage * 100)}% match
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {c.supplier_name ?? c.account_label}{c.informal_ref && <span className="font-mono ml-1">· {c.informal_ref}</span>}
+              </p>
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+                {c.overlap_count} of {c.slip_total} slip ISBNs found · {c.po_open_total} lines open
+              </p>
+            </button>
+          ))}
+        </div>
+        <button onClick={() => setMode('confirm')} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">← Back</button>
+      </div>
+    )
+  }
+
+  if (mode === 'pick_multi') {
+    const selected = candidates.filter(c => selectedIds.has(c.po_id))
+    return (
+      <div className="space-y-4">
+        <StepHeader step={1} label="Select POs for session"
+          sub="Choose which POs this slip covers. Toggle any that don't apply." />
+        <div className="space-y-2">
+          {candidates.map(c => {
+            const on = selectedIds.has(c.po_id)
+            return (
+              <button key={c.po_id} onClick={() => toggleCandidate(c.po_id)}
+                className={`w-full text-left border rounded-lg px-4 py-3 transition-colors ${
+                  on
+                    ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 dark:border-indigo-600'
+                    : 'border-gray-200 dark:border-gray-700 opacity-50'
+                }`}>
+                <div className="flex items-center gap-3">
+                  <span className={`w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center text-[10px] font-bold
+                    ${on ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-gray-300 dark:border-gray-600'}`}>
+                    {on ? '✓' : ''}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono font-semibold text-gray-900 dark:text-gray-100 text-sm">{c.po_number}</span>
+                      <span className="text-xs text-gray-400">{Math.round(c.slip_coverage * 100)}%</span>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {c.supplier_name ?? c.account_label}{c.informal_ref && <span className="font-mono ml-1">· {c.informal_ref}</span>}
+                    </p>
+                  </div>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+        <div className="flex gap-3">
+          <button onClick={() => setMode('confirm')} className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+            ← Back
+          </button>
+          <button
+            onClick={() => onOverrideMulti(selected)}
+            disabled={selected.length < 1}
+            className="flex-1 px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
+          >
+            Open session with {selected.length} PO{selected.length !== 1 ? 's' : ''} →
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Default: confirm view
+  return (
+    <div className="space-y-5">
+      <StepHeader step={1} label="Confirm routing"
+        sub="Review what was found before proceeding. You can change the destination if the system got it wrong." />
+
+      {/* Detection result card */}
+      <div className="border dark:border-gray-700 rounded-lg px-4 py-3 space-y-1">
+        <div className="flex items-center gap-2">
+          <span className={`text-base ${detectionLabel.color}`}>{detectionLabel.icon}</span>
+          <p className={`text-sm font-semibold ${detectionLabel.color}`}>{detectionLabel.text}</p>
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 ml-6">{detectionLabel.sub}</p>
+        {pending.type !== 'no_match' && (
+          <p className="text-xs text-gray-400 dark:text-gray-500 ml-6 mt-1">
+            {slipLines.length} slip line{slipLines.length !== 1 ? 's' : ''} ·{' '}
+            {candidates.length} candidate PO{candidates.length !== 1 ? 's' : ''}
+          </p>
+        )}
+      </div>
+
+      {/* Primary action — confirm what was detected */}
+      <button
+        onClick={onConfirm}
+        className="w-full px-4 py-2.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
+      >
+        {pending.type === 'multi_po'  && 'Confirm — open multi-PO session →'}
+        {pending.type === 'single'    && `Confirm — receive against ${candidates[0]?.po_number} →`}
+        {pending.type === 'ambiguous' && 'Continue — choose from matched POs →'}
+        {pending.type === 'no_match'  && 'Continue — create ad hoc receipt →'}
+      </button>
+
+      {/* Override options */}
+      {candidates.length > 0 && (
+        <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
+          <p className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
+            Override detection
+          </p>
+          <div className="divide-y dark:divide-gray-800">
+            {/* Single PO override */}
+            {(pending.type !== 'single' || candidates.length > 1) && (
+              <button onClick={() => setMode('pick_single')}
+                className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Receive against a single PO</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Pick one PO from the list of candidates</p>
+              </button>
+            )}
+            {/* Multi-PO override */}
+            {(pending.type !== 'multi_po') && candidates.length >= 2 && (
+              <button onClick={() => setMode('pick_multi')}
+                className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Open multi-PO session</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Receive across {candidates.length} POs in one session — choose which to include
+                </p>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Ad hoc escape hatch */}
+      <div className="flex items-center justify-between">
+        <button onClick={onBack} className="text-sm text-gray-400 dark:text-gray-500 hover:underline">← Back to scan</button>
+        <button onClick={onAdHoc} className="text-sm text-gray-400 dark:text-gray-500 hover:underline">Skip — create ad hoc receipt</button>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -641,6 +853,7 @@ export default function ReceivingEntryFlow() {
   const [reconcileCandidate, setReconcileCandidate] = useState<SlipMatchCandidate | null>(null)
   const [sessionCandidates, setSessionCandidates] = useState<SlipMatchCandidate[]>([])
   const [sessionSlipLines, setSessionSlipLines]   = useState<ParsedSlipLine[]>([])
+  const [pendingRouting, setPendingRouting] = useState<PendingRouting | null>(null)
   const [existingPO, setExistingPO]       = useState<PurchaseOrder | null>(null)
   const [supplierDetail, setSupplierDetail] = useState<SupplierDetail | null>(null)
   const [lines, setLines]                 = useState<SessionLine[]>([])
@@ -696,65 +909,84 @@ export default function ReceivingEntryFlow() {
   }, [navigate])
 
   // ISBN-based PO match from PackingSlipUpload (#35, #50)
+  // Instead of routing immediately, park the detection result and show
+  // routing_confirm so staff can verify or override before proceeding.
   const handleISBNMatchFound = useCallback((candidates: SlipMatchCandidate[], strongMatch: string | null, slipLines: ParsedSlipLine[]) => {
+    // Always store candidates + slip lines — needed for all routing outcomes
+    setIsbnCandidates(candidates)
+    setSessionCandidates(candidates)
+    setSessionSlipLines(slipLines)
+
     if (candidates.length === 0) {
-      // No ISBN match at all — fall through to ad hoc
-      setStep('supplier')
-      return
-    }
-
-    // ── Split-slip detection (#50) ──────────────────────────────────────────
-    // One physical slip can fulfill several POs placed against different
-    // ordering parties (e.g. a Hachette carton covering Hachette + C&H/Abrams +
-    // Chronicle POs). The matcher returns each as a candidate keyed on ISBN
-    // overlap. If two or more candidates each own a meaningful, largely
-    // DISJOINT set of slip ISBNs, this is a multi-PO slip — open the dashboard
-    // rather than forcing a single winner.
-    //
-    // "Owns" = candidate has a `matched` (or OCR-recovered `matched_fuzzy`)
-    // reconciliation row for that ISBN.
-    // Multi-PO when: ≥2 candidates each own ≥2 slip lines, and cross-candidate
-    // ISBN overlap is low (each ISBN belongs predominantly to one PO).
-    const ownedByCandidate = candidates.map(c => {
-      const set = new Set<string>()
-      for (const r of c.reconciliation) {
-        if ((r.status === 'matched' || r.status === 'matched_fuzzy') && r.isbn) set.add(r.isbn.trim())
-      }
-      return set
-    })
-    const substantial = ownedByCandidate.filter(s => s.size >= 2)
-    let isMultiPO = false
-    if (substantial.length >= 2) {
-      // Measure overlap: how many ISBNs appear in more than one candidate's set
-      const seen = new Map<string, number>()
-      for (const set of substantial) for (const isbn of set) seen.set(isbn, (seen.get(isbn) ?? 0) + 1)
-      const shared = [...seen.values()].filter(n => n > 1).length
-      const distinct = seen.size
-      // Disjoint enough if shared ISBNs are a small minority of distinct ISBNs
-      isMultiPO = distinct > 0 && shared / distinct < 0.25
-    }
-
-    if (isMultiPO) {
-      setSessionCandidates(candidates)
-      setSessionSlipLines(slipLines)
-      setStep('slip_session')
-      return
-    }
-
-    if (strongMatch && candidates.length >= 1) {
-      // Single strong match: go straight to reconciliation
-      const top = candidates.find(c => c.po_id === strongMatch) ?? candidates[0]
-      setReconcileCandidate(top)
-      setStep('reconcile')
+      setPendingRouting({ type: 'no_match' })
     } else {
-      // Weak / multiple but not cleanly disjoint: show ranked list.
-      // Keep slip lines + candidates around so staff can manually promote to a
-      // multi-PO session if auto-detection was too conservative.
-      setIsbnCandidates(candidates)
-      setSessionCandidates(candidates)
-      setSessionSlipLines(slipLines)
-      setStep('isbn_match')
+      // Compute the same split-slip detection as before
+      const ownedByCandidate = candidates.map(c => {
+        const set = new Set<string>()
+        for (const r of c.reconciliation) {
+          if ((r.status === 'matched' || r.status === 'matched_fuzzy') && r.isbn) set.add(r.isbn.trim())
+        }
+        return set
+      })
+      const substantial = ownedByCandidate.filter(s => s.size >= 2)
+      let isMultiPO = false
+      if (substantial.length >= 2) {
+        const seen = new Map<string, number>()
+        for (const set of substantial) for (const isbn of set) seen.set(isbn, (seen.get(isbn) ?? 0) + 1)
+        const shared = [...seen.values()].filter(n => n > 1).length
+        const distinct = seen.size
+        isMultiPO = distinct > 0 && shared / distinct < 0.25
+      }
+
+      if (isMultiPO) {
+        setPendingRouting({ type: 'multi_po' })
+      } else if (strongMatch) {
+        const top = candidates.find(c => c.po_id === strongMatch) ?? candidates[0]
+        setReconcileCandidate(top)
+        setPendingRouting({ type: 'single', strongMatch })
+      } else {
+        setPendingRouting({ type: 'ambiguous' })
+      }
     }
+
+    setStep('routing_confirm')
+  }, [])
+
+  // Called from RoutingConfirmStep when staff confirm the auto-detected routing
+  const handleRoutingConfirmed = useCallback(() => {
+    if (!pendingRouting) return
+    if (pendingRouting.type === 'multi_po') {
+      setStep('slip_session')
+    } else if (pendingRouting.type === 'single') {
+      setStep('reconcile')
+    } else if (pendingRouting.type === 'ambiguous') {
+      setStep('isbn_match')
+    } else {
+      // no_match — go ad hoc
+      setStep('supplier')
+    }
+  }, [pendingRouting])
+
+  // Called from RoutingConfirmStep when staff pick a single PO override
+  const handleRoutingOverrideSingle = useCallback((c: SlipMatchCandidate) => {
+    setReconcileCandidate(c)
+    // Promote to sessionCandidates in case they later want multi-PO
+    if (!sessionCandidates.find(x => x.po_id === c.po_id)) {
+      setSessionCandidates(prev => [c, ...prev])
+    }
+    setStep('reconcile')
+  }, [sessionCandidates])
+
+  // Called from RoutingConfirmStep when staff choose to open multi-PO session
+  // with a potentially different set of candidates
+  const handleRoutingOverrideMulti = useCallback((candidates: SlipMatchCandidate[]) => {
+    setSessionCandidates(candidates)
+    setStep('slip_session')
+  }, [])
+
+  // Called from RoutingConfirmStep when staff bypass PO matching entirely
+  const handleRoutingOverrideAdHoc = useCallback(() => {
+    setStep('supplier')
   }, [])
 
   // Staff selects from the ISBN match ranked list
@@ -901,6 +1133,20 @@ export default function ReceivingEntryFlow() {
           onSlipLinesReady={handleSlipLinesReadyFull}
           onCandidatesFound={handleCandidatesFound}
           onISBNMatchFound={handleISBNMatchFound}
+        />
+      )}
+
+      {/* Routing confirmation — always shown after ISBN matching, before navigating */}
+      {step === 'routing_confirm' && pendingRouting && (
+        <RoutingConfirmStep
+          pending={pendingRouting}
+          candidates={sessionCandidates}
+          slipLines={sessionSlipLines}
+          onConfirm={handleRoutingConfirmed}
+          onOverrideSingle={handleRoutingOverrideSingle}
+          onOverrideMulti={handleRoutingOverrideMulti}
+          onAdHoc={handleRoutingOverrideAdHoc}
+          onBack={() => setStep('po_lookup')}
         />
       )}
 
