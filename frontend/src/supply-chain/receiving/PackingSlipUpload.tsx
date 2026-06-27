@@ -235,6 +235,8 @@ export default function PackingSlipUpload({ onLinesAccepted, onPOCandidatesFound
   const [allPoCandidates, setAllPoCandidates] = useState<POCandidate[]>([])
   const [allPoRef, setAllPoRef]     = useState<string | null>(null)
   const [error, setError]           = useState<string | null>(null)
+  // Separate state for ISBN match errors so they're shown in the review panel
+  const [matchError, setMatchError] = useState<string | null>(null)
 
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -272,6 +274,7 @@ export default function PackingSlipUpload({ onLinesAccepted, onPOCandidatesFound
     if (queue.length === 0) return
     setState('processing')
     setError(null)
+    setMatchError(null)
 
     const processed: QueuedPage[] = [...queue]
 
@@ -369,8 +372,13 @@ export default function PackingSlipUpload({ onLinesAccepted, onPOCandidatesFound
           setState('reviewing')
           return
         }
+        // Matched 0 candidates — fall through to manual review
+        // (not an error — the slip genuinely has no open PO match)
       } catch (err) {
-        console.warn('ISBN match failed:', err)
+        // Surface the error in the review panel so staff know matching failed
+        const msg = err instanceof Error ? err.message : String(err)
+        console.warn('ISBN match failed:', msg)
+        setMatchError(`PO matching failed: ${msg}`)
       }
     }
 
@@ -419,6 +427,7 @@ export default function PackingSlipUpload({ onLinesAccepted, onPOCandidatesFound
     setAllPoCandidates([])
     setAllPoRef(null)
     setError(null)
+    setMatchError(null)
   }
 
   const handleAddAnother = () => {
@@ -647,6 +656,12 @@ export default function PackingSlipUpload({ onLinesAccepted, onPOCandidatesFound
               {reviewLines.length > 0 && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
                   ⚠ {reviewLines.length} line{reviewLines.length !== 1 ? 's' : ''} need review — check quantities
+                </p>
+              )}
+              {/* Surface match errors so staff (and developers) can see what went wrong */}
+              {matchError && (
+                <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                  ⚠ {matchError} — search for the PO manually below.
                 </p>
               )}
             </div>
