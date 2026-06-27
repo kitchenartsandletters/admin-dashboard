@@ -17,6 +17,8 @@ export type POLineStatus =
   | 'partial'
   | 'received'
   | 'backordered'
+  | 'out_of_stock'   // supplier temporarily has no stock, no committed date (#32)
+  | 'out_of_print'   // title discontinued, will not fulfill (#32)
   | 'cancelled'
 
 export type AdHocSource =
@@ -116,6 +118,11 @@ export interface PurchaseOrderLine {
   status: POLineStatus
   notes: string | null
   created_at: string
+  // Supply status — records publisher-side fulfillment issues (#32)
+  // Set via PATCH /api/receiving/lines/{id}/supply at any time after PO submission.
+  supply_status?: 'backordered' | 'out_of_stock' | 'out_of_print' | null
+  supply_status_note?: string | null
+  supply_status_noted_at?: string | null
   // Populated by API from supplier_products
   title?: string | null
   isbn?: string | null
