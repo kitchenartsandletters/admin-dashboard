@@ -28,8 +28,8 @@
 
 import { useState, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { ParsedSlipLine, SlipMatchCandidate } from '../../api/supplyChainApi'
-import { fetchPurchaseOrderDetail, receiveOrder } from '../../api/supplyChainApi'
+import type { ParsedSlipLine, SlipMatchCandidate, SupplyStatus } from '../../api/supplyChainApi'
+import { fetchPurchaseOrderDetail, receiveOrder, updateSupplyStatus } from '../../api/supplyChainApi'
 import type { PurchaseOrderDetail } from '../purchase-orders/purchaseOrderTypes'
 import type {
   ReceiveLineInput,
@@ -192,6 +192,9 @@ interface PanelLine {
   damage_resolution: DamageResolution | null
   on_slip: boolean
   fuzzy?: FuzzyRecovery   // set when the slip line for this PO line was OCR-recovered (#24)
+  // Supply status — set on 'not on slip' lines where the title didn't arrive (#32)
+  supply_status?: SupplyStatus | null
+  supply_status_note?: string
 }
 
 function SegmentReceivePanel({
@@ -212,6 +215,11 @@ function SegmentReceivePanel({
   const [error, setError]   = useState<string | null>(null)
   const [notes, setNotes]   = useState('')
   const [loadStarted, setLoadStarted] = useState(false)
+  // Submission result — shown in modal overlay before calling onComplete
+  const [receiptResult, setReceiptResult] = useState<{
+    receipt_id: string; units_received: number; units_damaged: number
+    supply_issues: number; status: SegmentStatus
+  } | null>(null)
 
   // Build a slip qty lookup by ISBN for pre-fill
   const slipQtyByIsbn = useMemo(() => {
@@ -288,6 +296,18 @@ function SegmentReceivePanel({
     setLines(prev => prev.map(l => l.purchase_order_line_id === id ? { ...l, damage_resolution: resolution } : l))
   }
 
+  const setLineSupplyStatus = (id: string, status: SupplyStatus | null) => {
+    setLines(prev => prev.map(l =>
+      l.purchase_order_line_id === id ? { ...l, supply_status: status } : l
+    ))
+  }
+
+  const setLineSupplyNote = (id: string, note: string) => {
+    setLines(prev => prev.map(l =>
+      l.purchase_order_line_id === id ? { ...l, supply_status_note: note } : l
+    ))
+  }
+
   const totalReceiving = lines.reduce((s, l) => s + l.quantity_received, 0)
   const totalDamaged   = lines.reduce((s, l) => s + l.quantity_damaged, 0)
 
@@ -297,8 +317,8 @@ function SegmentReceivePanel({
     setError(null)
     try {
       const activeLines = lines.filter(l => l.quantity_received > 0 || l.quantity_damaged > 0)
-      if (activeLines.length === 0) {
-        setError('Enter at least one received or damaged quantity, or skip this PO.')
+      if (activeLines.length === 0 && !lines.some(l => l.supply_status)) {
+        setError('Enter at least one received or damaged quantity, or mark a supply issue, or skip this PO.')
         setBusy(false)
         return
       }
@@ -307,7 +327,7 @@ function SegmentReceivePanel({
       // (credit-resolved damage counts as closing the line)
       const allFull = lines.every(l => {
         const arrived = l.quantity_received + l.quantity_damaged
-        if (arrived === 0) return l.remaining === 0
+        if (arrived === 0) return l.remaining === 0 || l.supply_status === 'out_of_print'
         return arrived >= l.remaining && (l.quantity_damaged === 0 || l.damage_resolution === 'credit')
       })
 
@@ -327,29 +347,45 @@ function SegmentReceivePanel({
         damageNotes.length > 0 ? `Damage: ${damageNotes.join('; ')}` : null,
       ].filter(Boolean).join('\n') || undefined
 
-      const payload: ReceiveLineInput[] = activeLines.map(l => ({
-        purchase_order_line_id: l.purchase_order_line_id,
-        inventory_item_id: l.inventory_item_id,
-        quantity_received: l.quantity_received,   // undamaged only — hard rule
-        quantity_damaged: l.quantity_damaged,
-        damage_resolution: l.damage_resolution,
-      }))
-
-      const res = await receiveOrder({
-        purchase_order_id: detail.order.id,
-        location_id: detail.order.destination_location_id,
-        receipt_type: allFull ? 'full' : 'partial',
-        notes: combinedNotes,
-        lines: payload,
-      })
-
-      onComplete({
-        status: res.status === 'applied' || res.status === 'test_applied'
+      // Fire receive call (only if there are lines to receive/damage)
+      let receiptId = ''
+      let finalStatus: SegmentStatus = 'received'
+      if (activeLines.length > 0) {
+        const payload: ReceiveLineInput[] = activeLines.map(l => ({
+          purchase_order_line_id: l.purchase_order_line_id,
+          inventory_item_id: l.inventory_item_id,
+          quantity_received: l.quantity_received,   // undamaged only — hard rule
+          quantity_damaged: l.quantity_damaged,
+          damage_resolution: l.damage_resolution,
+        }))
+        const res = await receiveOrder({
+          purchase_order_id: detail.order.id,
+          location_id: detail.order.destination_location_id,
+          receipt_type: allFull ? 'full' : 'partial',
+          notes: combinedNotes,
+          lines: payload,
+        })
+        receiptId = res.receipt_id
+        finalStatus = res.status === 'applied' || res.status === 'test_applied'
           ? (allFull ? 'received' : 'partial')
-          : 'partial',
+          : 'partial'
+      }
+
+      // Fire supply status PATCHes for any lines with a supply issue noted
+      const supplyLines = lines.filter(l => l.supply_status)
+      await Promise.all(supplyLines.map(l =>
+        updateSupplyStatus(l.purchase_order_line_id, {
+          supply_status: l.supply_status!,
+          note: l.supply_status_note || undefined,
+        })
+      ))
+
+      setReceiptResult({
+        receipt_id: receiptId,
         units_received: totalReceiving,
         units_damaged: totalDamaged,
-        receipt_id: res.receipt_id,
+        supply_issues: supplyLines.length,
+        status: finalStatus,
       })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Receiving failed')
@@ -358,6 +394,60 @@ function SegmentReceivePanel({
   }
 
   const c = segment.candidate
+
+  // ── Submission result modal ──────────────────────────────────────────────
+  if (receiptResult) {
+    return (
+      <div className="space-y-5">
+        <div className="flex items-start gap-3">
+          <span className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center justify-center text-lg shrink-0">✓</span>
+          <div>
+            <h2 className="font-bold text-lg text-gray-900 dark:text-white">{c.po_number} received</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+              {c.supplier_name ?? c.account_label}
+              {c.informal_ref && <span className="font-mono ml-1">· {c.informal_ref}</span>}
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-lg border dark:border-gray-700 divide-y dark:divide-gray-700 text-sm">
+          {receiptResult.units_received > 0 && (
+            <div className="flex items-center justify-between px-4 py-3">
+              <span className="text-gray-600 dark:text-gray-400">Restocked to Shopify</span>
+              <span className="font-semibold text-green-700 dark:text-green-400">{receiptResult.units_received} unit{receiptResult.units_received !== 1 ? 's' : ''}</span>
+            </div>
+          )}
+          {receiptResult.units_damaged > 0 && (
+            <div className="flex items-center justify-between px-4 py-3">
+              <span className="text-gray-600 dark:text-gray-400">Damaged — not restocked</span>
+              <span className="font-semibold text-amber-600 dark:text-amber-400">{receiptResult.units_damaged} unit{receiptResult.units_damaged !== 1 ? 's' : ''}</span>
+            </div>
+          )}
+          {receiptResult.supply_issues > 0 && (
+            <div className="flex items-center justify-between px-4 py-3">
+              <span className="text-gray-600 dark:text-gray-400">Supply issues recorded</span>
+              <span className="font-semibold text-orange-600 dark:text-orange-400">{receiptResult.supply_issues} line{receiptResult.supply_issues !== 1 ? 's' : ''}</span>
+            </div>
+          )}
+          {receiptResult.units_received === 0 && receiptResult.units_damaged === 0 && receiptResult.supply_issues === 0 && (
+            <div className="px-4 py-3 text-gray-500 dark:text-gray-400">No inventory changes — PO updated.</div>
+          )}
+        </div>
+
+        <button
+          onClick={() => onComplete({
+            status: receiptResult.status,
+            units_received: receiptResult.units_received,
+            units_damaged: receiptResult.units_damaged,
+            receipt_id: receiptResult.receipt_id,
+          })}
+          className="w-full px-4 py-2.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
+        >
+          Done — back to slip →
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-5">
@@ -458,6 +548,54 @@ function SegmentReceivePanel({
                     ))}
                   </div>
                 )}
+
+                {/* Supply status — shown on 'not on slip' lines with nothing received/damaged.
+                    Staff note WHY the title didn't arrive: backordered, OOS, or out of print. */}
+                {!l.on_slip && !l.fuzzy && l.quantity_received === 0 && l.quantity_damaged === 0 && (
+                  <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                      Supply issue (optional)
+                    </p>
+                    <div className="flex gap-2">
+                      {([
+                        { value: 'backordered',   label: 'Backordered',    cls: 'text-orange-700 dark:text-orange-300 border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20' },
+                        { value: 'out_of_stock',  label: 'Out of stock',   cls: 'text-orange-700 dark:text-orange-300 border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20' },
+                        { value: 'out_of_print',  label: 'Out of print',   cls: 'text-red-700 dark:text-red-300 border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20' },
+                      ] as const).map(opt => (
+                        <button key={opt.value} type="button"
+                          onClick={() => setLineSupplyStatus(
+                            l.purchase_order_line_id,
+                            l.supply_status === opt.value ? null : opt.value
+                          )}
+                          className={`flex-1 px-2 py-1.5 rounded border text-[11px] font-medium transition-colors ${
+                            l.supply_status === opt.value
+                              ? opt.cls
+                              : 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-gray-300 dark:hover:border-gray-600'
+                          }`}>
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                    {l.supply_status && (
+                      <input
+                        type="text"
+                        placeholder={
+                          l.supply_status === 'out_of_print'
+                            ? 'Note (e.g. discontinued per Hachette rep)'
+                            : 'Note (e.g. supplier said Q3 restock)'
+                        }
+                        value={l.supply_status_note ?? ''}
+                        onChange={e => setLineSupplyNote(l.purchase_order_line_id, e.target.value)}
+                        className="w-full px-2 py-1.5 text-xs border rounded dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 focus:ring-1 focus:ring-orange-400 outline-none"
+                      />
+                    )}
+                    {l.supply_status === 'out_of_print' && (
+                      <p className="text-[11px] text-red-600 dark:text-red-400">
+                        This will close the line — it won't be expected in future shipments.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -474,11 +612,15 @@ function SegmentReceivePanel({
 
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              {totalReceiving} to restock{totalDamaged > 0 ? ` · ${totalDamaged} damaged` : ''}
+              {totalReceiving > 0 && <span>{totalReceiving} to restock</span>}
+              {totalReceiving > 0 && totalDamaged > 0 && <span> · </span>}
+              {totalDamaged > 0 && <span>{totalDamaged} damaged</span>}
+              {(totalReceiving > 0 || totalDamaged > 0) && lines.some(l => l.supply_status) && <span> · </span>}
+              {lines.some(l => l.supply_status) && <span className="text-orange-600 dark:text-orange-400">{lines.filter(l => l.supply_status).length} supply issue{lines.filter(l => l.supply_status).length !== 1 ? 's' : ''} noted</span>}
             </p>
-            <button onClick={handleSubmit} disabled={busy}
+            <button onClick={handleSubmit} disabled={busy || (totalReceiving === 0 && totalDamaged === 0 && !lines.some(l => l.supply_status))}
               className="px-5 py-2.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors disabled:opacity-50 active:scale-[0.98]">
-              {busy ? 'Applying…' : `Receive against ${c.po_number} →`}
+              {busy ? 'Applying…' : `Confirm ${c.po_number} →`}
             </button>
           </div>
         </>
