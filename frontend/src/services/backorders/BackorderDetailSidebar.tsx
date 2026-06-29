@@ -2,7 +2,7 @@
 // Right-side drill-down for a backordered title: per-order lines (what is owed
 // to whom), action buttons, and the action history trail.
 import { useEffect, useState } from 'react'
-import { createPortal } from 'react-dom' // 1. Import createPortal
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import type {
   BackorderProductRow,
@@ -86,7 +86,6 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
     })
   }
 
-  // 2. Wrap the JSX layout inside createPortal, rendering to document.body
   return createPortal(
     <>
       <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={onClose} />
@@ -101,7 +100,7 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
               {row.vendor ?? ''} {row.sku ? `· ${row.sku}` : ''} · available {row.available ?? '—'}
             </p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0">
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0 text-gray-500 dark:text-gray-400">
             <X size={18} />
           </button>
         </div>
@@ -138,14 +137,14 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
             <button
               onClick={logVendorInquiry}
               disabled={busy}
-              className="px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium"
+              className="px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium shadow-sm"
             >
               Log vendor inquiry
             </button>
             <button
               onClick={setEta}
               disabled={busy}
-              className="px-3 py-1.5 rounded-md border dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 text-xs font-medium"
+              className="px-3 py-1.5 rounded-md border text-gray-700 dark:text-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 text-xs font-medium shadow-sm"
             >
               Set expected date
             </button>
@@ -163,7 +162,7 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
                 ))}
               </div>
             ) : (
-              <div className="border rounded-md dark:border-gray-700 overflow-x-auto">
+              <div className="border rounded-md dark:border-gray-700 overflow-x-auto bg-white dark:bg-gray-950">
                 <table className="min-w-full text-xs">
                   <thead className="bg-gray-50 dark:bg-gray-800">
                     <tr>
@@ -174,15 +173,17 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700 text-gray-900 dark:text-gray-100">
                     {lines.map((l) => (
-                      <tr key={`${l.order_id}-${l.line_item_id}`} className="even:bg-gray-50/50 dark:even:bg-gray-800/50">
-                        <td className="px-3 py-2 whitespace-nowrap font-medium">{l.order_name ?? l.order_id}</td>
-                        <td className="px-3 py-2 max-w-[120px] truncate">{l.customer_email ?? '—'}</td>
+                      <tr key={`${l.order_id}-${l.line_item_id}`} className="even:bg-gray-50/50 dark:even:bg-gray-800/40 hover:bg-gray-50/80 dark:hover:bg-gray-800/30 transition-colors">
+                        <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-900 dark:text-white">{l.order_name ?? l.order_id}</td>
+                        <td className="px-3 py-2 max-w-[120px] truncate text-gray-600 dark:text-gray-300">{l.customer_email ?? '—'}</td>
                         <td className="px-3 py-2 tabular-nums">{l.open_qty}/{l.qty_backordered}</td>
-                        <td className="px-3 py-2">{l.status}</td>
-                        <td className="px-3 py-2 whitespace-nowrap">{fmtDate(l.order_created_at)}</td>
-                        <td className="px-3 py-2 whitespace-nowrap">
+                        <td className="px-3 py-2">
+                          <span className="capitalize">{l.status}</span>
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap text-gray-500 dark:text-gray-400">{fmtDate(l.order_created_at)}</td>
+                        <td className="px-3 py-2 whitespace-nowrap text-gray-500 dark:text-gray-400">
                           {l.last_customer_notified_at
                             ? `${fmtDate(l.last_customer_notified_at)} (${l.notification_count}x)`
                             : 'Never'}
@@ -192,7 +193,7 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
                             <button
                               onClick={() => markNotified(l)}
                               disabled={busy}
-                              className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-medium whitespace-nowrap"
+                              className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-medium whitespace-nowrap shadow-sm"
                             >
                               Mark notified
                             </button>
@@ -220,14 +221,16 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
                     <span className="font-medium text-gray-900 dark:text-white">
                       {a.action_type.replace(/_/g, ' ')}
                     </span>
-                    {a.order_id ? ` ·order ${a.order_id}` : ''}
-                    {a.eta_date ? ` ·ETA ${a.eta_date}` : ''}
+                    {a.order_id ? ` · order ${a.order_id}` : ''}
+                    {a.eta_date ? ` · ETA ${a.eta_date}` : ''}
                     <span className="text-gray-500 dark:text-gray-400">
                       {' '} — {new Date(a.created_at).toLocaleString()}
                       {a.actor ? ` by ${a.actor}` : ''}
                     </span>
                     {a.details && 'note' in a.details && (
-                      <div className="text-gray-600 dark:text-gray-300 mt-0.5">{String(a.details.note)}</div>
+                      <div className="text-gray-600 dark:text-gray-300 mt-0.5 bg-gray-50 dark:bg-gray-800/40 p-2 rounded border dark:border-gray-800">
+                        {String(a.details.note)}
+                      </div>
                     )}
                   </li>
                 ))}
