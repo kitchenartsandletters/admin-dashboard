@@ -25,6 +25,10 @@ So a PO that's been partially received always shows **Partial** — even if the 
 
 This is deliberate: the top-level badge answers "where does this order stand?" and the expanded rows answer "what happened on each try?"
 
+### Supply-issue markers on lines
+
+When you open an order's detail, individual lines may carry a supply-status badge — **Backordered**, **Out of stock**, or **Out of print** — recorded when a slip or a supplier told you a title wasn't shipping. Backordered and out-of-stock lines stay open (still expected); out-of-print closes the line. You can add, change, or clear these from the order detail at any time. See the **Receiving — Intake** guide for how supply status works.
+
 ---
 
 ## Starting to receive
@@ -46,3 +50,4 @@ A failed receipt means an attempt didn't fully apply — often a single book tha
 - **Partial** — some of the order has arrived; more is still expected.
 - **Failed** — an attempt hit a problem and needs a second look.
 - **Pending** — expected but not yet received.
+- **Supply status** — a marker on a line that didn't ship: backordered, out of stock, or out of print.
