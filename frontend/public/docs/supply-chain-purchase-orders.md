@@ -47,6 +47,10 @@ Click any row to open its detail panel on the right. There you'll see every line
 
 When an order is ready to receive against, the detail panel has a **Receive** action that takes you straight into the receiving wizard for that PO.
 
+### Marking a supply issue on a line
+
+If a publisher tells you a title is delayed or unavailable — by email, by phone, or on a slip — you can record it right here without starting a receiving session. On any line that hasn't fully arrived, use the **"supply issue?"** link to mark it **Backordered**, **Out of stock**, or **Out of print**, with an optional note. Backordered and out-of-stock lines stay open and keep waiting for stock; out-of-print closes the line. Tap an existing marker to change or clear it later. See the **Receiving — Intake** guide for the full explanation.
+
 ---
 
 ## Importing from a CSV (Stocky and others)
@@ -79,6 +83,7 @@ If you've been practicing, switch to the **Test** tab and you'll see an **Archiv
 - Use **Test** orders freely while you're getting comfortable — they don't touch real inventory.
 - Add an informal reference or a note so orders are easy to find later.
 - Check the Preview step carefully on a CSV import before confirming.
+- Mark a supply issue on a line as soon as a publisher tells you about a delay — it keeps the order honest about what's still coming.
 
 **Don't**
 - Don't worry about deleting a draft you started by mistake — drafts can be deleted cleanly from the list.
@@ -92,4 +97,5 @@ If you've been practicing, switch to the **Test** tab and you'll see an **Archiv
 - **Draft** — not yet submitted; still editable.
 - **Partial** — some but not all of the order has arrived.
 - **Informal reference** — a free-text label you can attach to a PO to make it easy to recognize.
+- **Supply issue** — a marker on a line that didn't ship: backordered, out of stock, or out of print.
 - **Test PO** — a practice order with no effect on real inventory.
