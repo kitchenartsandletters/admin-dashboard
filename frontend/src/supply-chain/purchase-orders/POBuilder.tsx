@@ -3,7 +3,7 @@
 //
 // Flow:
 //   Step 1 — Header: supplier account, destination location, dates, flags
-//   Step 2 — Lines: add line items by ISBN/title search
+//   Step 2 — Lines: add line items by ISBN/title search, or scan an order image (#56)
 //   Step 3 — Review: summary before submission
 //
 // On save:
@@ -41,6 +41,7 @@ import { SupplierParty, SupplierAccount } from '../suppliers/supplierTypes'
 import type { SupplierDetail } from '../suppliers/supplierTypes'
 import { AdHocSource, PurchaseOrder } from '../purchase-orders/purchaseOrderTypes'
 import SupplierAccountPicker, { resolveAccountForLocation } from '../suppliers/SupplierAccountPicker'
+import OrderImageScan, { type ScannedLine } from './OrderImageScan'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -300,6 +301,7 @@ interface Props {
 export default function POBuilder({ onClose, onCreated, initialSupplier }: Props) {
   const [isVisible, setIsVisible] = useState(false)
   const [step, setStep] = useState<1 | 2 | 3>(1)
+  const [scanOpen, setScanOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -381,6 +383,28 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
 
   const addLine = (item: Omit<LineItem, '_key' | 'quantity_ordered' | 'unit_cost' | 'notes'>) => {
     setLines(prev => [...prev, { ...item, _key: crypto.randomUUID(), quantity_ordered: 1, unit_cost: '', notes: '' }])
+  }
+  // Add lines produced by the image scanner (#56). Each scanned line already
+  // carries qty and cost, so we push directly rather than through addLine.
+  // De-dupe against lines already on the PO by inventory_item_id.
+  const addScannedLines = (scanned: ScannedLine[]) => {
+    setLines(prev => {
+      const have = new Set(prev.map(l => l.inventory_item_id))
+      const additions = scanned
+        .filter(s => !have.has(s.inventory_item_id))
+        .map(s => ({
+          _key: crypto.randomUUID(),
+          inventory_item_id: s.inventory_item_id,
+          variant_id: s.variant_id,
+          title: s.title,
+          isbn: s.isbn,
+          quantity_ordered: s.quantity_ordered,
+          unit_cost: s.unit_cost,
+          notes: '',
+        }))
+      return [...prev, ...additions]
+    })
+    setScanOpen(false)
   }
   const updateLine = (key: string, patch: Partial<LineItem>) => {
     setLines(prev => prev.map(l => l._key === key ? { ...l, ...patch } : l))
@@ -608,8 +632,32 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
               <div className="flex flex-col h-full -mx-5 -my-5">
                 <div className="px-5 pt-5 pb-3 border-b dark:border-gray-800 bg-white dark:bg-gray-950 shrink-0">
                   <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                    Add line items by searching ISBN or title. You can also save the PO as draft now and add lines later.
+                    Add line items by searching ISBN or title, or scan an order form / invoice / screenshot. You can also save the PO as draft now and add lines later.
                   </p>
+
+                  {/* Image scan path (#56) — collapsible so it doesn't crowd manual search */}
+                  <div className="mb-3">
+                    {!scanOpen ? (
+                      <button type="button" onClick={() => setScanOpen(true)}
+                        className="w-full px-3 py-2 rounded-md border border-dashed border-blue-300 dark:border-blue-700 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
+                        📷 Scan an order form, invoice, or screenshot
+                      </button>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Scan to add lines</p>
+                          <button type="button" onClick={() => setScanOpen(false)}
+                            className="text-xs text-gray-400 hover:underline">Close scanner</button>
+                        </div>
+                        <OrderImageScan
+                          selectedSupplierName={supplierSelection?.party.name ?? null}
+                          existingIsbns={new Set(lines.map(l => l.isbn).filter(Boolean))}
+                          onLinesAccepted={addScannedLines}
+                        />
+                      </div>
+                    )}
+                  </div>
+
                   <VariantSearchRow onAdd={addLine} existingItemIds={existingItemIds} />
                 </div>
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
