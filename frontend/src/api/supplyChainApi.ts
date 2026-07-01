@@ -170,6 +170,25 @@ export async function downloadReceiptPdf(receiptId: string): Promise<void> {
   return _downloadBlob(`/api/receiving/${receiptId}/pdf`, `KAL-RECEIPT-${shortId}.pdf`)
 }
 
+// Order-image → draft PO lines (#56). Used by the PO builder's image-scan path.
+// Reuses the receiving vision parser server-side, then resolves each parsed
+// ISBN to a catalog product so matched lines arrive ready to add to a PO.
+export interface ParsedOrderLine {
+  isbn: string | null; title: string | null; supplier_sku: string | null
+  quantity: number | null; unit_cost: number | null; confidence: number; needs_review: boolean
+}
+export interface MatchedOrderLine extends ParsedOrderLine {
+  inventory_item_id: string; variant_id: string; vendor: string | null
+}
+export interface OrderImageParseResult {
+  matched: MatchedOrderLine[]; unmatched: ParsedOrderLine[]
+  supplier_name: string | null
+  supplier_guess: { party_id: string; name: string; matched_on: string } | null
+  invoice_number: string | null; invoice_date: string | null
+  matched_count: number; unmatched_count: number; stub: boolean
+}
+export async function parseOrderImage(file: File): Promise<OrderImageParseResult> { return _multipartPost('/api/purchase-orders/parse-order-image', file) }
+
 // ===========================================================================
 // RECEIVING
 // ===========================================================================
