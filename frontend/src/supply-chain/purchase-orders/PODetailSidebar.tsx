@@ -34,6 +34,13 @@
 //        Backordered / Out of stock / Out of print + optional note field.
 //      - Existing supply status shown as a tappable badge (tap to edit/clear).
 //      - Calls PATCH /api/receiving/lines/{id}/supply; optimistic local update.
+//
+// #59: Lines can be added to non-draft POs (submitted/confirmed/partial), not
+//      just drafts, since the backend permits add on anything except
+//      received/cancelled. The add-line panel now renders whenever canAddLines
+//      is true, with an amber warning banner for non-draft POs reminding staff
+//      the supplier may already be working from the order. Add-capable non-draft
+//      POs also use the wider split-pane layout so the panel has room.
 
 import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -740,6 +747,9 @@ function LinesPanel({ order, lines, onLineAdded, onQtyChange, onDelete, onDamage
   onSupplyStatusChanged?: (lineId: string, status: SupplyStatus | null, note: string | null) => void
 }) {
   const isDraft = order.status === 'draft'
+  // Lines can be added to any order that isn't finished — matches the backend,
+  // which permits add on draft/submitted/confirmed/partial (not received/cancelled).
+  const canAddLines = !['received', 'cancelled'].includes(order.status)
   const existingItemIds = new Set(lines.map(l => l.inventory_item_id))
   const totalOrdered  = lines.reduce((s, l) => s + l.quantity_ordered, 0)
   const totalReceived = lines.reduce((s, l) => s + l.quantity_received, 0)
@@ -852,9 +862,23 @@ function LinesPanel({ order, lines, onLineAdded, onQtyChange, onDelete, onDamage
         )}
       </div>
 
-      {isDraft && (
+      {canAddLines && (
         <div className="shrink-0 pt-3 border-t dark:border-gray-700 mt-3">
-          <p className="kal-text-label text-gray-400 dark:text-gray-500 mb-1.5">Add line</p>
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="kal-text-label text-gray-400 dark:text-gray-500">Add line</p>
+            {!isDraft && (
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                {order.status} PO
+              </span>
+            )}
+          </div>
+          {!isDraft && (
+            <div className="mb-2 px-2.5 py-2 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+              <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug">
+                This PO has already been {order.status === 'partial' ? 'partially received' : order.status}. Adding a line changes an order the supplier may already be working from — make sure the supplier knows about the addition, and re-send the PO if needed.
+              </p>
+            </div>
+          )}
           <InlineLineEntry poId={order.id} existingItemIds={existingItemIds} onLineAdded={onLineAdded} />
         </div>
       )}
@@ -960,7 +984,11 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
     finally { setPdfDownloading(false) }
   }
 
-  const sidebarWidth = (isDraft || wide) ? 'sm:w-[56rem]' : 'sm:w-[30rem]'
+  // Add-capable non-draft POs (submitted/confirmed/partial) use the wider split
+  // layout too, so the add-line panel has room alongside the line list.
+  const canAddLines = !['received', 'cancelled'].includes(order.status)
+  const useWideLayout = isDraft || wide || canAddLines
+  const sidebarWidth = useWideLayout ? 'sm:w-[56rem]' : 'sm:w-[30rem]'
 
   return createPortal(
     <>
@@ -994,7 +1022,7 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
         </div>
 
         {/* Body */}
-        {(isDraft || wide) ? (
+        {useWideLayout ? (
           <div className="flex-1 min-h-0 flex flex-col sm:flex-row">
             <div className="sm:w-64 shrink-0 border-b sm:border-b-0 sm:border-r dark:border-gray-800 overflow-y-auto p-5">
               <SectionLabel>Order</SectionLabel>
