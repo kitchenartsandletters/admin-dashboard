@@ -41,6 +41,14 @@
 //      is true, with an amber warning banner for non-draft POs reminding staff
 //      the supplier may already be working from the order. Add-capable non-draft
 //      POs also use the wider split-pane layout so the panel has room.
+//
+// #60: Quantity is editable on non-draft lines too. Any line on a PO that isn't
+//      received/cancelled and whose own status is still open/partial/backordered/
+//      out_of_stock shows a click-to-edit ordered qty (rcvd/ord becomes a button
+//      → inline number input, min = quantity_received). Calls the same
+//      PATCH /lines/{id} the draft editor uses. Lets staff fix a wrong qty on a
+//      line added to an already-submitted PO without deleting it (delete stays
+//      draft-only per the backend). Received/out_of_print lines stay read-only.
 
 import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -264,11 +272,15 @@ function EditableOrderFields({ order, onSaved }: { order: PurchaseOrder; onSaved
 }
 
 // ---------------------------------------------------------------------------
-// LineItemRow (#41: damage-aware, #32: supply-status-aware)
+// LineItemRow (#41: damage-aware, #32: supply-status-aware, #60: qty editable)
 // ---------------------------------------------------------------------------
 
-function LineItemRow({ line, isDraft, onQtyChange, onDelete, onDamageResolved, onSupplyStatusChanged }: {
+function LineItemRow({ line, isDraft, poEditable, onQtyChange, onDelete, onDamageResolved, onSupplyStatusChanged }: {
   line: PurchaseOrderLine; isDraft: boolean
+  // poEditable: the parent PO isn't received/cancelled, so the backend accepts
+  // line quantity edits (PATCH /lines/{id}). Governs the qty pencil on non-draft
+  // lines; delete stays draft-only because the backend blocks it otherwise.
+  poEditable: boolean
   onQtyChange: (id: string, qty: number) => Promise<void>
   onDelete: (id: string) => Promise<void>
   onDamageResolved?: (lineId: string, resolution: DamageResolution) => void
@@ -340,6 +352,13 @@ function LineItemRow({ line, isDraft, onQtyChange, onDelete, onDamageResolved, o
   // Show supply status affordance on open/partial/backordered/out_of_stock lines
   // (not on received, cancelled, out_of_print, or draft)
   const canHaveSupplyStatus = !isDraft && ['open', 'partial', 'backordered', 'out_of_stock'].includes(line.status)
+
+  // Quantity is editable on non-draft lines when the PO still accepts edits and
+  // the line is one still awaiting fulfillment. We deliberately exclude received
+  // and out_of_print lines: changing the ordered qty of something already closed
+  // is confusing and can push quantity_ordered below quantity_received. (Draft
+  // lines keep their own editor in the isDraft branch below.)
+  const canEditQty = !isDraft && poEditable && ['open', 'partial', 'backordered', 'out_of_stock'].includes(line.status)
   const hasSupplyStatus     = !!line.supply_status && line.supply_status !== null
 
   // Labels for existing supply status badge
@@ -400,9 +419,29 @@ function LineItemRow({ line, isDraft, onQtyChange, onDelete, onDamageResolved, o
               {line.status === 'received' && !isFullyDamaged && (
                 <span className="text-green-500 text-xs">✓</span>
               )}
-              <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 tabular-nums">
-                {line.quantity_received}/{line.quantity_ordered}
-              </p>
+              {editQty !== null ? (
+                <div className="flex items-center gap-1">
+                  <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 tabular-nums">{line.quantity_received}/</span>
+                  <input type="number" min={Math.max(1, line.quantity_received)} value={editQty}
+                    onChange={e => setEditQty(Math.max(1, parseInt(e.target.value) || 1))}
+                    onKeyDown={e => { if (e.key === 'Enter') handleQtySave(); if (e.key === 'Escape') setEditQty(null) }}
+                    className="w-12 px-1 py-0.5 border rounded text-xs text-center dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-1 focus:ring-blue-500 outline-none"
+                    autoFocus />
+                  <button type="button" onClick={handleQtySave} disabled={saving}
+                    className="text-[var(--text-label)] text-blue-500 hover:underline disabled:opacity-50">{saving ? '…' : '✓'}</button>
+                  <button type="button" onClick={() => setEditQty(null)}
+                    className="text-[var(--text-label)] text-gray-400 hover:text-gray-600">✕</button>
+                </div>
+              ) : canEditQty ? (
+                <button type="button" onClick={() => setEditQty(line.quantity_ordered)} title="Click to edit ordered qty"
+                  className="text-xs font-semibold text-gray-700 dark:text-gray-300 hover:text-blue-500 tabular-nums">
+                  {line.quantity_received}/{line.quantity_ordered}
+                </button>
+              ) : (
+                <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 tabular-nums">
+                  {line.quantity_received}/{line.quantity_ordered}
+                </p>
+              )}
             </div>
             {hasDamage && (
               <div className="flex items-center justify-end gap-1 flex-wrap">
@@ -766,8 +805,12 @@ function LinesPanel({ order, lines, onLineAdded, onQtyChange, onDelete, onDamage
   const pendingLines = !isDraft ? sorted.filter(l => !isLineDone(l)) : []
   const doneLines    = !isDraft ? sorted.filter(l =>  isLineDone(l)) : []
 
+  // Same rule as canAddLines: the backend accepts line edits on any PO that
+  // isn't received/cancelled. Passed to each row to gate the qty pencil.
+  const poEditable = !['received', 'cancelled'].includes(order.status)
+
   const renderRow = (line: PurchaseOrderLine) => (
-    <LineItemRow key={line.id} line={line} isDraft={isDraft}
+    <LineItemRow key={line.id} line={line} isDraft={isDraft} poEditable={poEditable}
       onQtyChange={onQtyChange} onDelete={onDelete}
       onDamageResolved={onDamageResolved}
       onSupplyStatusChanged={onSupplyStatusChanged} />
