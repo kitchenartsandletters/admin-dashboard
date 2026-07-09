@@ -35,14 +35,14 @@ const navItems = [
   {
     label: 'Supply Chain',
     path: '/purchase-orders',
-    roles: ['admin'],
+    roles: ['admin','editor','user'],
     children: [
-      { label: 'Purchase Orders', path: '/purchase-orders', roles: ['admin','editor'] },
-      { label: 'Receiving',       path: '/receiving',       roles: ['admin','editor'] },
-      { label: 'Transfers',       path: '/transfers',       roles: ['admin','editor'] },
-      { label: 'Vendors/Publishers',       path: '/suppliers',       roles: ['admin','editor'] },
-      { label: 'Vendor Cosmology',       path: '/supply-chain/cosmology', roles: ['admin', 'editor'] },
-      { label: 'Catalog Gaps', path: '/suppliers/catalog-gaps', roles: ['admin'] },
+      { label: 'Purchase Orders', path: '/purchase-orders', roles: ['admin','editor','user'] },
+      { label: 'Receiving',       path: '/receiving',       roles: ['admin','editor','user'] },
+      { label: 'Transfers',       path: '/transfers',       roles: ['admin','editor','user'] },
+      { label: 'Vendors/Publishers',       path: '/suppliers',       roles: ['admin','editor','user'] },
+      { label: 'Vendor Cosmology',       path: '/supply-chain/cosmology', roles: ['admin', 'editor','user'] },
+      { label: 'Catalog Gaps', path: '/suppliers/catalog-gaps', roles: ['admin','editor','user'] },
     ],
   },
   {
