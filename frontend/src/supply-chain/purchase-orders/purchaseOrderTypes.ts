@@ -92,6 +92,10 @@ export interface PurchaseOrder {
   supplier_name?: string       // supplier_parties.name
   account_label?: string       // supplier_accounts.label
 
+  // Line-content search blob (title / ISBN / author-SKU), lowercased,
+  // populated by the list endpoint so the search box can match order contents (#58)
+  line_search?: string | null
+
   // Beta Testing fields
   is_test: boolean
   archived_at: string | null
