@@ -118,10 +118,15 @@ export default function POService() {
 
     if (search.trim()) {
       const q = search.toLowerCase()
+      // Matches PO header fields (number, supplier, reference, notes) plus the
+      // line-content blob the API attaches — book title, ISBN, and supplier_sku,
+      // which for KAL carries the author name(s). One box, matches any field (#58).
       list = list.filter(o =>
         o.po_number.toLowerCase().includes(q) ||
+        (o.supplier_name ?? '').toLowerCase().includes(q) ||
         (o.informal_ref ?? '').toLowerCase().includes(q) ||
-        (o.notes ?? '').toLowerCase().includes(q)
+        (o.notes ?? '').toLowerCase().includes(q) ||
+        (o.line_search ?? '').includes(q)
       )
     }
 
@@ -282,7 +287,7 @@ export default function POService() {
           </div>
           <input
             type="search"
-            placeholder="Search PO number, supplier, reference or notes..."
+            placeholder="Search PO #, supplier, title, ISBN, or author..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full pl-9 pr-4 py-1.5 border dark:border-gray-700 rounded-md text-xs sm:text-sm
