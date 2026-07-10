@@ -185,6 +185,10 @@ export interface OrderImageParseResult {
   supplier_name: string | null
   supplier_guess: { party_id: string; name: string; matched_on: string } | null
   invoice_number: string | null; invoice_date: string | null
+  // KAL-facing PO reference read off the document (e.g. an Ingram iPage export's
+  // "PO Number" column). The document-import PO flow prefills informal_ref from
+  // this; confidence is "high" only when it came from a clearly-labelled field.
+  po_reference: string | null; po_reference_confidence: 'high' | 'medium' | 'low' | null
   matched_count: number; unmatched_count: number; stub: boolean
 }
 export async function parseOrderImage(file: File): Promise<OrderImageParseResult> { return _multipartPost('/api/purchase-orders/parse-order-image', file) }
