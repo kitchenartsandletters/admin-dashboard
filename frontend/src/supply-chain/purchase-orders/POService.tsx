@@ -6,6 +6,7 @@ import PODetailSidebar from './PODetailSidebar'
 import RightSidebar from '../../components/RightSidebar'
 import POBuilder from './POBuilder'
 import POCSVImport from './POCSVImport'
+import PODocumentImport from './PODocumentImport'
 import { PurchaseOrder, PurchaseOrderDetail, POStatus } from './purchaseOrderTypes'
 import { fetchPurchaseOrders, fetchPurchaseOrderDetail, cancelPurchaseOrder, archiveTestPOs } from '../../api/supplyChainApi'
 import { SortConfig, nextSortDirection } from '../../utils/tableUtils'
@@ -76,6 +77,7 @@ export default function POService() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [showBuilder,   setShowBuilder]   = useState(false)
   const [showCSVImport, setShowCSVImport] = useState(false)
+  const [showDocImport, setShowDocImport] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [archiving, setArchiving] = useState(false)
   const [docsFilePath, setDocsFilePath] = useState<string | null>(null)
@@ -229,6 +231,15 @@ export default function POService() {
           </button>
 
           <button
+            onClick={() => setShowDocImport(true)}
+            className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600
+                       text-gray-700 dark:text-gray-300 text-xs sm:text-sm font-semibold
+                       hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            📄 Import from document
+          </button>
+
+          <button
             onClick={() => setShowBuilder(true)}
             className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm"
           >
@@ -348,6 +359,18 @@ export default function POService() {
           onClose={() => setShowCSVImport(false)}
           onCreated={async (poId) => {
             setShowCSVImport(false)
+            await load()
+            const d = await fetchPurchaseOrderDetail(poId)
+            setSelectedOrder(d.order)
+          }}
+        />
+      )}
+
+      {showDocImport && (
+        <PODocumentImport
+          onClose={() => setShowDocImport(false)}
+          onCreated={async (poId) => {
+            setShowDocImport(false)
             await load()
             const d = await fetchPurchaseOrderDetail(poId)
             setSelectedOrder(d.order)
