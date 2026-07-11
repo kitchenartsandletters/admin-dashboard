@@ -13,10 +13,12 @@ export default function ProtectedRoute({
   children,
   requiredRoles,
 }: ProtectedRouteProps) {
-  const { user, role, authReady } = useAuth();
+  const { user, role, authReady, profileLoading } = useAuth();
 
-  // 1. Still resolving auth / profile
-  if (!authReady) {
+  // 1. Still resolving auth, or resolving a freshly signed-in user's profile.
+  //    Gating on profileLoading prevents a brief MissingProfile flash between
+  //    "user known" and "role resolved" right after login.
+  if (!authReady || profileLoading) {
     return <AuthLoading />;
   }
 

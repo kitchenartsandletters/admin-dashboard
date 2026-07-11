@@ -17,6 +17,8 @@ interface AuthContextValue {
   user: User | null;
   role: Role | null;
   authReady: boolean;
+  /** True while a signed-in user's profile/role is still being resolved. */
+  profileLoading: boolean;
   logout: () => Promise<void>;
 }
 
@@ -26,7 +28,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<Role | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
   const hasHydratedOnceRef = useRef(false);
+  const currentUserIdRef = useRef<string | null>(null);
 
   /**
    * Hydrate auth + profile state from a Supabase user.
@@ -39,14 +43,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (!supabaseUser) {
+      currentUserIdRef.current = null;
       setUser(null);
       setRole(null);
+      setProfileLoading(false);
       setAuthReady(true);
       hasHydratedOnceRef.current = true;
       return;
     }
 
+    // A different user id than we last resolved means we don't yet know this
+    // user's role. Gate on profileLoading so ProtectedRoute shows the loading
+    // screen (not MissingProfile) until the fetch below resolves. Token
+    // refreshes for the same user keep their known role and re-fetch silently.
+    const isNewUser = currentUserIdRef.current !== supabaseUser.id;
+    currentUserIdRef.current = supabaseUser.id;
+
     setUser(supabaseUser);
+    if (isNewUser) setProfileLoading(true);
 
     const { data, error } = await supabase
       .from('profiles')
@@ -60,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRole(data.role as Role);
     }
 
+    setProfileLoading(false);
     setAuthReady(true);
     hasHydratedOnceRef.current = true;
   };
@@ -92,9 +107,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       role,
       authReady,
+      profileLoading,
       logout,
     }),
-    [user, role, authReady, logout]
+    [user, role, authReady, profileLoading, logout]
   );
 
   return (
