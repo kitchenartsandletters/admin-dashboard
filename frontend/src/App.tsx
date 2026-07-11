@@ -6,6 +6,8 @@ import DamagedBooksTable from './components/DamagedBooksTable';
 import BlacklistManager from './components/BlackListManager';
 import DamagedBooksWizard from './components/DamagedBooksWizard';
 import { AuthProvider } from './auth/AuthProvider';
+import { StaffProvider, StaffGate, StaffChip } from './auth/StaffProvider';
+import { useDailyLogout } from './auth/useDailyLogout';
 import ProtectedRoute from './auth/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
 import WelcomePage from './pages/WelcomePage';
@@ -38,6 +40,9 @@ import CatalogGapView from './supply-chain/suppliers/CatalogGapView'
 const App = () => {
   const [dateTime, setDateTime] = useState({ date: "", time: "" });
 
+  // Hard end-of-day logout: every session expires at 11:59 PM ET daily.
+  useDailyLogout();
+
   useEffect(() => {
     const dateOptions: Intl.DateTimeFormatOptions = {
       timeZone: 'America/New_York',
@@ -66,6 +71,7 @@ const App = () => {
 
   return (
     <AuthProvider>
+      <StaffProvider>
       <Router>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -73,6 +79,7 @@ const App = () => {
             path="/*"
             element={
               <ProtectedRoute>
+                <StaffGate>
                 <SidebarLayout dateTime={dateTime}>
                   <div className="bg-white dark:bg-gray-900 hidden md:block">
                     <header className="flex items-center justify-between px-4 py-4 border-b dark:border-gray-800">
@@ -84,12 +91,15 @@ const App = () => {
                           {dateTime.time}
                         </span>
                       </div>
-                      <button
-                        onClick={() => supabase.auth.signOut()}
-                        className="text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-                      >
-                        Log out
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <StaffChip />
+                        <button
+                          onClick={() => supabase.auth.signOut()}
+                          className="text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                        >
+                          Log out
+                        </button>
+                      </div>
                     </header>
                   </div>
 
@@ -243,11 +253,13 @@ const App = () => {
                     </Routes>
                   </div>
                 </SidebarLayout>
+                </StaffGate>
               </ProtectedRoute>
             }
           />
         </Routes>
       </Router>
+      </StaffProvider>
     </AuthProvider>
   );
 };
