@@ -4,12 +4,12 @@
 // Three zones: a greeting, a "Needs attention" triage strip that only shows
 // non-zero signals, and curated quick-launch tiles + a recent-activity feed.
 //
-// Signals are fetched client-side in parallel from existing endpoints; any
-// call that fails or returns zero simply doesn't render a card (the non-zero
-// rule doubles as the error boundary). Counts drawn from list endpoints are
-// shown as "N+" when the fetch is page-capped.
+// Signals are fetched client-side in parallel from existing endpoints. Each
+// fetch is retried a couple of times on transient failure; if it still fails
+// we surface a small "couldn't load" notice with Retry rather than silently
+// showing all-clear, so a backend hiccup never masquerades as "nothing to do".
 
-import { useEffect, useMemo, useState, ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, Role } from '../auth/AuthProvider';
 import { useStaff } from '../auth/StaffProvider';
@@ -60,8 +60,23 @@ interface HistoryRow {
   status: string;
 }
 
-async function safe<T>(p: Promise<T>, fallback: T): Promise<T> {
-  try { return await p; } catch { return fallback; }
+// Result of a resilient fetch: `failed` distinguishes a real failure (after
+// retries) from a legitimately empty/zero result, so the UI can tell the
+// difference between "nothing to do" and "couldn't check".
+interface Attempt<T> {
+  data: T | null;
+  failed: boolean;
+}
+
+async function attempt<T>(fn: () => Promise<T>, retries = 2, backoff = 400): Promise<Attempt<T>> {
+  for (let i = 0; ; i++) {
+    try {
+      return { data: await fn(), failed: false };
+    } catch {
+      if (i >= retries) return { data: null, failed: true };
+      await new Promise(r => setTimeout(r, backoff * (i + 1)));
+    }
+  }
 }
 
 function greetingPart(): string {
@@ -94,27 +109,43 @@ function useHomeSignals(role: Role | null) {
   const [cards, setCards] = useState<TriageCard[]>([]);
   const [activity, setActivity] = useState<ActivityRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [nonce, setNonce] = useState(0);
+
+  const reload = useCallback(() => setNonce(n => n + 1), []);
 
   useEffect(() => {
     if (!role) return;
     let cancelled = false;
     setLoading(true);
+    setError(false);
 
     (async () => {
       const isAdmin = role === 'admin';
 
-      const [pos, transfers, backorder, history, unrecognized, flagged, syncLog] = await Promise.all([
-        safe(fetchPurchaseOrders({ limit: PO_PAGE_LIMIT }), []),
-        safe(fetchTransfers({ status: 'in_transit', limit: PO_PAGE_LIMIT }), []),
-        safe(fetchBackorderSummary(), null),
-        safe(fetchReceiptHistory({ limit: 6 }) as Promise<HistoryRow[]>, []),
-        isAdmin ? safe(fetchUnrecognizedVendors(), null) : Promise.resolve(null),
-        isAdmin ? safe(fetchFlaggedSnapshots(), []) : Promise.resolve([]),
-        isAdmin ? safe(fetchSupplierSyncLog(1), []) : Promise.resolve([]),
+      const [poR, trR, boR, histR] = await Promise.all([
+        attempt(() => fetchPurchaseOrders({ limit: PO_PAGE_LIMIT })),
+        attempt(() => fetchTransfers({ status: 'in_transit', limit: PO_PAGE_LIMIT })),
+        attempt(() => fetchBackorderSummary()),
+        attempt(() => fetchReceiptHistory({ limit: 6 }) as Promise<HistoryRow[]>),
       ]);
+
+      let unrecR: Attempt<Awaited<ReturnType<typeof fetchUnrecognizedVendors>>> = { data: null, failed: false };
+      let flagR: Attempt<unknown[]> = { data: null, failed: false };
+      let syncR: Attempt<Awaited<ReturnType<typeof fetchSupplierSyncLog>>> = { data: null, failed: false };
+      if (isAdmin) {
+        [unrecR, flagR, syncR] = await Promise.all([
+          attempt(() => fetchUnrecognizedVendors()),
+          attempt(() => fetchFlaggedSnapshots()),
+          attempt(() => fetchSupplierSyncLog(1)),
+        ]);
+      }
       if (cancelled) return;
 
       const next: TriageCard[] = [];
+      const pos = poR.data ?? [];
+      const transfers = trR.data ?? [];
+      const backorder = boR.data;
 
       // POs awaiting receiving
       const awaiting = pos.filter(p => AWAITING_RECEIVING.has(p.status)).length;
@@ -149,7 +180,7 @@ function useHomeSignals(role: Role | null) {
 
       // Admin-only health signals
       if (isAdmin) {
-        const flags = Array.isArray(flagged) ? flagged.length : 0;
+        const flags = Array.isArray(flagR.data) ? flagR.data.length : 0;
         if (flags > 0) {
           next.push({
             key: 'recon', icon: 'alert', tone: 'red', count: flags,
@@ -157,7 +188,7 @@ function useHomeSignals(role: Role | null) {
             cta: 'Review flags', route: '/status',
           });
         }
-        const unrec = unrecognized?.unrecognized_count ?? 0;
+        const unrec = unrecR.data?.unrecognized_count ?? 0;
         if (unrec > 0) {
           next.push({
             key: 'vendors', icon: 'users', tone: 'amber', count: unrec,
@@ -165,7 +196,7 @@ function useHomeSignals(role: Role | null) {
             cta: 'Map vendors', route: '/suppliers',
           });
         }
-        const lastSync = Array.isArray(syncLog) ? syncLog[0] : undefined;
+        const lastSync = Array.isArray(syncR.data) ? syncR.data[0] : undefined;
         if (lastSync && lastSync.error_message) {
           next.push({
             key: 'sync', icon: 'status', tone: 'red', count: 1,
@@ -178,7 +209,7 @@ function useHomeSignals(role: Role | null) {
       setCards(next);
 
       // Recent activity from receipt history
-      const rows: ActivityRow[] = (history ?? []).slice(0, 5).map((r, i) => {
+      const rows: ActivityRow[] = (histR.data ?? []).slice(0, 5).map((r, i) => {
         const label =
           r.status === 'partial' ? 'partially received'
           : r.status === 'failed' ? 'receipt failed'
@@ -197,13 +228,16 @@ function useHomeSignals(role: Role | null) {
         };
       });
       setActivity(rows);
+
+      // Flag if any signal ultimately failed, so we don't imply all-clear.
+      setError(poR.failed || trR.failed || boR.failed || histR.failed || unrecR.failed || flagR.failed || syncR.failed);
       setLoading(false);
     })();
 
     return () => { cancelled = true; };
-  }, [role]);
+  }, [role, nonce]);
 
-  return { cards, activity, loading };
+  return { cards, activity, loading, error, reload };
 }
 
 // ---------------------------------------------------------------------------
@@ -283,7 +317,7 @@ export default function WelcomePage() {
   const { user, role } = useAuth();
   const { activeStaff } = useStaff();
   const navigate = useNavigate();
-  const { cards, activity, loading } = useHomeSignals(role);
+  const { cards, activity, loading, error, reload } = useHomeSignals(role);
 
   const name = useMemo(() => {
     if (activeStaff?.name) return activeStaff.name;
@@ -328,47 +362,68 @@ export default function WelcomePage() {
               <div key={i} className="h-[92px] rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 animate-pulse" />
             ))}
           </div>
-        ) : cards.length === 0 ? (
-          <div className="flex items-center gap-4 px-5 py-5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">
-            <div className="w-10 h-10 rounded-full bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 flex items-center justify-center">
-              <Icon name="check" className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white">All clear</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                Nothing needs your attention right now. New alerts show up here as they come in.
-              </p>
-            </div>
-          </div>
         ) : (
-          <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(232px,1fr))]">
-            {cards.map(c => {
-              const t = TONE_CLASSES[c.tone];
-              return (
+          <>
+            {error && (
+              <div className="mb-3 flex items-center gap-3 px-4 py-3 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
+                <Icon name="alert" className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span className="text-[13px] text-amber-800 dark:text-amber-300 flex-1">
+                  Some live data couldn&apos;t load, so a card may be missing.
+                </span>
                 <button
-                  key={c.key}
-                  onClick={() => navigate(c.route)}
-                  className={`text-left flex gap-3 items-start px-4 py-4 rounded-xl border border-l-[3px] ${t.border}
-                              border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm
-                              hover:-translate-y-px hover:border-blue-400 transition-all`}
+                  onClick={reload}
+                  className="text-[12px] font-semibold text-amber-700 dark:text-amber-300 hover:underline shrink-0"
                 >
-                  <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${t.ic}`}>
-                    <Icon name={c.icon} className="w-[18px] h-[18px]" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-2xl font-extrabold leading-none tabular-nums text-gray-900 dark:text-white">
-                      {c.count}{c.capped ? '+' : ''}
-                    </span>
-                    <span className="block text-[13px] font-semibold mt-1 text-gray-800 dark:text-gray-200">{c.label}</span>
-                    {c.sub && <span className="block text-[11px] text-gray-400 mt-0.5">{c.sub}</span>}
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 mt-2">
-                      {c.cta} <Icon name="arrow" className="w-3.5 h-3.5" />
-                    </span>
-                  </span>
+                  Retry
                 </button>
-              );
-            })}
-          </div>
+              </div>
+            )}
+
+            {cards.length > 0 ? (
+              <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(232px,1fr))]">
+                {cards.map(c => {
+                  const t = TONE_CLASSES[c.tone];
+                  return (
+                    <button
+                      key={c.key}
+                      onClick={() => navigate(c.route)}
+                      className={`text-left flex gap-3 items-start px-4 py-4 rounded-xl border border-l-[3px] ${t.border}
+                                  border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm
+                                  hover:-translate-y-px hover:border-blue-400 transition-all`}
+                    >
+                      <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${t.ic}`}>
+                        <Icon name={c.icon} className="w-[18px] h-[18px]" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-2xl font-extrabold leading-none tabular-nums text-gray-900 dark:text-white">
+                          {c.count}{c.capped ? '+' : ''}
+                        </span>
+                        <span className="block text-[13px] font-semibold mt-1 text-gray-800 dark:text-gray-200">{c.label}</span>
+                        {c.sub && <span className="block text-[11px] text-gray-400 mt-0.5">{c.sub}</span>}
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 mt-2">
+                          {c.cta} <Icon name="arrow" className="w-3.5 h-3.5" />
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              !error && (
+                <div className="flex items-center gap-4 px-5 py-5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">
+                  <div className="w-10 h-10 rounded-full bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 flex items-center justify-center">
+                    <Icon name="check" className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 dark:text-white">All clear</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                      Nothing needs your attention right now. New alerts show up here as they come in.
+                    </p>
+                  </div>
+                </div>
+              )
+            )}
+          </>
         )}
       </section>
 
