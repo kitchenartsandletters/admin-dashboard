@@ -42,13 +42,13 @@ const navItems = [
       { label: 'Transfers',       path: '/transfers',       roles: ['admin','editor','user'] },
       { label: 'Vendors/Publishers',       path: '/suppliers',       roles: ['admin','editor','user'] },
       { label: 'Vendor Cosmology',       path: '/supply-chain/cosmology', roles: ['admin', 'editor','user'] },
-      { label: 'Catalog Gaps', path: '/suppliers/catalog-gaps', roles: ['admin','editor','user'] },
+      { label: 'Catalog Gaps', path: '/suppliers/catalog-gaps', roles: ['admin'] },
     ],
   },
   {
     label: 'Tools',
     path: '/tools',
-    roles: ['admin', 'editor'],
+    roles: ['admin', 'editor', 'user'],
     children: [
       { label: 'Edelweiss Lookup', path: '/tools/edelweiss-lookup', roles: ['admin', 'editor', 'user'] },
     ],

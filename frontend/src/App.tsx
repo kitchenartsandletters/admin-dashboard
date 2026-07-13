@@ -116,7 +116,7 @@ const App = () => {
                         </ProtectedRoute>
                       } />
                       <Route path="/damaged" element={
-                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                        <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
                           <DamagedBooksTable />
                         </ProtectedRoute>
                       } />
@@ -176,7 +176,7 @@ const App = () => {
                         </ProtectedRoute>
                       } />
                       <Route path="/campaigns" element={
-                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                        <ProtectedRoute requiredRoles={['admin']}>
                           <CampaignDashboard />
                         </ProtectedRoute>
                       } />
