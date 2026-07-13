@@ -22,6 +22,7 @@ import {
   fetchSupplierSyncLog,
 } from '../api/supplyChainApi';
 import { fetchBackorderSummary } from '../api/backorderApi';
+import { fetchPreorderMetrics } from '../../api/preorderApi';
 
 const GARAMOND =
   'Garamond, "EB Garamond", "Adobe Garamond Pro", "Apple Garamond", "Times New Roman", Georgia, serif';
@@ -79,6 +80,22 @@ async function attempt<T>(fn: () => Promise<T>, retries = 2, backoff = 400): Pro
   }
 }
 
+// Count of open (New) service requests, via the same interest endpoint the
+// Requests screen uses. Reads the total from the x-total-count header (or
+// meta.total), so limit=1 keeps it cheap rather than pulling every row.
+async function fetchOpenRequestCount(): Promise<number> {
+  const base = import.meta.env.VITE_API_BASE_URL;
+  const token = import.meta.env.VITE_ADMIN_TOKEN;
+  const res = await fetch(`${base}/api/interest?token=${token}&page=1&limit=1&statuses=${encodeURIComponent('New')}`);
+  if (!res.ok) throw new Error(`[${res.status}] interest`);
+  const header = res.headers.get('x-total-count');
+  const fromHeader = header ? parseInt(header, 10) : NaN;
+  if (Number.isFinite(fromHeader)) return fromHeader;
+  const json = await res.json();
+  if (typeof json?.meta?.total === 'number') return json.meta.total;
+  return Array.isArray(json?.data) ? json.data.length : 0;
+}
+
 function greetingPart(): string {
   const hour = Number(
     new Intl.DateTimeFormat('en-US', {
@@ -122,6 +139,7 @@ function useHomeSignals(role: Role | null) {
 
     (async () => {
       const isAdmin = role === 'admin';
+      const isEditorOrAdmin = role === 'admin' || role === 'editor';
 
       const [poR, trR, boR, histR] = await Promise.all([
         attempt(() => fetchPurchaseOrders({ limit: PO_PAGE_LIMIT })),
@@ -129,6 +147,16 @@ function useHomeSignals(role: Role | null) {
         attempt(() => fetchBackorderSummary()),
         attempt(() => fetchReceiptHistory({ limit: 6 }) as Promise<HistoryRow[]>),
       ]);
+
+      // Editor + admin signals
+      let reqR: Attempt<number> = { data: null, failed: false };
+      let preR: Attempt<Awaited<ReturnType<typeof fetchPreorderMetrics>>> = { data: null, failed: false };
+      if (isEditorOrAdmin) {
+        [reqR, preR] = await Promise.all([
+          attempt(() => fetchOpenRequestCount()),
+          attempt(() => fetchPreorderMetrics()),
+        ]);
+      }
 
       let unrecR: Attempt<Awaited<ReturnType<typeof fetchUnrecognizedVendors>>> = { data: null, failed: false };
       let flagR: Attempt<unknown[]> = { data: null, failed: false };
@@ -176,6 +204,24 @@ function useHomeSignals(role: Role | null) {
           sub: critical > 0 ? `${critical} critical` : undefined,
           label: 'Backorders not on order', cta: 'Open backorders', route: '/backorders',
         });
+      }
+
+      // Editor + admin signals
+      if (isEditorOrAdmin) {
+        const openReq = reqR.data ?? 0;
+        if (openReq > 0) {
+          next.push({
+            key: 'requests', icon: 'bell', tone: 'info', count: openReq,
+            label: 'Open service requests', cta: 'Open requests', route: '/requests',
+          });
+        }
+        const due = preR.data?.releases_due_for_review ?? 0;
+        if (due > 0) {
+          next.push({
+            key: 'preorders', icon: 'calendar', tone: 'info', count: due,
+            label: 'Preorder releases due', cta: 'Open releases', route: '/preorders/release',
+          });
+        }
       }
 
       // Admin-only health signals
@@ -230,7 +276,7 @@ function useHomeSignals(role: Role | null) {
       setActivity(rows);
 
       // Flag if any signal ultimately failed, so we don't imply all-clear.
-      setError(poR.failed || trR.failed || boR.failed || histR.failed || unrecR.failed || flagR.failed || syncR.failed);
+      setError(poR.failed || trR.failed || boR.failed || histR.failed || reqR.failed || preR.failed || unrecR.failed || flagR.failed || syncR.failed);
       setLoading(false);
     })();
 
