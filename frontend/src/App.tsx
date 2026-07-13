@@ -181,7 +181,7 @@ const App = () => {
                         </ProtectedRoute>
                       } />
                       <Route path="/suppliers" element={
-                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                        <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
                           <SupplierService />
                         </ProtectedRoute>
                       } />
