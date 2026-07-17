@@ -105,9 +105,13 @@ const Textarea = (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
 function VariantSearchRow({
   onAdd,
   existingItemIds,
+  partyId,
 }: {
   onAdd: (item: Omit<LineItem, '_key' | 'quantity_ordered' | 'unit_cost' | 'notes'>) => void
   existingItemIds: Set<string>
+  // Scope the catalog search to the PO's supplier so wrong-supplier titles
+  // don't appear. The server-side guardrail is authoritative; this is UX.
+  partyId?: string | null
 }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<VariantSearchResult[]>([])
@@ -127,7 +131,7 @@ function VariantSearchRow({
     const t = setTimeout(async () => {
       setSearching(true)
       try {
-        const data = await searchVariants(query)
+        const data = await searchVariants(query, partyId)
         setResults(data.slice(0, 15))
       } catch {
         setResults([])
@@ -136,7 +140,7 @@ function VariantSearchRow({
       }
     }, 300)
     return () => clearTimeout(t)
-  }, [query])
+  }, [query, partyId])
 
   const handleSelect = (v: VariantSearchResult) => {
     onAdd({
@@ -332,6 +336,7 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
   const [orderedAt, setOrderedAt] = useState('')
   const [expectedAt, setExpectedAt] = useState('')
   const [poNotes, setPoNotes] = useState('')
+  const [poNumberPrefix, setPoNumberPrefix] = useState('')
   const [isAdHoc, setIsAdHoc] = useState(false)
   const [adHocSource, setAdHocSource] = useState<AdHocSource | ''>('')
   const [informalRef, setInformalRef] = useState('')
@@ -423,6 +428,7 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
         ordered_at:              orderedAt  || undefined,
         expected_at:             expectedAt || undefined,
         notes:                   poNotes.trim() || undefined,
+        po_number_prefix:        poNumberPrefix.trim() || undefined,
         is_ad_hoc:               isAdHoc,
         ad_hoc_source:           (adHocSource || undefined) as AdHocSource | undefined,
         informal_ref:            informalRef.trim() || undefined,
@@ -621,6 +627,16 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                 </div>
 
                 <div>
+                  <Label>PO number prefix</Label>
+                  <Input value={poNumberPrefix} maxLength={8}
+                    onChange={e => setPoNumberPrefix(e.target.value)}
+                    placeholder="KAL (default)" />
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    Optional. Sets the auto-number prefix, e.g. {poNumberPrefix.trim() ? `${poNumberPrefix.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)}-10001` : 'KAL-10001'}. Leave blank for KAL.
+                  </p>
+                </div>
+
+                <div>
                   <Label>PO notes</Label>
                   <Textarea value={poNotes} onChange={e => setPoNotes(e.target.value)}
                     placeholder="Special instructions, catalog notes, publisher contact…" />
@@ -658,7 +674,7 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                     )}
                   </div>
 
-                  <VariantSearchRow onAdd={addLine} existingItemIds={existingItemIds} />
+                  <VariantSearchRow onAdd={addLine} existingItemIds={existingItemIds} partyId={supplierSelection?.party.id ?? null} />
                 </div>
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
                   {lines.length === 0 ? (
