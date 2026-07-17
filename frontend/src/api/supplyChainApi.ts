@@ -111,7 +111,7 @@ export interface VariantSearchResult {
   isbn: string
   vendor: string
 }
-export async function searchVariants(query: string): Promise<VariantSearchResult[]> { return sc(`/api/suppliers/products/search${qs({ q: query, limit: 15 })}`) }
+export async function searchVariants(query: string, partyId?: string | null): Promise<VariantSearchResult[]> { return sc(`/api/suppliers/products/search${qs({ q: query, party_id: partyId ?? undefined, limit: 15 })}`) }
 export async function lookupProductByISBN(isbn: string): Promise<VariantSearchResult[]> { return sc(`/api/suppliers/products/search${qs({ q: isbn, limit: 5 })}`) }
 
 export interface ShopifyLookupResult {
@@ -139,7 +139,7 @@ export async function fetchPurchaseOrders(opts: { status?: string; supplierAccou
   return sc(`/api/purchase-orders${qs({ status: opts.status, supplier_account_id: opts.supplierAccountId, location_id: opts.locationId, is_ad_hoc: opts.isAdHoc, search: opts.search, limit: opts.limit ?? 100, offset: opts.offset ?? 0 })}`)
 }
 export async function fetchPurchaseOrderDetail(poId: string): Promise<PurchaseOrderDetail> { return sc(`/api/purchase-orders/${poId}`) }
-export async function createPurchaseOrder(body: { supplier_account_id: string; destination_location_id: string; status?: string; po_number?: string; ordered_at?: string; expected_at?: string; notes?: string; is_ad_hoc?: boolean; ad_hoc_source?: string; informal_ref?: string; is_drop_ship?: boolean; drop_ship_venue_id?: string; drop_ship_address?: string; is_test?: boolean }): Promise<PurchaseOrder> {
+export async function createPurchaseOrder(body: { supplier_account_id: string; destination_location_id: string; status?: string; po_number?: string; po_number_prefix?: string; ordered_at?: string; expected_at?: string; notes?: string; is_ad_hoc?: boolean; ad_hoc_source?: string; informal_ref?: string; is_drop_ship?: boolean; drop_ship_venue_id?: string; drop_ship_address?: string; is_test?: boolean }): Promise<PurchaseOrder> {
   return sc('/api/purchase-orders', { method: 'POST', body: JSON.stringify(body) })
 }
 export async function updatePurchaseOrder(poId: string, body: Partial<{ status: string; ordered_at: string; expected_at: string; notes: string; po_number: string; is_ad_hoc: boolean; ad_hoc_source: string; informal_ref: string }>): Promise<PurchaseOrder> {
