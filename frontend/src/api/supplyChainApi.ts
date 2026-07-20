@@ -146,6 +146,7 @@ export async function updatePurchaseOrder(poId: string, body: Partial<{ status: 
   return sc(`/api/purchase-orders/${poId}`, { method: 'PATCH', body: JSON.stringify(body) })
 }
 export async function cancelPurchaseOrder(poId: string): Promise<void> { return sc(`/api/purchase-orders/${poId}`, { method: 'DELETE' }) }
+export async function discardPurchaseOrder(poId: string): Promise<void> { return sc(`/api/purchase-orders/${poId}/discard`, { method: 'POST' }) }
 export async function submitPurchaseOrder(poId: string): Promise<PurchaseOrder> { return sc(`/api/purchase-orders/${poId}/submit`, { method: 'POST' }) }
 export async function confirmPurchaseOrder(poId: string): Promise<PurchaseOrder> { return sc(`/api/purchase-orders/${poId}/confirm`, { method: 'POST' }) }
 export async function archiveTestPOs(): Promise<{ archived_count: number }> { return sc('/api/purchase-orders/archive-test-pos', { method: 'POST' }) }
