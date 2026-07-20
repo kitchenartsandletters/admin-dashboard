@@ -36,6 +36,8 @@ import {
   submitPurchaseOrder,
   downloadPOPdf,
   fetchPurchaseOrders,
+  discardPurchaseOrder,
+  cancelPurchaseOrder,
 } from '../../api/supplyChainApi'
 import { SupplierParty, SupplierAccount } from '../suppliers/supplierTypes'
 import type { SupplierDetail } from '../suppliers/supplierTypes'
@@ -437,14 +439,28 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
         drop_ship_address:       isDropShip ? dropShipAddress.trim() : undefined,
         is_test:                 isTest,
       })
-      for (const line of lines) {
-        await createPOLine(po.id, {
-          inventory_item_id: line.inventory_item_id,
-          variant_id:        line.variant_id,
-          quantity_ordered:  line.quantity_ordered,
-          unit_cost:         line.unit_cost !== '' ? parseFloat(line.unit_cost) : undefined,
-          notes:             line.notes.trim() || undefined,
-        })
+      try {
+        for (const line of lines) {
+          await createPOLine(po.id, {
+            inventory_item_id: line.inventory_item_id,
+            variant_id:        line.variant_id,
+            quantity_ordered:  line.quantity_ordered,
+            unit_cost:         line.unit_cost !== '' ? parseFloat(line.unit_cost) : undefined,
+            notes:             line.notes.trim() || undefined,
+          })
+        }
+      } catch (lineErr) {
+        // A line was rejected (e.g. the supplier guardrail 400). Don't leave an
+        // orphaned PO behind: roll the just-created PO back, then surface the
+        // failure. discard hard-deletes it while it's still an empty draft; if
+        // some lines already landed, fall back to cancel (discard refuses a PO
+        // that has lines).
+        try {
+          await discardPurchaseOrder(po.id)
+        } catch {
+          try { await cancelPurchaseOrder(po.id) } catch { /* best effort */ }
+        }
+        throw lineErr
       }
       if (andSubmit) {
         await submitPurchaseOrder(po.id)
