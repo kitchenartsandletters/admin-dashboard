@@ -111,6 +111,10 @@ export interface SupplierAccount {
   currency: string
   min_order_amount: number | null
   is_primary: boolean
+  // Convenience wholesale account (Ingram wholesale, Baker & Taylor, etc.).
+  // Products received via a wholesaler account should not inherit it as their
+  // publisher — the real publisher/distributor is attributed instead.
+  is_wholesaler: boolean
   // Marks the party's B2B account. When a PO is B2B, resolveAccountForLocation
   // returns this account regardless of destination (overrides the location flip).
   is_b2b: boolean
@@ -132,6 +136,7 @@ export interface SupplierAccountCreate {
   currency?: string
   min_order_amount?: number
   is_primary?: boolean
+  is_wholesaler?: boolean
   is_b2b?: boolean
   notes?: string
 }
