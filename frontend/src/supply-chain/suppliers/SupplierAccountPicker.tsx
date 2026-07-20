@@ -28,16 +28,30 @@ import { SupplierAccount, SupplierParty } from './supplierTypes'
 //
 // Given the active accounts for a party and the chosen destination location,
 // return the best account:
+//   0. If the PO is B2B: the party's B2B account, regardless of destination.
+//      (Falls through to normal resolution when the party has no B2B account —
+//      the caller prompts to create one on the fly.)
 //   1. One whose location_id matches the destination, else
 //   2. The primary account, else
 //   3. The first active account.
+//
+// isB2b overrides location because a B2B order always uses the single B2B
+// account. It's orthogonal to drop-ship: a B2B order ships drop-ship-style to
+// the third-party business, but a drop-ship isn't necessarily B2B.
 // ---------------------------------------------------------------------------
 
 export function resolveAccountForLocation(
   accounts: SupplierAccount[],
   locationId: string | null,
+  isB2b: boolean = false,
 ): SupplierAccount | null {
   if (!accounts || accounts.length === 0) return null
+  if (isB2b) {
+    const b2b = accounts.find(a => a.is_b2b)
+    if (b2b) return b2b
+    // No B2B account for this party — fall through so the caller can detect the
+    // gap (effective account resolves normally) and prompt to add one.
+  }
   if (locationId) {
     const match = accounts.find(a => a.location_id === locationId)
     if (match) return match
