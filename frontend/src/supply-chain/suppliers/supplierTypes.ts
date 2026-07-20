@@ -111,6 +111,9 @@ export interface SupplierAccount {
   currency: string
   min_order_amount: number | null
   is_primary: boolean
+  // Marks the party's B2B account. When a PO is B2B, resolveAccountForLocation
+  // returns this account regardless of destination (overrides the location flip).
+  is_b2b: boolean
   is_active: boolean
   notes: string | null
   created_at: string
@@ -129,6 +132,7 @@ export interface SupplierAccountCreate {
   currency?: string
   min_order_amount?: number
   is_primary?: boolean
+  is_b2b?: boolean
   notes?: string
 }
 
