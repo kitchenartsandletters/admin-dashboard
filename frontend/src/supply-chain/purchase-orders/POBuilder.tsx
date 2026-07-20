@@ -39,6 +39,7 @@ import {
   discardPurchaseOrder,
   cancelPurchaseOrder,
 } from '../../api/supplyChainApi'
+import { createSupplierAccount } from '../../api/supplyChainApi'
 import { SupplierParty, SupplierAccount } from '../suppliers/supplierTypes'
 import type { SupplierDetail } from '../suppliers/supplierTypes'
 import { AdHocSource, PurchaseOrder } from '../purchase-orders/purchaseOrderTypes'
@@ -344,13 +345,24 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
   const [informalRef, setInformalRef] = useState('')
   const [isDropShip, setIsDropShip] = useState(false)
   const [dropShipAddress, setDropShipAddress] = useState('')
+  // B2B: wholesale-to-a-business order. Uses the party's is_b2b account
+  // regardless of destination. Orthogonal to drop-ship — to ship to the third
+  // party, staff also enable Drop-ship and enter that address there (interim,
+  // until the B2B customer directory fills it in).
+  const [isB2b, setIsB2b] = useState(false)
+  const [b2bAccountNumber, setB2bAccountNumber] = useState('')
+  const [creatingB2bAccount, setCreatingB2bAccount] = useState(false)
 
   const effectiveAccount = useMemo(
     () => supplierSelection
-      ? resolveAccountForLocation(supplierSelection.accounts, destinationLocationId || null)
+      ? resolveAccountForLocation(supplierSelection.accounts, destinationLocationId || null, isB2b)
       : null,
-    [supplierSelection, destinationLocationId],
+    [supplierSelection, destinationLocationId, isB2b],
   )
+  // Does the selected party already have a B2B account? If B2B is on and it
+  // doesn't, we prompt to create one on the fly before the order can proceed.
+  const partyHasB2bAccount = !!supplierSelection?.accounts.some(a => a.is_b2b)
+  const needsB2bAccount = isB2b && !!supplierSelection && !partyHasB2bAccount
 
   const [lines, setLines] = useState<LineItem[]>([])
 
@@ -386,7 +398,8 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
   const handleClose = () => { setIsVisible(false); setTimeout(onClose, 300) }
 
   const step1Valid = !!supplierSelection && !!effectiveAccount && !!destinationLocationId &&
-    (!isDropShip || dropShipAddress.trim().length > 0)
+    (!isDropShip || dropShipAddress.trim().length > 0) &&
+    (!isB2b || partyHasB2bAccount)
 
   const addLine = (item: Omit<LineItem, '_key' | 'quantity_ordered' | 'unit_cost' | 'notes'>) => {
     setLines(prev => [...prev, { ...item, _key: crypto.randomUUID(), quantity_ordered: 1, unit_cost: '', notes: '' }])
@@ -419,6 +432,26 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
   const removeLine = (key: string) => setLines(prev => prev.filter(l => l._key !== key))
   const existingItemIds = new Set(lines.map(l => l.inventory_item_id))
 
+  const handleCreateB2bAccount = async () => {
+    if (!supplierSelection || !b2bAccountNumber.trim()) return
+    setCreatingB2bAccount(true)
+    setError(null)
+    try {
+      const acct = await createSupplierAccount(supplierSelection.party.id, {
+        label: `${supplierSelection.party.name} B2B Account`,
+        account_number: b2bAccountNumber.trim(),
+        is_b2b: true,
+      })
+      // Append the new account so resolveAccountForLocation(..., isB2b) picks it.
+      setSupplierSelection({ party: supplierSelection.party, accounts: [...supplierSelection.accounts, acct] })
+      setB2bAccountNumber('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to create B2B account')
+    } finally {
+      setCreatingB2bAccount(false)
+    }
+  }
+
   const handleCreate = async (andSubmit: boolean) => {
     if (!supplierSelection || !effectiveAccount || !destinationLocationId) return
     setBusy(true)
@@ -437,6 +470,7 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
         is_drop_ship:            isDropShip,
         drop_ship_venue_id:      undefined,
         drop_ship_address:       isDropShip ? dropShipAddress.trim() : undefined,
+        is_b2b:                  isB2b,
         is_test:                 isTest,
       })
       try {
@@ -619,6 +653,40 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                         placeholder="Museum of Food and Drink&#10;62 Bayard Street, Brooklyn NY 11222" />
                     </div>
                   )}
+
+                  <div className="flex items-center justify-between rounded-md border dark:border-gray-700 px-3 py-2.5 bg-gray-50 dark:bg-gray-800/50">
+                    <div>
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-200">B2B order</p>
+                      <p className="text-[11px] text-gray-400">Wholesale to a business — uses the supplier's B2B account regardless of location</p>
+                    </div>
+                    <button type="button" onClick={() => setIsB2b(v => !v)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isB2b ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${isB2b ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                  </div>
+
+                  {isB2b && needsB2bAccount && (
+                    <div className="pl-2 space-y-2">
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        {supplierSelection?.party.name} has no B2B account yet. Enter its B2B account number to create one.
+                      </p>
+                      <div className="flex gap-2">
+                        <Input value={b2bAccountNumber} onChange={e => setB2bAccountNumber(e.target.value)}
+                          placeholder="B2B account number" disabled={creatingB2bAccount} />
+                        <button type="button" onClick={handleCreateB2bAccount}
+                          disabled={creatingB2bAccount || !b2bAccountNumber.trim()}
+                          className="px-3 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50 shrink-0 transition-colors">
+                          {creatingB2bAccount ? 'Creating…' : 'Create'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {isB2b && partyHasB2bAccount && (
+                    <p className="text-[11px] text-indigo-600 dark:text-indigo-400 pl-2">
+                      Using {supplierSelection?.party.name}'s B2B account{effectiveAccount?.account_number ? ` · #${effectiveAccount.account_number}` : ''}. To ship to the third-party business, also enable Drop-ship and enter their address.
+                    </p>
+                  )}
                 </div>
 
                 <div className={`flex items-center justify-between rounded-md border px-3 py-2.5
@@ -730,6 +798,7 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                     {orderedAt && <div className="flex justify-between"><span className="text-gray-500">Order date</span><span>{orderedAt}</span></div>}
                     {expectedAt && <div className="flex justify-between"><span className="text-gray-500">Expected</span><span>{expectedAt}</span></div>}
                     {isAdHoc && <div className="flex justify-between"><span className="text-gray-500">Type</span><span className="text-amber-600 dark:text-amber-400 font-medium">Ad hoc</span></div>}
+                    {isB2b && <div className="flex justify-between"><span className="text-gray-500">Type</span><span className="text-indigo-600 dark:text-indigo-400 font-medium">B2B</span></div>}
                     {isDropShip && <div className="flex justify-between"><span className="text-gray-500">Drop-ship to</span><span className="text-right max-w-[60%] text-xs">{dropShipAddress}</span></div>}
                     {poNotes && <div className="flex justify-between gap-4"><span className="text-gray-500 shrink-0">Notes</span><span className="text-right text-xs text-gray-600 dark:text-gray-400">{poNotes}</span></div>}
                   </div>
