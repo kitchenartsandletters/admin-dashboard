@@ -16,6 +16,9 @@ import type {
 import type {
   InventoryTransfer, TransferDetail, TransferResult,
 } from '../supply-chain/transfers/transferTypes'
+import type {
+  B2bCustomer, B2bCustomerCreate,
+} from '../supply-chain/b2b-customers/b2bCustomerTypes'
 
 const SC_BASE_URL = import.meta.env.VITE_SC_BASE_URL as string
 const SC_TOKEN    = import.meta.env.VITE_SC_ADMIN_TOKEN as string
@@ -139,7 +142,7 @@ export async function fetchPurchaseOrders(opts: { status?: string; supplierAccou
   return sc(`/api/purchase-orders${qs({ status: opts.status, supplier_account_id: opts.supplierAccountId, location_id: opts.locationId, is_ad_hoc: opts.isAdHoc, search: opts.search, limit: opts.limit ?? 100, offset: opts.offset ?? 0 })}`)
 }
 export async function fetchPurchaseOrderDetail(poId: string): Promise<PurchaseOrderDetail> { return sc(`/api/purchase-orders/${poId}`) }
-export async function createPurchaseOrder(body: { supplier_account_id: string; destination_location_id: string; status?: string; po_number?: string; po_number_prefix?: string; ordered_at?: string; expected_at?: string; notes?: string; is_ad_hoc?: boolean; ad_hoc_source?: string; informal_ref?: string; is_drop_ship?: boolean; drop_ship_venue_id?: string; drop_ship_address?: string; is_b2b?: boolean; is_test?: boolean }): Promise<PurchaseOrder> {
+export async function createPurchaseOrder(body: { supplier_account_id: string; destination_location_id: string; status?: string; po_number?: string; po_number_prefix?: string; ordered_at?: string; expected_at?: string; notes?: string; is_ad_hoc?: boolean; ad_hoc_source?: string; informal_ref?: string; is_drop_ship?: boolean; drop_ship_venue_id?: string; drop_ship_address?: string; is_b2b?: boolean; b2b_customer_id?: string; is_test?: boolean }): Promise<PurchaseOrder> {
   return sc('/api/purchase-orders', { method: 'POST', body: JSON.stringify(body) })
 }
 export async function updatePurchaseOrder(poId: string, body: Partial<{ status: string; ordered_at: string; expected_at: string; notes: string; po_number: string; is_ad_hoc: boolean; ad_hoc_source: string; informal_ref: string }>): Promise<PurchaseOrder> {
@@ -193,6 +196,17 @@ export interface OrderImageParseResult {
   matched_count: number; unmatched_count: number; stub: boolean
 }
 export async function parseOrderImage(file: File): Promise<OrderImageParseResult> { return _multipartPost('/api/purchase-orders/parse-order-image', file) }
+
+// ===========================================================================
+// B2B CUSTOMERS (directory)
+// ===========================================================================
+export async function fetchB2bCustomers(opts: { activeOnly?: boolean; search?: string } = {}): Promise<B2bCustomer[]> {
+  return sc(`/api/b2b-customers${qs({ active_only: opts.activeOnly ?? true, search: opts.search })}`)
+}
+export async function fetchB2bCustomer(customerId: string): Promise<B2bCustomer> { return sc(`/api/b2b-customers/${customerId}`) }
+export async function createB2bCustomer(body: B2bCustomerCreate): Promise<B2bCustomer> { return sc('/api/b2b-customers', { method: 'POST', body: JSON.stringify(body) }) }
+export async function updateB2bCustomer(customerId: string, body: Partial<B2bCustomerCreate & { is_active: boolean }>): Promise<B2bCustomer> { return sc(`/api/b2b-customers/${customerId}`, { method: 'PATCH', body: JSON.stringify(body) }) }
+export async function deactivateB2bCustomer(customerId: string): Promise<void> { return sc(`/api/b2b-customers/${customerId}`, { method: 'DELETE' }) }
 
 // ===========================================================================
 // RECEIVING
