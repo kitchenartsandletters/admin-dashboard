@@ -222,7 +222,7 @@ const App = () => {
                       />
                       <Route path="/suppliers/catalog-gaps"
                         element={
-                          <ProtectedRoute requiredRoles={['admin']}>
+                          <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
                             <CatalogGapView />
                           </ProtectedRoute>
                         }
