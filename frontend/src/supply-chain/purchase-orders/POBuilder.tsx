@@ -39,8 +39,9 @@ import {
   discardPurchaseOrder,
   cancelPurchaseOrder,
 } from '../../api/supplyChainApi'
-import { createSupplierAccount } from '../../api/supplyChainApi'
+import { createSupplierAccount, fetchB2bCustomers, createB2bCustomer } from '../../api/supplyChainApi'
 import { SupplierParty, SupplierAccount } from '../suppliers/supplierTypes'
+import type { B2bCustomer } from '../b2b-customers/b2bCustomerTypes'
 import type { SupplierDetail } from '../suppliers/supplierTypes'
 import { AdHocSource, PurchaseOrder } from '../purchase-orders/purchaseOrderTypes'
 import SupplierAccountPicker, { resolveAccountForLocation } from '../suppliers/SupplierAccountPicker'
@@ -352,6 +353,15 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
   const [isB2b, setIsB2b] = useState(false)
   const [b2bAccountNumber, setB2bAccountNumber] = useState('')
   const [creatingB2bAccount, setCreatingB2bAccount] = useState(false)
+  // B2B customer (sell-side ship-to) picked from the directory, or created on
+  // the fly. Its ship_to_address becomes the PO's ship-to.
+  const [b2bCustomer, setB2bCustomer] = useState<B2bCustomer | null>(null)
+  const [customerSearch, setCustomerSearch] = useState('')
+  const [customerResults, setCustomerResults] = useState<B2bCustomer[]>([])
+  const [showNewCustomer, setShowNewCustomer] = useState(false)
+  const [newCustomerName, setNewCustomerName] = useState('')
+  const [newCustomerAddress, setNewCustomerAddress] = useState('')
+  const [savingCustomer, setSavingCustomer] = useState(false)
 
   const effectiveAccount = useMemo(
     () => supplierSelection
@@ -395,11 +405,21 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
     }).catch(() => {})
   }, [effectiveAccount?.id])
 
+  useEffect(() => {
+    if (!isB2b || customerSearch.length < 2) { setCustomerResults([]); return }
+    const t = setTimeout(() => {
+      fetchB2bCustomers({ search: customerSearch, activeOnly: true })
+        .then(r => setCustomerResults(r.slice(0, 8)))
+        .catch(() => {})
+    }, 250)
+    return () => clearTimeout(t)
+  }, [customerSearch, isB2b])
+
   const handleClose = () => { setIsVisible(false); setTimeout(onClose, 300) }
 
   const step1Valid = !!supplierSelection && !!effectiveAccount && !!destinationLocationId &&
     (!isDropShip || dropShipAddress.trim().length > 0) &&
-    (!isB2b || partyHasB2bAccount)
+    (!isB2b || (partyHasB2bAccount && !!b2bCustomer))
 
   const addLine = (item: Omit<LineItem, '_key' | 'quantity_ordered' | 'unit_cost' | 'notes'>) => {
     setLines(prev => [...prev, { ...item, _key: crypto.randomUUID(), quantity_ordered: 1, unit_cost: '', notes: '' }])
@@ -452,6 +472,26 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
     }
   }
 
+  const handleCreateB2bCustomer = async () => {
+    if (!newCustomerName.trim()) return
+    setSavingCustomer(true)
+    setError(null)
+    try {
+      const cust = await createB2bCustomer({
+        business_name:   newCustomerName.trim(),
+        ship_to_address: newCustomerAddress.trim() || undefined,
+      })
+      setB2bCustomer(cust)
+      setShowNewCustomer(false)
+      setNewCustomerName(''); setNewCustomerAddress('')
+      setCustomerSearch(''); setCustomerResults([])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to create B2B customer')
+    } finally {
+      setSavingCustomer(false)
+    }
+  }
+
   const handleCreate = async (andSubmit: boolean) => {
     if (!supplierSelection || !effectiveAccount || !destinationLocationId) return
     setBusy(true)
@@ -471,6 +511,7 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
         drop_ship_venue_id:      undefined,
         drop_ship_address:       isDropShip ? dropShipAddress.trim() : undefined,
         is_b2b:                  isB2b,
+        b2b_customer_id:         isB2b ? b2bCustomer?.id : undefined,
         is_test:                 isTest,
       })
       try {
@@ -683,9 +724,63 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                   )}
 
                   {isB2b && partyHasB2bAccount && (
-                    <p className="text-[11px] text-indigo-600 dark:text-indigo-400 pl-2">
-                      Using {supplierSelection?.party.name}'s B2B account{effectiveAccount?.account_number ? ` · #${effectiveAccount.account_number}` : ''}. To ship to the third-party business, also enable Drop-ship and enter their address.
-                    </p>
+                    <div className="pl-2 space-y-2">
+                      <p className="text-[11px] text-indigo-600 dark:text-indigo-400">
+                        Using {supplierSelection?.party.name}'s B2B account{effectiveAccount?.account_number ? ` · #${effectiveAccount.account_number}` : ''}.
+                      </p>
+                      <div>
+                        <Label required>B2B customer (ship-to)</Label>
+                        {b2bCustomer ? (
+                          <div className="flex items-center justify-between px-3 py-2 rounded-md bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-indigo-800 dark:text-indigo-200 truncate">{b2bCustomer.business_name}</p>
+                              {b2bCustomer.ship_to_address && <p className="text-[11px] text-indigo-500 dark:text-indigo-400 truncate">{b2bCustomer.ship_to_address}</p>}
+                            </div>
+                            <button type="button" onClick={() => setB2bCustomer(null)}
+                              className="text-indigo-400 hover:text-red-500 shrink-0 ml-2" aria-label="Clear customer">✕</button>
+                          </div>
+                        ) : showNewCustomer ? (
+                          <div className="space-y-2">
+                            <Input value={newCustomerName} onChange={e => setNewCustomerName(e.target.value)}
+                              placeholder="Business name" disabled={savingCustomer} />
+                            <Textarea value={newCustomerAddress} onChange={e => setNewCustomerAddress(e.target.value)}
+                              placeholder="Ship-to address" />
+                            <div className="flex gap-2">
+                              <button type="button" onClick={handleCreateB2bCustomer}
+                                disabled={savingCustomer || !newCustomerName.trim()}
+                                className="px-3 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50">
+                                {savingCustomer ? 'Saving…' : 'Add customer'}
+                              </button>
+                              <button type="button" onClick={() => setShowNewCustomer(false)}
+                                className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300">
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="relative">
+                            <Input value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
+                              placeholder="Search B2B customers…" />
+                            {customerResults.length > 0 && (
+                              <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-md shadow-xl overflow-hidden max-h-56 overflow-y-auto">
+                                {customerResults.map(c => (
+                                  <button key={c.id} type="button"
+                                    onMouseDown={() => { setB2bCustomer(c); setCustomerSearch(''); setCustomerResults([]) }}
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 border-b dark:border-gray-800 last:border-0">
+                                    <span className="font-medium text-gray-900 dark:text-gray-100 block truncate">{c.business_name}</span>
+                                    {c.ship_to_address && <span className="text-[11px] text-gray-400 truncate block">{c.ship_to_address}</span>}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            <button type="button" onClick={() => { setShowNewCustomer(true); setNewCustomerName(customerSearch) }}
+                              className="mt-1 text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">
+                              + Add a new B2B customer
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
 
@@ -799,6 +894,7 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                     {expectedAt && <div className="flex justify-between"><span className="text-gray-500">Expected</span><span>{expectedAt}</span></div>}
                     {isAdHoc && <div className="flex justify-between"><span className="text-gray-500">Type</span><span className="text-amber-600 dark:text-amber-400 font-medium">Ad hoc</span></div>}
                     {isB2b && <div className="flex justify-between"><span className="text-gray-500">Type</span><span className="text-indigo-600 dark:text-indigo-400 font-medium">B2B</span></div>}
+                    {isB2b && b2bCustomer && <div className="flex justify-between"><span className="text-gray-500">Ship-to (B2B)</span><span className="text-right max-w-[60%] text-xs">{b2bCustomer.business_name}{b2bCustomer.ship_to_address ? ` — ${b2bCustomer.ship_to_address}` : ''}</span></div>}
                     {isDropShip && <div className="flex justify-between"><span className="text-gray-500">Drop-ship to</span><span className="text-right max-w-[60%] text-xs">{dropShipAddress}</span></div>}
                     {poNotes && <div className="flex justify-between gap-4"><span className="text-gray-500 shrink-0">Notes</span><span className="text-right text-xs text-gray-600 dark:text-gray-400">{poNotes}</span></div>}
                   </div>
