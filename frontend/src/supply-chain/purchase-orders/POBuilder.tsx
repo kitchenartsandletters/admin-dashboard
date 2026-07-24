@@ -854,6 +854,11 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                   </div>
 
                   <VariantSearchRow onAdd={addLine} existingItemIds={existingItemIds} partyId={supplierSelection?.party.id ?? null} />
+                  {effectiveAccount?.is_wholesaler && (
+                    <p className="mt-2 text-[11px] text-blue-600 dark:text-blue-400">
+                      {supplierSelection?.party.name} is a convenience vendor — the full catalog is searchable here, not just its own titles.
+                    </p>
+                  )}
                 </div>
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
                   {lines.length === 0 ? (
