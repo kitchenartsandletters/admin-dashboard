@@ -25,6 +25,7 @@ import { supabase } from './lib/supabase';
 import DefaultRedirect from './auth/DefaultRedirect';
 import { useState, useEffect } from 'react';
 import ReportExclusionsPage from './reports/exclusions/ReportExclusionsPage';
+import ReviewReport from './reports/review/ReviewReport';
 import ReleaseManagement from './components/preorder/ReleaseManagement';
 import ShippingProfiles from './components/preorder/ShippingProfiles';
 import OrderTaggingPage from './components/preorder/OrderTaggingPage';
@@ -143,6 +144,11 @@ const App = () => {
                       <Route path="/reports/exclusions" element={
                         <ProtectedRoute requiredRoles={['admin', 'editor']}>
                           <ReportExclusionsPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/reports/review" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <ReviewReport />
                         </ProtectedRoute>
                       } />
                       <Route path="/reports/nyt" element={
