@@ -102,3 +102,70 @@ export async function fetchReviewFreshness(): Promise<ReviewFreshness[]> {
 export async function runReviewRefresh(): Promise<unknown> {
   return sc('/api/reporting/snapshot/run', { method: 'POST' })
 }
+
+// ===========================================================================
+// SLICE 2b — saved views + CSV export
+// ===========================================================================
+
+export interface ViewConfig {
+  sort?: string
+  order?: 'asc' | 'desc'
+  search?: string
+  tag?: string
+  neverSold?: boolean
+  inStock?: boolean
+  groupBy?: 'none' | 'publisher' | 'supplier'
+  columns?: string[] // visible column keys, in canonical order
+}
+
+export interface SavedView {
+  id: string
+  user_id: string
+  name: string
+  config: ViewConfig
+  created_at: string
+  updated_at: string
+}
+
+export async function fetchViews(userId: string): Promise<SavedView[]> {
+  return sc(`/api/reporting/views${qs({ user_id: userId })}`)
+}
+
+export async function saveView(userId: string, name: string, config: ViewConfig): Promise<SavedView> {
+  return sc('/api/reporting/views', {
+    method: 'POST',
+    body: JSON.stringify({ user_id: userId, name, config }),
+  })
+}
+
+export async function deleteView(userId: string, id: string): Promise<{ deleted: number; id: string }> {
+  return sc(`/api/reporting/views/${id}${qs({ user_id: userId })}`, { method: 'DELETE' })
+}
+
+// CSV of the full filtered set. Needs the admin-token header, so we fetch the
+// blob and trigger a download rather than using a plain link.
+export async function downloadReviewCsv(params: ReviewParams = {}): Promise<void> {
+  const query = qs({
+    sort: params.sort,
+    order: params.order,
+    publisher_id: params.publisherId,
+    supplier_id: params.supplierId,
+    tag: params.tag,
+    never_sold: params.neverSold || undefined,
+    in_stock: params.inStock || undefined,
+    search: params.search,
+  })
+  const res = await fetch(`${SC_BASE_URL}/api/reporting/review/export${query}`, {
+    headers: { 'X-Admin-Token': SC_TOKEN },
+  })
+  if (!res.ok) throw new Error(`[${res.status}] CSV export failed`)
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `kal-review-${new Date().toISOString().slice(0, 10)}.csv`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}

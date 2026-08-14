@@ -1,37 +1,85 @@
 // src/reports/review/ReviewReport.tsx
-// Review report (M2): server-side sorted/filtered/paginated table over
-// reporting.review_rows, with a per-family freshness banner and a provisional
-// flag on the sales-derived columns until full order history is loaded.
+// Review report (M2). Server-side sorted/filtered/paginated table over
+// reporting.review_rows, with a freshness banner + provisional flag (slice 2a),
+// and slice 2b: a column chooser, per-user saved views, and CSV export.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   fetchReview,
   fetchReviewFreshness,
   runReviewRefresh,
+  fetchViews,
+  saveView,
+  deleteView,
+  downloadReviewCsv,
   ReviewRow,
   ReviewFreshness,
+  SavedView,
+  ViewConfig,
 } from '../../api/reviewReportApi';
+import { useAuth } from '../../auth/AuthProvider';
 
-type SortKey =
-  | 'title' | 'author' | 'isbn' | 'price'
-  | 'on_hand' | 'available' | 'on_order'
-  | 'sales_last_7d' | 'sales_last_30d' | 'sales_12mo' | 'last_sold_at'
-  | 'publisher_name' | 'supplier_name';
+type ColKey =
+  | 'title' | 'author' | 'isbn' | 'publisher_name' | 'supplier_name'
+  | 'price' | 'on_hand' | 'available' | 'on_order'
+  | 'sales_last_7d' | 'sales_last_30d' | 'sales_12mo' | 'last_sold_at';
 
+type SortKey = ColKey;
 type GroupBy = 'none' | 'publisher' | 'supplier';
 
 const PAGE_SIZE = 100;
-const COLSPAN = 13;
+
+// Canonical column order + labels. Every column is sortable (all keys are valid
+// server sort columns). `align: 'right'` for numerics.
+const ALL_COLUMNS: { key: ColKey; label: string; align?: 'right' }[] = [
+  { key: 'title', label: 'Title' },
+  { key: 'author', label: 'Author' },
+  { key: 'isbn', label: 'ISBN' },
+  { key: 'publisher_name', label: 'Publisher' },
+  { key: 'supplier_name', label: 'Supplier' },
+  { key: 'price', label: 'Price', align: 'right' },
+  { key: 'on_hand', label: 'On hand', align: 'right' },
+  { key: 'available', label: 'Avail', align: 'right' },
+  { key: 'on_order', label: 'On order', align: 'right' },
+  { key: 'sales_last_7d', label: '7d', align: 'right' },
+  { key: 'sales_last_30d', label: '30d', align: 'right' },
+  { key: 'sales_12mo', label: '12mo', align: 'right' },
+  { key: 'last_sold_at', label: 'Last sold' },
+];
+const ALL_KEYS = ALL_COLUMNS.map(c => c.key);
 
 const num = (v: number | null | undefined) => (v == null ? '—' : String(v));
 const money = (v: number | null) => (v == null ? '—' : `$${v.toFixed(2)}`);
 const day = (v: string | null) => (v ? v.slice(0, 10) : '—');
 
+function cellValue(key: ColKey, r: ReviewRow) {
+  switch (key) {
+    case 'title': return r.title ?? '—';
+    case 'author': return r.author ?? '—';
+    case 'isbn': return r.isbn ?? '—';
+    case 'publisher_name': return r.publisher_name ?? '—';
+    case 'supplier_name': return r.supplier_name ?? '—';
+    case 'price': return money(r.price);
+    case 'on_hand': return num(r.on_hand);
+    case 'available': return num(r.available);
+    case 'on_order': return r.on_order;
+    case 'sales_last_7d': return r.sales_last_7d;
+    case 'sales_last_30d': return r.sales_last_30d;
+    case 'sales_12mo': return r.sales_12mo;
+    case 'last_sold_at': return day(r.last_sold_at);
+    default: return '';
+  }
+}
+
 export default function ReviewReport() {
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
+
   const [rows, setRows] = useState<ReviewRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -46,14 +94,28 @@ export default function ReviewReport() {
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
   const [offset, setOffset] = useState(0);
 
+  // Column visibility (2b)
+  const [visible, setVisible] = useState<Record<ColKey, boolean>>(
+    () => Object.fromEntries(ALL_KEYS.map(k => [k, true])) as Record<ColKey, boolean>
+  );
+  const [showCols, setShowCols] = useState(false);
+
+  // Saved views (2b)
+  const [views, setViews] = useState<SavedView[]>([]);
+  const [selectedViewId, setSelectedViewId] = useState('');
+  const [viewName, setViewName] = useState('');
+  const [viewBusy, setViewBusy] = useState(false);
+
   const [freshness, setFreshness] = useState<ReviewFreshness[]>([]);
+
+  const visibleColumns = useMemo(() => ALL_COLUMNS.filter(c => visible[c.key]), [visible]);
+  const colSpan = Math.max(1, visibleColumns.length);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 350);
     return () => clearTimeout(t);
   }, [search]);
 
-  // Grouping pins the sort to the grouping column so page boundaries stay tidy.
   const effectiveSort: SortKey =
     groupBy === 'publisher' ? 'publisher_name'
     : groupBy === 'supplier' ? 'supplier_name'
@@ -87,14 +149,16 @@ export default function ReviewReport() {
   useEffect(() => { fetchReviewFreshness().then(setFreshness).catch(() => {}); }, []);
   useEffect(() => { setOffset(0); }, [effectiveSort, effectiveOrder, tag, neverSold, inStock, debouncedSearch]);
 
+  const loadViews = useCallback(() => {
+    if (!userId) return;
+    fetchViews(userId).then(setViews).catch(() => {});
+  }, [userId]);
+  useEffect(() => { loadViews(); }, [loadViews]);
+
   const onSort = (key: SortKey) => {
     if (groupBy !== 'none') return;
-    if (sort === key) {
-      setOrder(o => (o === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSort(key);
-      setOrder('desc');
-    }
+    if (sort === key) setOrder(o => (o === 'asc' ? 'desc' : 'asc'));
+    else { setSort(key); setOrder('desc'); }
   };
 
   const salesFresh = useMemo(() => freshness.find(f => f.family === 'sales') || null, [freshness]);
@@ -103,22 +167,90 @@ export default function ReviewReport() {
   const arrow = (key: SortKey) =>
     groupBy === 'none' && sort === key ? (order === 'asc' ? ' ▲' : ' ▼') : '';
 
-  const th = (key: SortKey, label: string, extra?: string) => (
-    <th
-      className={`px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700 whitespace-nowrap ${groupBy === 'none' ? 'cursor-pointer' : ''}`}
-      onClick={() => onSort(key)}
-      title={extra}
-    >
-      {label}{arrow(key)}
-    </th>
-  );
-
   const from = total === 0 ? 0 : offset + 1;
   const to = Math.min(offset + PAGE_SIZE, total);
 
+  // ----- saved views: apply / build config -----
+  const applyConfig = (cfg: ViewConfig) => {
+    setSearch(cfg.search ?? '');
+    setDebouncedSearch(cfg.search ?? '');
+    setTag(cfg.tag ?? '');
+    setNeverSold(!!cfg.neverSold);
+    setInStock(!!cfg.inStock);
+    setGroupBy(cfg.groupBy ?? 'none');
+    if (cfg.sort) setSort(cfg.sort as SortKey);
+    if (cfg.order) setOrder(cfg.order);
+    if (cfg.columns && cfg.columns.length) {
+      const set = new Set(cfg.columns);
+      setVisible(Object.fromEntries(ALL_KEYS.map(k => [k, set.has(k)])) as Record<ColKey, boolean>);
+    }
+    setOffset(0);
+  };
+
+  const currentConfig = (): ViewConfig => ({
+    sort, order,
+    search: search || undefined,
+    tag: tag || undefined,
+    neverSold: neverSold || undefined,
+    inStock: inStock || undefined,
+    groupBy,
+    columns: ALL_KEYS.filter(k => visible[k]),
+  });
+
+  const onSelectView = (id: string) => {
+    setSelectedViewId(id);
+    const v = views.find(x => x.id === id);
+    if (v) { applyConfig(v.config || {}); setViewName(v.name); }
+  };
+
+  const onSaveView = async () => {
+    const name = viewName.trim();
+    if (!name || !userId) return;
+    setViewBusy(true);
+    try {
+      const saved = await saveView(userId, name, currentConfig());
+      await loadViews();
+      setSelectedViewId(saved.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save view');
+    } finally {
+      setViewBusy(false);
+    }
+  };
+
+  const onDeleteView = async () => {
+    if (!selectedViewId || !userId) return;
+    setViewBusy(true);
+    try {
+      await deleteView(userId, selectedViewId);
+      setSelectedViewId('');
+      setViewName('');
+      await loadViews();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not delete view');
+    } finally {
+      setViewBusy(false);
+    }
+  };
+
+  const onExport = async () => {
+    setExporting(true);
+    try {
+      await downloadReviewCsv({
+        sort: effectiveSort, order: effectiveOrder,
+        tag: tag || undefined, neverSold, inStock,
+        search: debouncedSearch || undefined,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'CSV export failed');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const renderBody = () => {
     if (rows.length === 0) {
-      return <tr><td className="px-3 py-6 text-center opacity-70" colSpan={COLSPAN}>No rows</td></tr>;
+      return <tr><td className="px-3 py-6 text-center opacity-70" colSpan={colSpan}>No rows</td></tr>;
     }
     const out: JSX.Element[] = [];
     let lastGroup: string | null = null;
@@ -129,26 +261,24 @@ export default function ReviewReport() {
           lastGroup = g;
           out.push(
             <tr key={`g-${g}`} className="bg-gray-100 dark:bg-gray-800">
-              <td className="px-3 py-2 font-semibold" colSpan={COLSPAN}>{g}</td>
+              <td className="px-3 py-2 font-semibold" colSpan={colSpan}>{g}</td>
             </tr>
           );
         }
       }
       out.push(
         <tr key={r.inventory_item_id} className="even:bg-gray-50 dark:even:bg-gray-700 align-top">
-          <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700">{r.title ?? '—'}</td>
-          <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700">{r.author ?? '—'}</td>
-          <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700">{r.isbn ?? '—'}</td>
-          <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700">{r.publisher_name ?? '—'}</td>
-          <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700">{r.supplier_name ?? '—'}</td>
-          <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right">{money(r.price)}</td>
-          <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right">{num(r.on_hand)}</td>
-          <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right">{num(r.available)}</td>
-          <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right">{r.on_order}</td>
-          <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right">{r.sales_last_7d}</td>
-          <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right">{r.sales_last_30d}</td>
-          <td className={`px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right ${salesProvisional ? 'text-amber-700 dark:text-amber-400' : ''}`}>{r.sales_12mo}</td>
-          <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700">{day(r.last_sold_at)}</td>
+          {visibleColumns.map(c => {
+            const isProvisional = c.key === 'sales_12mo' && salesProvisional;
+            return (
+              <td
+                key={c.key}
+                className={`px-3 py-2 border-r border-gray-200 dark:border-gray-700 ${c.align === 'right' ? 'text-right' : ''} ${isProvisional ? 'text-amber-700 dark:text-amber-400' : ''}`}
+              >
+                {cellValue(c.key, r)}
+              </td>
+            );
+          })}
         </tr>
       );
     }
@@ -162,23 +292,32 @@ export default function ReviewReport() {
           <h2 className="text-xl font-semibold">Review Report</h2>
           <span className="text-sm opacity-70">{total.toLocaleString()} variants</span>
         </div>
-        <button
-          className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm disabled:opacity-50"
-          disabled={refreshing}
-          onClick={async () => {
-            setRefreshing(true);
-            try {
-              await runReviewRefresh();
-              const fr = await fetchReviewFreshness();
-              setFreshness(fr);
-              await load();
-            } catch { /* surfaced on next load */ } finally {
-              setRefreshing(false);
-            }
-          }}
-        >
-          {refreshing ? 'Refreshing…' : 'Refresh'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            className="border px-3 py-1 rounded text-sm disabled:opacity-50"
+            disabled={exporting || loading}
+            onClick={onExport}
+          >
+            {exporting ? 'Exporting…' : 'Export CSV'}
+          </button>
+          <button
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm disabled:opacity-50"
+            disabled={refreshing}
+            onClick={async () => {
+              setRefreshing(true);
+              try {
+                await runReviewRefresh();
+                const fr = await fetchReviewFreshness();
+                setFreshness(fr);
+                await load();
+              } catch { /* surfaced on next load */ } finally {
+                setRefreshing(false);
+              }
+            }}
+          >
+            {refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
       </div>
 
       <div className="text-xs text-gray-600 dark:text-gray-300 flex flex-wrap gap-x-4 gap-y-1">
@@ -198,6 +337,46 @@ export default function ReviewReport() {
         </div>
       )}
 
+      {/* Saved views + column chooser */}
+      <div className="flex gap-2 flex-wrap items-center">
+        <select
+          className="border px-2 py-2 rounded text-sm dark:bg-gray-800 dark:text-white"
+          value={selectedViewId}
+          onChange={e => onSelectView(e.target.value)}
+        >
+          <option value="">— Saved views —</option>
+          {views.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+        </select>
+        <input
+          type="text"
+          placeholder="View name"
+          value={viewName}
+          onChange={e => setViewName(e.target.value)}
+          className="px-3 py-2 border rounded text-sm dark:bg-gray-800 dark:text-white"
+        />
+        <button className="border px-3 py-2 rounded text-sm disabled:opacity-50" disabled={viewBusy || !viewName.trim()} onClick={onSaveView}>Save view</button>
+        <button className="border px-3 py-2 rounded text-sm disabled:opacity-50" disabled={viewBusy || !selectedViewId} onClick={onDeleteView}>Delete</button>
+
+        <div className="relative">
+          <button className="border px-3 py-2 rounded text-sm" onClick={() => setShowCols(s => !s)}>Columns ▾</button>
+          {showCols && (
+            <div className="absolute z-10 mt-1 w-48 max-h-72 overflow-auto rounded border bg-white dark:bg-gray-800 dark:border-gray-700 shadow p-2 text-sm">
+              {ALL_COLUMNS.map(c => (
+                <label key={c.key} className="flex items-center gap-2 py-1">
+                  <input
+                    type="checkbox"
+                    checked={visible[c.key]}
+                    onChange={e => setVisible(v => ({ ...v, [c.key]: e.target.checked }))}
+                  />
+                  {c.label}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Filters */}
       <div className="flex gap-3 flex-wrap items-center">
         <input
           type="text"
@@ -242,24 +421,24 @@ export default function ReviewReport() {
         <table className="min-w-full border border-gray-200 dark:border-gray-700 text-sm">
           <thead className="bg-gray-50 dark:bg-gray-800">
             <tr>
-              {th('title', 'Title')}
-              {th('author', 'Author')}
-              {th('isbn', 'ISBN')}
-              {th('publisher_name', 'Publisher')}
-              {th('supplier_name', 'Supplier')}
-              {th('price', 'Price')}
-              {th('on_hand', 'On hand')}
-              {th('available', 'Avail')}
-              {th('on_order', 'On order')}
-              {th('sales_last_7d', '7d')}
-              {th('sales_last_30d', '30d')}
-              {th('sales_12mo', salesProvisional ? '12mo *' : '12mo', 'Provisional until full history loads')}
-              {th('last_sold_at', 'Last sold')}
+              {visibleColumns.map(c => {
+                const label = c.key === 'sales_12mo' && salesProvisional ? `${c.label} *` : c.label;
+                return (
+                  <th
+                    key={c.key}
+                    className={`px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700 whitespace-nowrap ${groupBy === 'none' ? 'cursor-pointer' : ''}`}
+                    onClick={() => onSort(c.key)}
+                    title={c.key === 'sales_12mo' ? 'Provisional until full history loads' : undefined}
+                  >
+                    {label}{arrow(c.key)}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td className="px-3 py-6 text-center opacity-70" colSpan={COLSPAN}>Loading…</td></tr>
+              <tr><td className="px-3 py-6 text-center opacity-70" colSpan={colSpan}>Loading…</td></tr>
             ) : renderBody()}
           </tbody>
         </table>
