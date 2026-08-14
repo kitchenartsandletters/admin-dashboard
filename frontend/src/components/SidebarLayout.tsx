@@ -15,6 +15,7 @@ const navItems = [
     ]
   },
   { label: 'Damaged Books', path: '/damaged' },
+  { label: 'Review Report', path: '/reports/review' },
   { label: 'System Status', path: '/status' },
 ];
 
