@@ -26,6 +26,8 @@ import DefaultRedirect from './auth/DefaultRedirect';
 import { useState, useEffect } from 'react';
 import ReportExclusionsPage from './reports/exclusions/ReportExclusionsPage';
 import ReviewReport from './reports/review/ReviewReport';
+import ReturnsHome from './reports/returns/ReturnsHome';
+import ReturnsWorksheet from './reports/returns/ReturnsWorksheet';
 import ReleaseManagement from './components/preorder/ReleaseManagement';
 import ShippingProfiles from './components/preorder/ShippingProfiles';
 import OrderTaggingPage from './components/preorder/OrderTaggingPage';
@@ -149,6 +151,16 @@ const App = () => {
                       <Route path="/reports/review" element={
                         <ProtectedRoute requiredRoles={['admin', 'editor']}>
                           <ReviewReport />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/reports/returns" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <ReturnsHome />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/reports/returns/:publisherId" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <ReturnsWorksheet />
                         </ProtectedRoute>
                       } />
                       <Route path="/reports/nyt" element={
