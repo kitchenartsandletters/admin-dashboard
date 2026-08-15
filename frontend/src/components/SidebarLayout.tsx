@@ -40,6 +40,7 @@ const navItems = [
       { label: 'Purchase Orders', path: '/purchase-orders', roles: ['admin','editor','user'] },
       { label: 'Receiving',       path: '/receiving',       roles: ['admin','editor','user'] },
       { label: 'Transfers',       path: '/transfers',       roles: ['admin','editor','user'] },
+      { label: 'Returns',         path: '/supply-chain/returns', roles: ['admin', 'editor'] },
       { label: 'Vendors/Publishers',       path: '/suppliers',       roles: ['admin','editor','user'] },
       { label: 'Vendor Cosmology',       path: '/supply-chain/cosmology', roles: ['admin', 'editor','user'] },
       { label: 'Catalog Gaps', path: '/suppliers/catalog-gaps', roles: ['admin', 'editor', 'user'] },
@@ -60,7 +61,6 @@ const navItems = [
     roles: ['admin', 'editor', 'user'],
     children: [
       { label: 'Review Report', path: '/reports/review', roles: ['admin', 'editor'] },
-      { label: 'Publisher Returns', path: '/reports/returns', roles: ['admin', 'editor'] },
       { label: 'Business Calendar', path: '/reports/calendar', roles: ['admin', 'editor'] },
       { label: 'Exclusions', path: '/reports/exclusions', roles: ['admin', 'editor'] },
       { label: 'NYT Reporting', path: '/reports/nyt', roles: ['admin', 'editor'] },

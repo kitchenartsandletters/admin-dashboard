@@ -26,8 +26,8 @@ import DefaultRedirect from './auth/DefaultRedirect';
 import { useState, useEffect } from 'react';
 import ReportExclusionsPage from './reports/exclusions/ReportExclusionsPage';
 import ReviewReport from './reports/review/ReviewReport';
-import ReturnsHome from './reports/returns/ReturnsHome';
-import ReturnsWorksheet from './reports/returns/ReturnsWorksheet';
+import ReturnsWorkspace from './supply-chain/returns/ReturnsWorkspace';
+import ReturnDraft from './supply-chain/returns/ReturnDraft';
 import ReleaseManagement from './components/preorder/ReleaseManagement';
 import ShippingProfiles from './components/preorder/ShippingProfiles';
 import OrderTaggingPage from './components/preorder/OrderTaggingPage';
@@ -153,16 +153,6 @@ const App = () => {
                           <ReviewReport />
                         </ProtectedRoute>
                       } />
-                      <Route path="/reports/returns" element={
-                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
-                          <ReturnsHome />
-                        </ProtectedRoute>
-                      } />
-                      <Route path="/reports/returns/:publisherId" element={
-                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
-                          <ReturnsWorksheet />
-                        </ProtectedRoute>
-                      } />
                       <Route path="/reports/nyt" element={
                         <ProtectedRoute requiredRoles={['admin', 'editor']}>
                           <NytReportPage />
@@ -228,6 +218,16 @@ const App = () => {
                       <Route path="/transfers" element={
                         <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
                           <TransferService />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/supply-chain/returns" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <ReturnsWorkspace />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/supply-chain/returns/:returnId" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <ReturnDraft />
                         </ProtectedRoute>
                       } />
                       <Route

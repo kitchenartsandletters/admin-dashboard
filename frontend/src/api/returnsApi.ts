@@ -1,5 +1,5 @@
 // returnsApi.ts
-// HTTP calls for the Publisher Returns worksheet (reporting.returns_* endpoints
+// HTTP calls for the Publisher Returns workspace (reporting.returns_* endpoints
 // on supply-chain-service). Same auth/env pattern as reviewReportApi.
 const SC_BASE_URL = import.meta.env.VITE_SC_BASE_URL as string
 const SC_TOKEN = import.meta.env.VITE_SC_ADMIN_TOKEN as string
@@ -26,6 +26,11 @@ function qs(params: Record<string, string | number | boolean | undefined | null>
   const s = p.toString()
   return s ? `?${s}` : ''
 }
+
+export type ReturnStatus = 'draft' | 'picking' | 'confirmed' | 'shipped' | 'cancelled'
+export type ReturnReason = 'overstock' | 'overstock_author_event'
+
+// --- Suggestion side (tiles + per-publisher suggested lines) ---------------
 
 export interface ReturnsPublisherTile {
   publisher_party_id: string
@@ -75,27 +80,107 @@ export interface ReturnsWorksheetResponse {
   order: 'asc' | 'desc'
 }
 
-export interface WorksheetParams {
-  limit?: number
-  offset?: number
-  sort?: string
-  order?: 'asc' | 'desc'
-  excessOnly?: boolean
-  search?: string
-}
-
 export async function fetchReturnsPublishers(): Promise<ReturnsPublisherTile[]> {
   return sc('/api/reporting/returns/publishers')
 }
 
-export async function fetchReturnsWorksheet(publisherId: string, params: WorksheetParams = {}): Promise<ReturnsWorksheetResponse> {
+export async function fetchReturnsWorksheet(publisherId: string, opts: { limit?: number; excessOnly?: boolean; search?: string } = {}): Promise<ReturnsWorksheetResponse> {
   return sc(`/api/reporting/returns/worksheet${qs({
     publisher_id: publisherId,
-    limit: params.limit ?? 1000,
-    offset: params.offset ?? 0,
-    sort: params.sort,
-    order: params.order,
-    excess_only: params.excessOnly || undefined,
-    search: params.search,
+    limit: opts.limit ?? 1000,
+    excess_only: opts.excessOnly || undefined,
+    search: opts.search,
   })}`)
+}
+
+// --- Persistence side (saved returns) --------------------------------------
+
+export interface ReturnIndexRow {
+  id: string
+  supplier_party_id: string
+  publisher_name: string | null
+  status: ReturnStatus
+  return_type: string | null
+  return_number: string | null
+  account_number: string | null
+  ship_to_name: string | null
+  ship_to_address: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+  shipped_at: string | null
+  line_count: number
+  requested_units: number
+  picked_units: number
+  confirmed_units: number
+  requested_value: number
+  confirmed_value: number
+}
+
+export interface ReturnLine {
+  id: string
+  return_id: string
+  inventory_item_id: string
+  variant_id: string | null
+  isbn: string | null
+  title: string | null
+  list_price: number | null
+  quantity_requested: number | null
+  quantity_picked: number | null
+  quantity_confirmed: number | null
+  extended_value: number | null
+  inventory_adjusted: boolean | null
+  notes: string | null
+}
+
+export interface ReturnDetail {
+  return: ReturnIndexRow
+  lines: ReturnLine[]
+}
+
+export interface LineInput {
+  inventory_item_id: string
+  variant_id?: string | null
+  isbn?: string | null
+  title?: string | null
+  list_price?: number | null
+  quantity_requested: number
+}
+
+export interface CreateReturnInput {
+  publisher_id: string
+  reason?: ReturnReason
+  account_number?: string
+  notes?: string
+  seed?: boolean
+  excess_only?: boolean
+}
+
+export interface SaveReturnInput {
+  notes?: string | null
+  account_number?: string | null
+  reason?: ReturnReason
+  ship_to_name?: string | null
+  ship_to_address?: string | null
+  lines?: LineInput[]
+}
+
+export async function fetchReturnsList(status?: ReturnStatus): Promise<ReturnIndexRow[]> {
+  return sc(`/api/reporting/returns${qs({ status })}`)
+}
+
+export async function fetchReturn(id: string): Promise<ReturnDetail> {
+  return sc(`/api/reporting/returns/${id}`)
+}
+
+export async function createReturn(body: CreateReturnInput): Promise<ReturnDetail> {
+  return sc('/api/reporting/returns', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export async function saveReturn(id: string, body: SaveReturnInput): Promise<ReturnDetail> {
+  return sc(`/api/reporting/returns/${id}`, { method: 'PUT', body: JSON.stringify(body) })
+}
+
+export async function deleteReturn(id: string): Promise<{ deleted: boolean; id: string }> {
+  return sc(`/api/reporting/returns/${id}`, { method: 'DELETE' })
 }
