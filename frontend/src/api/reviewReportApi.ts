@@ -49,6 +49,13 @@ export interface ReviewRow {
   supplier_name: string | null
   on_order: number
   refreshed_at: string | null
+  // Vendor / imprint. vendor_code is the Shopify ground truth; imprint is the
+  // resolved publishing entity (the grain buying + culling happen at), while
+  // supplier stays the ordering party (the grain returns are formed at).
+  vendor_code: string | null
+  imprint_party_id: string | null
+  imprint_name: string | null
+  imprint_is_mapped: boolean
 }
 
 export interface ReviewResponse {
@@ -74,24 +81,36 @@ export interface ReviewParams {
   order?: 'asc' | 'desc'
   publisherId?: string
   supplierId?: string
+  imprintId?: string
+  unmappedOnly?: boolean
+  groupBy?: string
   tag?: string
   neverSold?: boolean
   inStock?: boolean
   search?: string
 }
 
-export async function fetchReview(params: ReviewParams = {}): Promise<ReviewResponse> {
-  return sc(`/api/reporting/review${qs({
-    limit: params.limit ?? 100,
-    offset: params.offset ?? 0,
+function reviewQuery(params: ReviewParams) {
+  return {
     sort: params.sort,
     order: params.order,
     publisher_id: params.publisherId,
     supplier_id: params.supplierId,
+    imprint_id: params.imprintId,
+    unmapped_only: params.unmappedOnly || undefined,
+    group_by: params.groupBy && params.groupBy !== 'none' ? params.groupBy : undefined,
     tag: params.tag,
     never_sold: params.neverSold || undefined,
     in_stock: params.inStock || undefined,
     search: params.search,
+  }
+}
+
+export async function fetchReview(params: ReviewParams = {}): Promise<ReviewResponse> {
+  return sc(`/api/reporting/review${qs({
+    limit: params.limit ?? 100,
+    offset: params.offset ?? 0,
+    ...reviewQuery(params),
   })}`)
 }
 
@@ -101,6 +120,30 @@ export async function fetchReviewFreshness(): Promise<ReviewFreshness[]> {
 
 export async function runReviewRefresh(): Promise<unknown> {
   return sc('/api/reporting/snapshot/run', { method: 'POST' })
+}
+
+// --- Imprint / supplier directory (filter menus) ---------------------------
+
+export interface ImprintOption {
+  imprint_party_id: string | null
+  imprint_name: string
+  is_mapped: boolean
+  titles: number
+}
+
+export interface SupplierOption {
+  supplier_party_id: string
+  supplier_name: string | null
+  titles: number
+}
+
+export interface ImprintDirectory {
+  imprints: ImprintOption[]
+  suppliers: SupplierOption[]
+}
+
+export async function fetchImprintDirectory(inStockOnly = true): Promise<ImprintDirectory> {
+  return sc(`/api/reporting/imprints${qs({ in_stock_only: inStockOnly })}`)
 }
 
 // ===========================================================================
@@ -114,7 +157,10 @@ export interface ViewConfig {
   tag?: string
   neverSold?: boolean
   inStock?: boolean
-  groupBy?: 'none' | 'publisher' | 'supplier'
+  groupBy?: 'none' | 'imprint' | 'publisher' | 'supplier'
+  imprintId?: string
+  supplierId?: string
+  unmappedOnly?: boolean
   columns?: string[] // visible column keys, in canonical order
 }
 
@@ -145,17 +191,7 @@ export async function deleteView(userId: string, id: string): Promise<{ deleted:
 // CSV of the full filtered set. Needs the admin-token header, so we fetch the
 // blob and trigger a download rather than using a plain link.
 export async function downloadReviewCsv(params: ReviewParams = {}): Promise<void> {
-  const query = qs({
-    sort: params.sort,
-    order: params.order,
-    publisher_id: params.publisherId,
-    supplier_id: params.supplierId,
-    tag: params.tag,
-    never_sold: params.neverSold || undefined,
-    in_stock: params.inStock || undefined,
-    search: params.search,
-  })
-  const res = await fetch(`${SC_BASE_URL}/api/reporting/review/export${query}`, {
+  const res = await fetch(`${SC_BASE_URL}/api/reporting/review/export${qs(reviewQuery(params))}`, {
     headers: { 'X-Admin-Token': SC_TOKEN },
   })
   if (!res.ok) throw new Error(`[${res.status}] CSV export failed`)
