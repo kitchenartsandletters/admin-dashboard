@@ -1,7 +1,16 @@
 // src/reports/review/ReviewReport.tsx
-// Review report (M2). Server-side sorted/filtered/paginated table over
-// reporting.review_rows, with a freshness banner + provisional flag (slice 2a),
-// and slice 2b: a column chooser, per-user saved views, and CSV export.
+// Review report. Server-side sorted/filtered/paginated table over
+// reporting.review_rows, with a freshness banner + provisional flag, a column
+// chooser, per-user saved views, and CSV export.
+//
+// Three distinct entity columns, because they are three different things:
+//   Vendor   — the raw Shopify vendor code (ground truth, e.g. HGUS)
+//   Imprint  — the resolved publishing entity (Hardie Grant US). The grain
+//              buying and culling decisions are made at.
+//   Supplier — the ordering party we actually buy from and form returns under
+//              (Chronicle Books).
+// An imprint whose vendor code has no party mapped yet renders as the bare code
+// in muted type — honest, and it doubles as the SCS cleanup worklist.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   fetchReview,
@@ -11,20 +20,23 @@ import {
   saveView,
   deleteView,
   downloadReviewCsv,
+  fetchImprintDirectory,
   ReviewRow,
   ReviewFreshness,
   SavedView,
   ViewConfig,
+  ImprintDirectory,
 } from '../../api/reviewReportApi';
 import { useAuth } from '../../auth/AuthProvider';
 
 type ColKey =
-  | 'title' | 'author' | 'isbn' | 'publisher_name' | 'supplier_name'
+  | 'title' | 'author' | 'isbn'
+  | 'vendor_code' | 'imprint_name' | 'supplier_name'
   | 'price' | 'on_hand' | 'available' | 'on_order'
   | 'sales_last_7d' | 'sales_last_30d' | 'sales_12mo' | 'last_sold_at';
 
 type SortKey = ColKey;
-type GroupBy = 'none' | 'publisher' | 'supplier';
+type GroupBy = 'none' | 'imprint' | 'supplier';
 
 const PAGE_SIZE = 100;
 
@@ -34,7 +46,8 @@ const ALL_COLUMNS: { key: ColKey; label: string; align?: 'right' }[] = [
   { key: 'title', label: 'Title' },
   { key: 'author', label: 'Author' },
   { key: 'isbn', label: 'ISBN' },
-  { key: 'publisher_name', label: 'Publisher' },
+  { key: 'vendor_code', label: 'Vendor' },
+  { key: 'imprint_name', label: 'Imprint' },
   { key: 'supplier_name', label: 'Supplier' },
   { key: 'price', label: 'Price', align: 'right' },
   { key: 'on_hand', label: 'On hand', align: 'right' },
@@ -46,6 +59,9 @@ const ALL_COLUMNS: { key: ColKey; label: string; align?: 'right' }[] = [
   { key: 'last_sold_at', label: 'Last sold' },
 ];
 const ALL_KEYS = ALL_COLUMNS.map(c => c.key);
+// Vendor is off by default — it's the diagnostic behind Imprint, not everyday
+// reading. Turn it on from the Columns menu when auditing a mapping.
+const DEFAULT_HIDDEN: ColKey[] = ['vendor_code'];
 
 const num = (v: number | null | undefined) => (v == null ? '—' : String(v));
 const money = (v: number | null) => (v == null ? '—' : `$${v.toFixed(2)}`);
@@ -56,7 +72,14 @@ function cellValue(key: ColKey, r: ReviewRow) {
     case 'title': return r.title ?? '—';
     case 'author': return r.author ?? '—';
     case 'isbn': return r.isbn ?? '—';
-    case 'publisher_name': return r.publisher_name ?? '—';
+    case 'vendor_code': return r.vendor_code ?? '—';
+    case 'imprint_name':
+      if (!r.imprint_name) return '—';
+      // Unmapped: show the code, muted, so it reads as "not resolved yet"
+      // rather than as a publisher name.
+      return r.imprint_is_mapped
+        ? r.imprint_name
+        : <span className="opacity-50 italic" title="No imprint mapped for this vendor code yet">{r.imprint_name}</span>;
     case 'supplier_name': return r.supplier_name ?? '—';
     case 'price': return money(r.price);
     case 'on_hand': return num(r.on_hand);
@@ -88,25 +111,29 @@ export default function ReviewReport() {
   const [neverSold, setNeverSold] = useState(false);
   const [inStock, setInStock] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
+  const [imprintId, setImprintId] = useState('');
+  const [supplierId, setSupplierId] = useState('');
+  const [unmappedOnly, setUnmappedOnly] = useState(false);
 
   // Sort + paging
   const [sort, setSort] = useState<SortKey>('sales_12mo');
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
   const [offset, setOffset] = useState(0);
 
-  // Column visibility (2b)
+  // Column visibility
   const [visible, setVisible] = useState<Record<ColKey, boolean>>(
-    () => Object.fromEntries(ALL_KEYS.map(k => [k, true])) as Record<ColKey, boolean>
+    () => Object.fromEntries(ALL_KEYS.map(k => [k, !DEFAULT_HIDDEN.includes(k)])) as Record<ColKey, boolean>
   );
   const [showCols, setShowCols] = useState(false);
 
-  // Saved views (2b)
+  // Saved views
   const [views, setViews] = useState<SavedView[]>([]);
   const [selectedViewId, setSelectedViewId] = useState('');
   const [viewName, setViewName] = useState('');
   const [viewBusy, setViewBusy] = useState(false);
 
   const [freshness, setFreshness] = useState<ReviewFreshness[]>([]);
+  const [directory, setDirectory] = useState<ImprintDirectory>({ imprints: [], suppliers: [] });
 
   const visibleColumns = useMemo(() => ALL_COLUMNS.filter(c => visible[c.key]), [visible]);
   const colSpan = Math.max(1, visibleColumns.length);
@@ -116,12 +143,8 @@ export default function ReviewReport() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const effectiveSort: SortKey =
-    groupBy === 'publisher' ? 'publisher_name'
-    : groupBy === 'supplier' ? 'supplier_name'
-    : sort;
-  const effectiveOrder = groupBy === 'none' ? order : 'asc';
-
+  // Grouping no longer hijacks the sort: the server orders by the group column
+  // first and by the chosen sort within each group, so both hold at once.
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -129,8 +152,12 @@ export default function ReviewReport() {
       const resp = await fetchReview({
         limit: PAGE_SIZE,
         offset,
-        sort: effectiveSort,
-        order: effectiveOrder,
+        sort,
+        order,
+        groupBy,
+        imprintId: imprintId || undefined,
+        supplierId: supplierId || undefined,
+        unmappedOnly,
         tag: tag || undefined,
         neverSold,
         inStock,
@@ -143,20 +170,16 @@ export default function ReviewReport() {
     } finally {
       setLoading(false);
     }
-  }, [offset, effectiveSort, effectiveOrder, tag, neverSold, inStock, debouncedSearch]);
+  }, [offset, sort, order, groupBy, imprintId, supplierId, unmappedOnly, tag, neverSold, inStock, debouncedSearch]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { fetchReviewFreshness().then(setFreshness).catch(() => {}); }, []);
-  useEffect(() => { setOffset(0); }, [effectiveSort, effectiveOrder, tag, neverSold, inStock, debouncedSearch]);
-
-  const loadViews = useCallback(() => {
-    if (!userId) return;
-    fetchViews(userId).then(setViews).catch(() => {});
-  }, [userId]);
-  useEffect(() => { loadViews(); }, [loadViews]);
+  useEffect(() => { fetchImprintDirectory(true).then(setDirectory).catch(() => {}); }, []);
+  useEffect(() => {
+    setOffset(0);
+  }, [sort, order, groupBy, imprintId, supplierId, unmappedOnly, tag, neverSold, inStock, debouncedSearch]);
 
   const onSort = (key: SortKey) => {
-    if (groupBy !== 'none') return;
     if (sort === key) setOrder(o => (o === 'asc' ? 'desc' : 'asc'));
     else { setSort(key); setOrder('desc'); }
   };
@@ -164,11 +187,19 @@ export default function ReviewReport() {
   const salesFresh = useMemo(() => freshness.find(f => f.family === 'sales') || null, [freshness]);
   const salesProvisional = !salesFresh || salesFresh.status !== 'complete';
 
-  const arrow = (key: SortKey) =>
-    groupBy === 'none' && sort === key ? (order === 'asc' ? ' ▲' : ' ▼') : '';
+  const arrow = (key: SortKey) => (sort === key ? (order === 'asc' ? ' ▲' : ' ▼') : '');
 
   const from = total === 0 ? 0 : offset + 1;
   const to = Math.min(offset + PAGE_SIZE, total);
+
+  const clearFilters = () => {
+    setSearch(''); setDebouncedSearch(''); setTag('');
+    setNeverSold(false); setInStock(false);
+    setImprintId(''); setSupplierId(''); setUnmappedOnly(false);
+  };
+  const filterCount =
+    (imprintId ? 1 : 0) + (supplierId ? 1 : 0) + (unmappedOnly ? 1 : 0) +
+    (inStock ? 1 : 0) + (neverSold ? 1 : 0) + (tag ? 1 : 0) + (debouncedSearch ? 1 : 0);
 
   // ----- saved views: apply / build config -----
   const applyConfig = (cfg: ViewConfig) => {
@@ -177,7 +208,12 @@ export default function ReviewReport() {
     setTag(cfg.tag ?? '');
     setNeverSold(!!cfg.neverSold);
     setInStock(!!cfg.inStock);
-    setGroupBy(cfg.groupBy ?? 'none');
+    setImprintId(cfg.imprintId ?? '');
+    setSupplierId(cfg.supplierId ?? '');
+    setUnmappedOnly(!!cfg.unmappedOnly);
+    // 'publisher' is a legacy value from before the imprint split.
+    const g = cfg.groupBy === 'publisher' ? 'imprint' : (cfg.groupBy ?? 'none');
+    setGroupBy(g as GroupBy);
     if (cfg.sort) setSort(cfg.sort as SortKey);
     if (cfg.order) setOrder(cfg.order);
     if (cfg.columns && cfg.columns.length) {
@@ -193,6 +229,9 @@ export default function ReviewReport() {
     tag: tag || undefined,
     neverSold: neverSold || undefined,
     inStock: inStock || undefined,
+    imprintId: imprintId || undefined,
+    supplierId: supplierId || undefined,
+    unmappedOnly: unmappedOnly || undefined,
     groupBy,
     columns: ALL_KEYS.filter(k => visible[k]),
   });
@@ -202,6 +241,12 @@ export default function ReviewReport() {
     const v = views.find(x => x.id === id);
     if (v) { applyConfig(v.config || {}); setViewName(v.name); }
   };
+
+  const loadViews = useCallback(() => {
+    if (!userId) return;
+    fetchViews(userId).then(setViews).catch(() => {});
+  }, [userId]);
+  useEffect(() => { loadViews(); }, [loadViews]);
 
   const onSaveView = async () => {
     const name = viewName.trim();
@@ -237,7 +282,10 @@ export default function ReviewReport() {
     setExporting(true);
     try {
       await downloadReviewCsv({
-        sort: effectiveSort, order: effectiveOrder,
+        sort, order, groupBy,
+        imprintId: imprintId || undefined,
+        supplierId: supplierId || undefined,
+        unmappedOnly,
         tag: tag || undefined, neverSold, inStock,
         search: debouncedSearch || undefined,
       });
@@ -256,12 +304,17 @@ export default function ReviewReport() {
     let lastGroup: string | null = null;
     for (const r of rows) {
       if (groupBy !== 'none') {
-        const g = (groupBy === 'publisher' ? r.publisher_name : r.supplier_name) || '— Unmapped —';
+        const g = (groupBy === 'imprint' ? r.imprint_name : r.supplier_name) || '— Unmapped —';
         if (g !== lastGroup) {
           lastGroup = g;
           out.push(
             <tr key={`g-${g}`} className="bg-gray-100 dark:bg-gray-800">
-              <td className="px-3 py-2 font-semibold" colSpan={colSpan}>{g}</td>
+              <td className="px-3 py-2 font-semibold" colSpan={colSpan}>
+                {g}
+                {groupBy === 'imprint' && r.supplier_name && r.supplier_name !== g && (
+                  <span className="ml-2 font-normal opacity-60 text-xs">via {r.supplier_name}</span>
+                )}
+              </td>
             </tr>
           );
         }
@@ -360,7 +413,7 @@ export default function ReviewReport() {
         <div className="relative">
           <button className="border px-3 py-2 rounded text-sm" onClick={() => setShowCols(s => !s)}>Columns ▾</button>
           {showCols && (
-            <div className="absolute z-10 mt-1 w-48 max-h-72 overflow-auto rounded border bg-white dark:bg-gray-800 dark:border-gray-700 shadow p-2 text-sm">
+            <div className="absolute z-20 mt-1 w-48 max-h-72 overflow-auto rounded border bg-white dark:bg-gray-800 dark:border-gray-700 shadow p-2 text-sm">
               {ALL_COLUMNS.map(c => (
                 <label key={c.key} className="flex items-center gap-2 py-1">
                   <input
@@ -385,12 +438,45 @@ export default function ReviewReport() {
           onChange={e => setSearch(e.target.value)}
           className="px-3 py-2 border rounded text-sm dark:bg-gray-800 dark:text-white"
         />
+
+        {/* Imprint = what you evaluate and cull at */}
+        <select
+          className="border px-2 py-2 rounded text-sm max-w-[16rem] dark:bg-gray-800 dark:text-white"
+          value={imprintId}
+          onChange={e => setImprintId(e.target.value)}
+          title="Imprint — the publishing entity (Ten Speed, Clarkson Potter)"
+        >
+          <option value="">All imprints</option>
+          {directory.imprints
+            .filter(i => i.imprint_party_id)
+            .map(i => (
+              <option key={i.imprint_party_id as string} value={i.imprint_party_id as string}>
+                {i.imprint_name} ({i.titles})
+              </option>
+            ))}
+        </select>
+
+        {/* Supplier = the ordering party returns are formed under */}
+        <select
+          className="border px-2 py-2 rounded text-sm max-w-[16rem] dark:bg-gray-800 dark:text-white"
+          value={supplierId}
+          onChange={e => setSupplierId(e.target.value)}
+          title="Supplier — the ordering party we buy from and return to (PRH)"
+        >
+          <option value="">All suppliers</option>
+          {directory.suppliers.map(s => (
+            <option key={s.supplier_party_id} value={s.supplier_party_id}>
+              {s.supplier_name ?? '—'} ({s.titles})
+            </option>
+          ))}
+        </select>
+
         <input
           type="text"
           placeholder="Tag (e.g. preorder)"
           value={tag}
           onChange={e => setTag(e.target.value)}
-          className="px-3 py-2 border rounded text-sm dark:bg-gray-800 dark:text-white"
+          className="px-3 py-2 border rounded text-sm w-40 dark:bg-gray-800 dark:text-white"
         />
         <label className="text-sm flex items-center gap-1">
           <input type="checkbox" checked={inStock} onChange={e => setInStock(e.target.checked)} />
@@ -400,15 +486,30 @@ export default function ReviewReport() {
           <input type="checkbox" checked={neverSold} onChange={e => setNeverSold(e.target.checked)} />
           Never sold (12mo)
         </label>
+        <label className="text-sm flex items-center gap-1" title="Titles whose vendor code has no imprint mapped yet — the cleanup list">
+          <input type="checkbox" checked={unmappedOnly} onChange={e => setUnmappedOnly(e.target.checked)} />
+          Unmapped imprint
+        </label>
         <select
           className="border px-2 py-2 rounded text-sm dark:bg-gray-800 dark:text-white"
           value={groupBy}
           onChange={e => setGroupBy(e.target.value as GroupBy)}
         >
           <option value="none">No grouping</option>
-          <option value="publisher">Group by publisher</option>
+          <option value="imprint">Group by imprint</option>
           <option value="supplier">Group by supplier</option>
         </select>
+        {filterCount > 0 && (
+          <button className="text-sm text-blue-600 hover:underline" onClick={clearFilters}>
+            Clear filters ({filterCount})
+          </button>
+        )}
+      </div>
+
+      <div className="text-xs opacity-60">
+        Sorted by <b>{ALL_COLUMNS.find(c => c.key === sort)?.label ?? sort}</b> {order === 'asc' ? 'ascending' : 'descending'}
+        {groupBy !== 'none' && <> · within each {groupBy}</>}
+        {' '}· click any column header to change
       </div>
 
       {error && (
@@ -417,18 +518,19 @@ export default function ReviewReport() {
         </div>
       )}
 
-      <div className="overflow-auto border rounded-md">
-        <table className="min-w-full border border-gray-200 dark:border-gray-700 text-sm">
-          <thead className="bg-gray-50 dark:bg-gray-800">
+      {/* max-h + sticky thead keeps the header visible while scrolling the rows */}
+      <div className="overflow-auto border rounded-md max-h-[70vh]">
+        <table className="min-w-full border-separate border-spacing-0 text-sm">
+          <thead>
             <tr>
               {visibleColumns.map(c => {
                 const label = c.key === 'sales_12mo' && salesProvisional ? `${c.label} *` : c.label;
                 return (
                   <th
                     key={c.key}
-                    className={`px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700 whitespace-nowrap ${groupBy === 'none' ? 'cursor-pointer' : ''}`}
+                    className="sticky top-0 z-10 bg-gray-100 dark:bg-gray-800 px-3 py-2 text-left border-b border-r border-gray-200 dark:border-gray-700 whitespace-nowrap cursor-pointer select-none"
                     onClick={() => onSort(c.key)}
-                    title={c.key === 'sales_12mo' ? 'Provisional until full history loads' : undefined}
+                    title={c.key === 'sales_12mo' ? 'Provisional until full history loads' : `Sort by ${c.label}`}
                   >
                     {label}{arrow(c.key)}
                   </th>
