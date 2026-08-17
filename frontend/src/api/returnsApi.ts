@@ -184,3 +184,81 @@ export async function saveReturn(id: string, body: SaveReturnInput): Promise<Ret
 export async function deleteReturn(id: string): Promise<{ deleted: boolean; id: string }> {
   return sc(`/api/reporting/returns/${id}`, { method: 'DELETE' })
 }
+
+// --- Fulfillment (pull sheet -> manifest -> confirmed) ---------------------
+
+export interface ManifestDelta {
+  title: string | null
+  isbn: string | null
+  inventory_item_id: string
+  delta: number
+  already_adjusted: boolean
+}
+
+export interface ManifestSummary {
+  return_id: string
+  titles: number
+  units: number
+  value: number
+  location_id: string
+  deltas: ManifestDelta[]
+}
+
+export interface PackingListItem {
+  title: string | null
+  isbn: string | null
+  list_price: number | null
+  quantity: number
+}
+
+export interface PackingList {
+  return_number: string | null
+  publisher_name: string | null
+  account_number: string | null
+  reason: string | null
+  ship_to_name: string | null
+  ship_to_address: string | null
+  status: ReturnStatus
+  created_at: string
+  shipped_at: string | null
+  items: PackingListItem[]
+  total_units: number
+  total_value: number
+}
+
+export interface ManifestResult {
+  status: ReturnStatus
+  inventory: { applied: number; failed: number; skipped: number }
+  errors: string[]
+  summary: ManifestSummary
+  packing_list: PackingList
+}
+
+export interface PickLineInput {
+  line_id: string
+  quantity_picked: number
+}
+
+export async function startPick(id: string): Promise<ReturnDetail> {
+  return sc(`/api/reporting/returns/${id}/start-pick`, { method: 'POST' })
+}
+
+export async function savePick(id: string, lines: PickLineInput[]): Promise<ReturnDetail> {
+  return sc(`/api/reporting/returns/${id}/pick`, { method: 'PUT', body: JSON.stringify({ lines }) })
+}
+
+export async function manifestPreview(id: string): Promise<{ dry_run: true; summary: ManifestSummary }> {
+  return sc(`/api/reporting/returns/${id}/manifest`, { method: 'POST', body: JSON.stringify({ dry_run: true }) })
+}
+
+export async function manifestReturn(id: string): Promise<ManifestResult> {
+  return sc(`/api/reporting/returns/${id}/manifest`, { method: 'POST', body: JSON.stringify({ dry_run: false }) })
+}
+
+export async function fetchPackingList(id: string): Promise<PackingList> {
+  return sc(`/api/reporting/returns/${id}/packing-list`)
+}
+
+export async function cancelReturn(id: string): Promise<{ cancelled: boolean; id: string }> {
+  return sc(`/api/reporting/returns/${id}/cancel`, { method: 'POST' })
+}

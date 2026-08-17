@@ -1,17 +1,23 @@
 // src/supply-chain/returns/ReturnDraft.tsx
-// A saved return's draft worksheet. Keep and Return are linked through the live
-// on-hand (return = on_hand - keep), so Matt can think in either. Lines seed
-// from the suggestion; he overrides, adds titles he's written off, or drops
-// lines. Save persists quantity_requested; delete removes the draft. Picking +
-// manifest (and inventory write-back) come in the next phase.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+// The returns detail page — renders by status across the whole lifecycle:
+//   draft    → curate keep/return (linked to live on-hand), add titles, save
+//   picking  → pull sheet: record what was physically pulled (0 = phantom),
+//              then manifest behind a guarded confirm flow
+//   confirmed/shipped → read-only + printable packing list
+//
+// The manifest is the one action that writes live Shopify inventory, so it is
+// gated: dry-run summary → explicit second confirmation → a 5s undo window
+// before the real mutation fires.
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   fetchReturn, fetchReturnsWorksheet, saveReturn, deleteReturn,
-  ReturnIndexRow, ReturnsWorksheetRow, ReturnReason,
+  startPick, savePick, manifestPreview, manifestReturn, fetchPackingList, cancelReturn,
+  ReturnIndexRow, ReturnsWorksheetRow, ReturnReason, ManifestSummary, PackingList,
 } from '../../api/returnsApi';
 
 interface EditLine {
+  id: string;                 // publisher_return_lines.id (needed for pick save)
   inventory_item_id: string;
   variant_id: string | null;
   isbn: string | null;
@@ -19,12 +25,17 @@ interface EditLine {
   list_price: number | null;
   on_hand: number;
   sales_12mo: number;
-  return_qty: number;
+  requested: number;          // planned return qty (draft)
+  picked: number;             // physically pulled (picking)
+  confirmed: number;          // final (confirmed)
+  inventory_adjusted: boolean;
 }
 
 const money = (v: number | null | undefined) =>
   v == null ? '—' : v.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
 const clampInt = (v: number, max: number) => Math.max(0, Math.min(Math.round(v || 0), max));
+const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 
 export default function ReturnDraft() {
   const { returnId = '' } = useParams();
@@ -35,24 +46,40 @@ export default function ReturnDraft() {
   const [worksheet, setWorksheet] = useState<ReturnsWorksheetRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [addSearch, setAddSearch] = useState('');
 
-  const isDraft = header?.status === 'draft';
+  // Manifest guarded flow
+  type Stage = null | 'summary' | 'confirm' | 'undo' | 'running';
+  const [stage, setStage] = useState<Stage>(null);
+  const [summary, setSummary] = useState<ManifestSummary | null>(null);
+  const [undoLeft, setUndoLeft] = useState(5);
+  const [packing, setPacking] = useState<PackingList | null>(null);
+
+  const status = header?.status;
+  const isDraft = status === 'draft';
+  const isPicking = status === 'picking';
+  const isConfirmed = status === 'confirmed' || status === 'shipped';
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const detail = await fetchReturn(returnId);
-      const ws = await fetchReturnsWorksheet(detail.return.supplier_party_id, { limit: 1000 });
-      const byId = new Map(ws.rows.map(r => [r.inventory_item_id, r]));
-      setWorksheet(ws.rows);
-      setHeader(detail.return);
+      const st = detail.return.status;
+      let byId = new Map<string, ReturnsWorksheetRow>();
+      if (st === 'draft' || st === 'picking') {
+        const ws = await fetchReturnsWorksheet(detail.return.supplier_party_id, { limit: 1000 });
+        setWorksheet(ws.rows);
+        byId = new Map(ws.rows.map(r => [r.inventory_item_id, r]));
+      }
       setLines(detail.lines.map(l => {
         const w = byId.get(l.inventory_item_id);
+        const requested = l.quantity_requested ?? 0;
         return {
+          id: l.id,
           inventory_item_id: l.inventory_item_id,
           variant_id: l.variant_id,
           isbn: l.isbn,
@@ -60,10 +87,17 @@ export default function ReturnDraft() {
           list_price: l.list_price ?? w?.price ?? null,
           on_hand: w?.on_hand ?? 0,
           sales_12mo: w?.sales_12mo ?? 0,
-          return_qty: l.quantity_requested ?? 0,
+          requested,
+          picked: l.quantity_picked ?? requested,
+          confirmed: l.quantity_confirmed ?? 0,
+          inventory_adjusted: !!l.inventory_adjusted,
         };
       }));
+      setHeader(detail.return);
       setDirty(false);
+      if (st === 'confirmed' || st === 'shipped') {
+        try { setPacking(await fetchPackingList(returnId)); } catch { /* non-fatal */ }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load return');
     } finally {
@@ -75,34 +109,35 @@ export default function ReturnDraft() {
 
   const patchHeader = (p: Partial<ReturnIndexRow>) => { setHeader(h => (h ? { ...h, ...p } : h)); setDirty(true); };
 
-  const maxFor = (l: EditLine) => (l.on_hand > 0 ? l.on_hand : Math.max(l.return_qty, 0) || 9999);
+  // ---- draft editing (keep/return, linked to on-hand) ----
+  const maxReturn = (l: EditLine) => (l.on_hand > 0 ? l.on_hand : Math.max(l.requested, 0) || 9999);
   const setReturn = (id: string, v: number) => {
-    setLines(ls => ls.map(l => l.inventory_item_id === id ? { ...l, return_qty: clampInt(v, maxFor(l)) } : l));
+    setLines(ls => ls.map(l => l.inventory_item_id === id ? { ...l, requested: clampInt(v, maxReturn(l)) } : l));
     setDirty(true);
   };
   const setKeep = (id: string, keep: number) => {
     setLines(ls => ls.map(l => {
       if (l.inventory_item_id !== id) return l;
       const k = clampInt(keep, l.on_hand > 0 ? l.on_hand : keep);
-      return { ...l, return_qty: Math.max((l.on_hand || (k + l.return_qty)) - k, 0) };
+      return { ...l, requested: Math.max((l.on_hand || (k + l.requested)) - k, 0) };
     }));
     setDirty(true);
   };
   const removeLine = (id: string) => { setLines(ls => ls.filter(l => l.inventory_item_id !== id)); setDirty(true); };
   const addLine = (w: ReturnsWorksheetRow) => {
     setLines(ls => [...ls, {
-      inventory_item_id: w.inventory_item_id, variant_id: w.variant_id, isbn: w.isbn, title: w.title,
-      list_price: w.price, on_hand: w.on_hand, sales_12mo: w.sales_12mo, return_qty: w.suggested_return,
+      id: `new:${w.inventory_item_id}`, inventory_item_id: w.inventory_item_id, variant_id: w.variant_id,
+      isbn: w.isbn, title: w.title, list_price: w.price, on_hand: w.on_hand, sales_12mo: w.sales_12mo,
+      requested: w.suggested_return, picked: w.suggested_return, confirmed: 0, inventory_adjusted: false,
     }]);
-    setAddSearch('');
-    setDirty(true);
+    setAddSearch(''); setDirty(true);
   };
 
-  const totals = useMemo(() => {
-    let units = 0, value = 0, lineCount = 0;
-    for (const l of lines) if (l.return_qty > 0) { lineCount++; units += l.return_qty; value += l.return_qty * (l.list_price ?? 0); }
-    return { units, value, lineCount };
-  }, [lines]);
+  // ---- picking editing (picked count) ----
+  const setPicked = (id: string, v: number) => {
+    setLines(ls => ls.map(l => l.id === id ? { ...l, picked: clampInt(v, l.requested) } : l));
+    setDirty(true);
+  };
 
   const inDraft = useMemo(() => new Set(lines.map(l => l.inventory_item_id)), [lines]);
   const addable = useMemo(() => {
@@ -114,10 +149,19 @@ export default function ReturnDraft() {
       .slice(0, 8);
   }, [addSearch, worksheet, inDraft]);
 
-  const save = async () => {
+  const totals = useMemo(() => {
+    let units = 0, value = 0, count = 0;
+    for (const l of lines) {
+      const q = isPicking ? l.picked : isConfirmed ? l.confirmed : l.requested;
+      if (q > 0) { count++; units += q; value += q * (l.list_price ?? 0); }
+    }
+    return { units, value, count };
+  }, [lines, isPicking, isConfirmed]);
+
+  // ---- actions ----
+  const saveDraft = async () => {
     if (!header) return;
-    setSaving(true);
-    setError(null);
+    setBusy(true); setError(null);
     try {
       const updated = await saveReturn(returnId, {
         reason: (header.return_type as ReturnReason) || undefined,
@@ -125,28 +169,140 @@ export default function ReturnDraft() {
         notes: header.notes,
         ship_to_name: header.ship_to_name,
         ship_to_address: header.ship_to_address,
-        lines: lines.filter(l => l.return_qty > 0).map(l => ({
+        lines: lines.filter(l => l.requested > 0).map(l => ({
           inventory_item_id: l.inventory_item_id, variant_id: l.variant_id, isbn: l.isbn,
-          title: l.title, list_price: l.list_price, quantity_requested: l.return_qty,
+          title: l.title, list_price: l.list_price, quantity_requested: l.requested,
         })),
       });
-      setHeader(updated.return);
-      setDirty(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save');
-    } finally {
-      setSaving(false);
-    }
+      setHeader(updated.return); setDirty(false); setNotice('Draft saved.');
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to save'); }
+    finally { setBusy(false); }
   };
 
-  const remove = async () => {
+  const beginPick = async () => {
+    setBusy(true); setError(null);
+    try { await startPick(returnId); await load(); setNotice('Pull sheet started — record what you physically pull.'); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Failed to start pull sheet'); }
+    finally { setBusy(false); }
+  };
+
+  const savePicked = async () => {
+    setBusy(true); setError(null);
+    try {
+      await savePick(returnId, lines.map(l => ({ line_id: l.id, quantity_picked: l.picked })));
+      setDirty(false); setNotice('Pull counts saved.');
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to save pull counts'); }
+    finally { setBusy(false); }
+  };
+
+  const removeDraft = async () => {
     if (!confirm('Delete this draft return? This cannot be undone.')) return;
     try { await deleteReturn(returnId); navigate('/supply-chain/returns'); }
     catch (e) { setError(e instanceof Error ? e.message : 'Failed to delete'); }
   };
 
+  const cancelThis = async () => {
+    if (!confirm('Cancel this return? It will be marked cancelled (no inventory change).')) return;
+    try { await cancelReturn(returnId); navigate('/supply-chain/returns'); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Failed to cancel'); }
+  };
+
+  // ---- manifest guarded flow ----
+  const openManifest = async () => {
+    if (dirty) { setError('Save your pull counts before creating the manifest.'); return; }
+    setError(null); setSummary(null); setStage('summary');
+    try {
+      const res = await manifestPreview(returnId);
+      setSummary(res.summary);
+    } catch (e) {
+      setStage(null);
+      setError(e instanceof Error ? e.message : 'Failed to preview manifest');
+    }
+  };
+
+  const fireManifest = useCallback(async () => {
+    setStage('running'); setError(null);
+    try {
+      const res = await manifestReturn(returnId);
+      setPacking(res.packing_list);
+      if (res.inventory.failed > 0 || (res.errors && res.errors.length)) {
+        setError(`Some lines did not adjust (${res.inventory.failed} failed). The return stays in picking — you can retry the manifest. ${res.errors.join('; ')}`);
+      } else {
+        setNotice(`Manifested. Shopify inventory decreased by ${res.summary.units} unit(s) across ${res.summary.titles} title(s).`);
+      }
+      setStage(null);
+      await load();
+    } catch (e) {
+      setStage(null);
+      setError(e instanceof Error ? e.message : 'Manifest failed');
+    }
+  }, [returnId, load]);
+
+  // undo countdown: when armed, tick down; at 0, fire the real mutation.
+  const firedRef = useRef(false);
+  useEffect(() => {
+    if (stage !== 'undo') { firedRef.current = false; return; }
+    if (undoLeft <= 0) {
+      if (!firedRef.current) { firedRef.current = true; void fireManifest(); }
+      return;
+    }
+    const t = setTimeout(() => setUndoLeft(s => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [stage, undoLeft, fireManifest]);
+
+  const armUndo = () => { setUndoLeft(5); setStage('undo'); };
+  const abortManifest = () => { setStage(null); setSummary(null); };
+
+  const printPackingList = (pl: PackingList) => {
+    const rows = pl.items.map(i => `<tr>
+      <td>${esc(i.title)}</td><td class="mono">${esc(i.isbn)}</td>
+      <td class="r">${i.list_price == null ? '—' : '$' + Number(i.list_price).toFixed(2)}</td>
+      <td class="r">${i.quantity}</td></tr>`).join('');
+    const reason = pl.reason === 'overstock_author_event' ? 'Overstock – author event' : 'Overstock';
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Return ${esc(pl.return_number)}</title>
+      <style>
+        body{font:13px/1.4 -apple-system,Segoe UI,Roboto,sans-serif;color:#111;margin:40px;}
+        h1{font-size:18px;margin:0;} .sub{color:#555;margin:2px 0 16px;}
+        .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:10px;}
+        .meta{margin:16px 0;display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;}
+        .meta div span{color:#666;display:block;font-size:11px;text-transform:uppercase;}
+        table{width:100%;border-collapse:collapse;margin-top:12px;}
+        th,td{border-bottom:1px solid #ddd;padding:6px 8px;text-align:left;}
+        th.r,td.r{text-align:right;} .mono{font-family:ui-monospace,monospace;}
+        tfoot td{font-weight:bold;border-top:2px solid #111;}
+        .addr{white-space:pre-line;}
+      </style></head><body>
+      <div class="head">
+        <div><h1>Kitchen Arts &amp; Letters, Inc.</h1><div class="sub">Publisher Return</div></div>
+        <div style="text-align:right"><div class="mono"><b>${esc(pl.return_number)}</b></div>
+          <div class="sub">${new Date(pl.created_at).toLocaleDateString()}</div></div>
+      </div>
+      <div class="meta">
+        <div><span>Publisher</span>${esc(pl.publisher_name)}</div>
+        <div><span>Account #</span>${esc(pl.account_number) || '—'}</div>
+        <div><span>Reason</span>${reason}</div>
+        <div><span>Units / Titles</span>${pl.total_units} / ${pl.items.length}</div>
+        <div style="grid-column:1 / -1"><span>Return to</span><span class="addr" style="color:#111;text-transform:none;font-size:13px;">${esc(pl.ship_to_name ? pl.ship_to_name + '\n' : '')}${esc(pl.ship_to_address)}</span></div>
+      </div>
+      <table><thead><tr><th>Title</th><th>ISBN</th><th class="r">List price</th><th class="r">Qty</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="3" class="r">Total units</td><td class="r">${pl.total_units}</td></tr>
+      <tr><td colspan="3" class="r">Total list value</td><td class="r">$${pl.total_value.toFixed(2)}</td></tr></tfoot></table>
+      </body></html>`;
+    const w = window.open('', '_blank', 'width=800,height=900');
+    if (!w) { setError('Popup blocked — allow popups to print the packing list.'); return; }
+    w.document.write(html); w.document.close(); w.focus(); w.print();
+  };
+
   if (loading) return <div className="opacity-70 text-sm py-8 text-center">Loading…</div>;
   if (!header) return <div className="text-sm text-red-600 px-3 py-2">{error ?? 'Return not found'}</div>;
+
+  const statusBadge = (
+    <span className={`text-[11px] uppercase px-2 py-0.5 rounded ${
+      isConfirmed ? 'bg-green-100 text-green-700' : isPicking ? 'bg-blue-100 text-blue-700' :
+      status === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-700'}`}>{status}</span>
+  );
 
   return (
     <div className="space-y-4">
@@ -155,19 +311,23 @@ export default function ReturnDraft() {
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold">{header.publisher_name ?? 'Return'}</h2>
-          <span className="text-sm opacity-70">
-            <span className="font-mono">{header.return_number}</span> · <span className="uppercase">{header.status}</span>
-          </span>
+          <span className="text-sm opacity-70"><span className="font-mono">{header.return_number}</span> · {statusBadge}</span>
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center flex-wrap">
           {dirty && <span className="text-xs text-amber-600">unsaved changes</span>}
-          {isDraft && <button onClick={remove} className="border border-red-300 text-red-600 px-3 py-1 rounded text-sm hover:bg-red-50">Delete</button>}
-          {isDraft && <button onClick={save} disabled={saving || !dirty} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1 rounded text-sm disabled:opacity-50">{saving ? 'Saving…' : 'Save draft'}</button>}
+          {isDraft && <button onClick={removeDraft} className="border border-red-300 text-red-600 px-3 py-1 rounded text-sm hover:bg-red-50">Delete</button>}
+          {isDraft && <button onClick={saveDraft} disabled={busy || !dirty} className="border px-4 py-1 rounded text-sm disabled:opacity-50">{busy ? '…' : 'Save draft'}</button>}
+          {isDraft && <button onClick={beginPick} disabled={busy || dirty} title={dirty ? 'Save changes first' : ''} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1 rounded text-sm disabled:opacity-50">Start pull sheet →</button>}
+          {isPicking && <button onClick={cancelThis} className="border border-red-300 text-red-600 px-3 py-1 rounded text-sm hover:bg-red-50">Cancel return</button>}
+          {isPicking && <button onClick={savePicked} disabled={busy || !dirty} className="border px-4 py-1 rounded text-sm disabled:opacity-50">Save pull counts</button>}
+          {isPicking && <button onClick={openManifest} disabled={busy} className="bg-green-600 hover:bg-green-700 text-white px-4 py-1 rounded text-sm disabled:opacity-50">Create manifest →</button>}
+          {isConfirmed && packing && <button onClick={() => printPackingList(packing)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1 rounded text-sm">Print packing list</button>}
         </div>
       </div>
 
-      {error && <div className="text-sm rounded border border-red-300 bg-red-50 dark:bg-red-950/40 dark:border-red-700 text-red-700 dark:text-red-300 px-3 py-2">{error}</div>}
-      {!isDraft && <div className="text-sm rounded border border-gray-300 bg-gray-50 dark:bg-gray-800 px-3 py-2">This return is <b>{header.status}</b> and is read-only here.</div>}
+      {notice && <div className="text-sm rounded border border-green-300 bg-green-50 text-green-800 px-3 py-2">{notice}</div>}
+      {error && <div className="text-sm rounded border border-red-300 bg-red-50 text-red-700 px-3 py-2">{error}</div>}
+      {status === 'cancelled' && <div className="text-sm rounded border border-gray-300 bg-gray-50 px-3 py-2">This return was cancelled.</div>}
 
       {/* Meta / logistics */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
@@ -190,7 +350,7 @@ export default function ReturnDraft() {
         </div>
       </div>
 
-      {/* Add title */}
+      {/* Add title (draft only) */}
       {isDraft && (
         <div className="relative max-w-md">
           <input value={addSearch} onChange={e => setAddSearch(e.target.value)} placeholder="Add a title (search this publisher's stock)…"
@@ -208,56 +368,150 @@ export default function ReturnDraft() {
         </div>
       )}
 
-      <div className="text-sm font-medium">Returning: {totals.lineCount} titles · {totals.units.toLocaleString()} units · {money(totals.value)}</div>
+      <div className="text-sm font-medium">
+        {isPicking ? 'Pulling' : isConfirmed ? 'Returned' : 'Returning'}: {totals.count} titles · {totals.units.toLocaleString()} units · {money(totals.value)}
+        {isPicking && <span className="opacity-60 font-normal"> — record what you physically pull; set 0 for any copy you can’t find.</span>}
+      </div>
 
+      {/* Line table */}
       <div className="overflow-auto border rounded-md">
         <table className="min-w-full border border-gray-200 dark:border-gray-700 text-sm">
           <thead className="bg-gray-50 dark:bg-gray-800">
             <tr>
               <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">Title</th>
               <th className="px-3 py-2 text-left border-r border-gray-200 dark:border-gray-700">ISBN</th>
-              <th className="px-3 py-2 text-right border-r border-gray-200 dark:border-gray-700">On hand</th>
-              <th className="px-3 py-2 text-right border-r border-gray-200 dark:border-gray-700">12mo</th>
-              <th className="px-3 py-2 text-right border-r border-gray-200 dark:border-gray-700">Keep</th>
-              <th className="px-3 py-2 text-right border-r border-gray-200 dark:border-gray-700">Return</th>
+              {!isConfirmed && <th className="px-3 py-2 text-right border-r border-gray-200 dark:border-gray-700">On hand</th>}
+              {isDraft && <th className="px-3 py-2 text-right border-r border-gray-200 dark:border-gray-700">12mo</th>}
+              {isDraft && <th className="px-3 py-2 text-right border-r border-gray-200 dark:border-gray-700">Keep</th>}
+              {isDraft && <th className="px-3 py-2 text-right border-r border-gray-200 dark:border-gray-700">Return</th>}
+              {isPicking && <th className="px-3 py-2 text-right border-r border-gray-200 dark:border-gray-700">Planned</th>}
+              {isPicking && <th className="px-3 py-2 text-right border-r border-gray-200 dark:border-gray-700">Picked</th>}
+              {isConfirmed && <th className="px-3 py-2 text-right border-r border-gray-200 dark:border-gray-700">Returned</th>}
               <th className="px-3 py-2 text-right border-r border-gray-200 dark:border-gray-700">Value</th>
               {isDraft && <th className="px-2 py-2"></th>}
             </tr>
           </thead>
           <tbody>
             {lines.length === 0 ? (
-              <tr><td className="px-3 py-6 text-center opacity-70" colSpan={8}>No titles on this return yet.</td></tr>
+              <tr><td className="px-3 py-6 text-center opacity-70" colSpan={9}>No titles on this return.</td></tr>
             ) : lines.map(l => {
-              const keep = Math.max((l.on_hand || l.return_qty) - l.return_qty, 0);
+              const q = isPicking ? l.picked : isConfirmed ? l.confirmed : l.requested;
+              const keep = Math.max((l.on_hand || l.requested) - l.requested, 0);
               return (
-                <tr key={l.inventory_item_id} className="even:bg-gray-50 dark:even:bg-gray-700">
+                <tr key={l.id} className="even:bg-gray-50 dark:even:bg-gray-700">
                   <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700">{l.title ?? '—'}</td>
                   <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700">{l.isbn ?? '—'}</td>
-                  <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right">{l.on_hand || '—'}</td>
-                  <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right">{l.sales_12mo}</td>
-                  <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right">
-                    <input type="number" min={0} max={l.on_hand || undefined} value={keep} disabled={!isDraft}
-                      onChange={e => setKeep(l.inventory_item_id, Number(e.target.value))}
-                      className="w-16 px-2 py-1 border rounded text-right dark:bg-gray-800 disabled:opacity-60" />
-                  </td>
-                  <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right">
-                    <input type="number" min={0} max={maxFor(l)} value={l.return_qty} disabled={!isDraft}
-                      onChange={e => setReturn(l.inventory_item_id, Number(e.target.value))}
-                      className="w-16 px-2 py-1 border rounded text-right font-semibold dark:bg-gray-800 disabled:opacity-60" />
-                    {isDraft && (
+                  {!isConfirmed && <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right">{l.on_hand || '—'}</td>}
+                  {isDraft && <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right">{l.sales_12mo}</td>}
+                  {isDraft && (
+                    <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right">
+                      <input type="number" min={0} max={l.on_hand || undefined} value={keep}
+                        onChange={e => setKeep(l.inventory_item_id, Number(e.target.value))}
+                        className="w-16 px-2 py-1 border rounded text-right dark:bg-gray-800" />
+                    </td>
+                  )}
+                  {isDraft && (
+                    <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right">
+                      <input type="number" min={0} max={maxReturn(l)} value={l.requested}
+                        onChange={e => setReturn(l.inventory_item_id, Number(e.target.value))}
+                        className="w-16 px-2 py-1 border rounded text-right font-semibold dark:bg-gray-800" />
                       <div className="mt-1 flex gap-1 justify-end">
                         <button className="text-[11px] px-1 border rounded" title="Return all on hand" onClick={() => setReturn(l.inventory_item_id, l.on_hand)}>all</button>
-                        <button className="text-[11px] px-1 border rounded" title="Keep all — return none" onClick={() => setReturn(l.inventory_item_id, 0)}>keep</button>
+                        <button className="text-[11px] px-1 border rounded" title="Keep all" onClick={() => setReturn(l.inventory_item_id, 0)}>keep</button>
                       </div>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right">{money(l.return_qty * (l.list_price ?? 0))}</td>
+                    </td>
+                  )}
+                  {isPicking && <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right tabular-nums">{l.requested}</td>}
+                  {isPicking && (
+                    <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right">
+                      <input type="number" min={0} max={l.requested} value={l.picked}
+                        onChange={e => setPicked(l.id, Number(e.target.value))}
+                        className="w-16 px-2 py-1 border rounded text-right font-semibold dark:bg-gray-800" />
+                      <div className="mt-1 flex gap-1 justify-end">
+                        <button className="text-[11px] px-1 border rounded" title="Found all planned" onClick={() => setPicked(l.id, l.requested)}>all</button>
+                        <button className="text-[11px] px-1 border rounded" title="None found (phantom)" onClick={() => setPicked(l.id, 0)}>0</button>
+                      </div>
+                    </td>
+                  )}
+                  {isConfirmed && <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right tabular-nums">{l.confirmed}</td>}
+                  <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700 text-right">{money(q * (l.list_price ?? 0))}</td>
                   {isDraft && <td className="px-2 py-2 text-center"><button onClick={() => removeLine(l.inventory_item_id)} title="Remove" className="text-gray-400 hover:text-red-500">✕</button></td>}
                 </tr>
               );
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* ── Manifest guarded flow ── */}
+      {stage === 'summary' && (
+        <Modal title="Review manifest" onClose={abortManifest}>
+          {!summary ? <div className="text-sm opacity-70">Calculating…</div> : (
+            <>
+              <p className="text-sm">You're about to manifest this return to <b>{header.publisher_name}</b>:</p>
+              <ul className="text-sm my-3 space-y-1">
+                <li>• <b>{summary.titles}</b> titles · <b>{summary.units}</b> units · <b>{money(summary.value)}</b> list value</li>
+                <li>• This will <b>decrease Shopify on-hand</b> by these quantities at the store location.</li>
+              </ul>
+              <div className="max-h-40 overflow-auto border rounded text-xs">
+                {summary.deltas.map(d => (
+                  <div key={d.inventory_item_id} className="flex justify-between px-2 py-1 border-b last:border-0">
+                    <span className="truncate pr-2">{d.title}</span><span className="tabular-nums text-red-600">{d.delta}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end gap-2 mt-4">
+                <button onClick={abortManifest} className="border px-4 py-1.5 rounded text-sm">Cancel</button>
+                <button onClick={() => setStage('confirm')} className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm">Continue</button>
+              </div>
+            </>
+          )}
+        </Modal>
+      )}
+
+      {stage === 'confirm' && summary && (
+        <Modal title="Confirm inventory adjustment" onClose={abortManifest}>
+          <div className="text-sm rounded border border-amber-400 bg-amber-50 text-amber-900 px-3 py-2">
+            This writes to <b>live Shopify inventory</b>. On-hand will drop by <b>{summary.units}</b> unit(s) across <b>{summary.titles}</b> title(s). Once applied it can't be undone from here — you'd create a compensating adjustment.
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <button onClick={abortManifest} className="border px-4 py-1.5 rounded text-sm">Cancel</button>
+            <button onClick={armUndo} className="bg-green-600 text-white px-4 py-1.5 rounded text-sm">Confirm &amp; manifest</button>
+          </div>
+        </Modal>
+      )}
+
+      {stage === 'undo' && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white rounded-lg shadow-lg px-4 py-3 flex items-center gap-4">
+          <span className="text-sm">Applying manifest in {undoLeft}s…</span>
+          <button onClick={abortManifest} className="text-sm font-semibold text-amber-300 hover:text-amber-200">Undo</button>
+        </div>
+      )}
+      {stage === 'running' && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white rounded-lg shadow-lg px-4 py-3 text-sm">Applying inventory adjustments…</div>
+      )}
+
+      {/* Packing list (confirmed) */}
+      {isConfirmed && packing && (
+        <div className="border rounded-md p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold">Packing list</h3>
+            <button onClick={() => printPackingList(packing)} className="text-sm text-blue-600 hover:underline">Print / PDF</button>
+          </div>
+          <div className="text-sm opacity-80">{packing.total_units} units · {packing.items.length} titles · {money(packing.total_value)} list value</div>
+          <div className="text-xs opacity-60">Account #{packing.account_number || '—'} · {packing.reason === 'overstock_author_event' ? 'Overstock – author event' : 'Overstock'}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full p-5" onClick={e => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold mb-3">{title}</h3>
+        {children}
       </div>
     </div>
   );
