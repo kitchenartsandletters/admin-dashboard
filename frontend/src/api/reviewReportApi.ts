@@ -56,6 +56,10 @@ export interface ReviewRow {
   imprint_party_id: string | null
   imprint_name: string | null
   imprint_is_mapped: boolean
+  // Present only when a sales date range is requested.
+  sales_in_range?: number
+  revenue_in_range?: number
+  last_sold_in_range?: string | null
 }
 
 export interface ReviewResponse {
@@ -65,6 +69,8 @@ export interface ReviewResponse {
   offset: number
   sort: string
   order: 'asc' | 'desc'
+  sales_from?: string | null
+  sales_to?: string | null
 }
 
 export interface ReviewFreshness {
@@ -88,6 +94,9 @@ export interface ReviewParams {
   neverSold?: boolean
   inStock?: boolean
   search?: string
+  salesFrom?: string
+  salesTo?: string
+  soldOnly?: boolean
 }
 
 function reviewQuery(params: ReviewParams) {
@@ -103,6 +112,9 @@ function reviewQuery(params: ReviewParams) {
     never_sold: params.neverSold || undefined,
     in_stock: params.inStock || undefined,
     search: params.search,
+    sales_from: params.salesFrom,
+    sales_to: params.salesTo,
+    sold_only: params.soldOnly || undefined,
   }
 }
 
@@ -146,6 +158,17 @@ export async function fetchImprintDirectory(inStockOnly = true): Promise<Imprint
   return sc(`/api/reporting/imprints${qs({ in_stock_only: inStockOnly })}`)
 }
 
+export interface LastPoDates {
+  by_party: Record<string, string>
+  by_root: Record<string, string>
+  latest_any: string | null
+}
+
+/** Most recent real PO date per party — anchors the "Since last PO" preset. */
+export async function fetchLastPoDates(): Promise<LastPoDates> {
+  return sc('/api/reporting/last-po')
+}
+
 // ===========================================================================
 // SLICE 2b — saved views + CSV export
 // ===========================================================================
@@ -161,6 +184,9 @@ export interface ViewConfig {
   imprintId?: string
   supplierId?: string
   unmappedOnly?: boolean
+  salesFrom?: string
+  salesTo?: string
+  soldOnly?: boolean
   columns?: string[] // visible column keys, in canonical order
 }
 
