@@ -11,6 +11,10 @@
 //              (Chronicle Books).
 // An imprint whose vendor code has no party mapped yet renders as the bare code
 // in muted type — honest, and it doubles as the SCS cleanup worklist.
+//
+// The sales window is a real date range, not just the fixed 7d/30d/12mo
+// buckets: with a range applied the server aggregates reporting.sales_daily
+// over it and the Sold/Revenue in range columns appear.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   fetchReview,
@@ -21,6 +25,8 @@ import {
   deleteView,
   downloadReviewCsv,
   fetchImprintDirectory,
+  fetchLastPoDates,
+  LastPoDates,
   ReviewRow,
   ReviewFreshness,
   SavedView,
@@ -28,12 +34,14 @@ import {
   ImprintDirectory,
 } from '../../api/reviewReportApi';
 import { useAuth } from '../../auth/AuthProvider';
+import SalesRangePicker, { SalesRange } from './SalesRangePicker';
 
 type ColKey =
   | 'title' | 'author' | 'isbn'
   | 'vendor_code' | 'imprint_name' | 'supplier_name'
   | 'price' | 'on_hand' | 'available' | 'on_order'
-  | 'sales_last_7d' | 'sales_last_30d' | 'sales_12mo' | 'last_sold_at';
+  | 'sales_last_7d' | 'sales_last_30d' | 'sales_12mo' | 'last_sold_at'
+  | 'sales_in_range' | 'revenue_in_range';
 
 type SortKey = ColKey;
 type GroupBy = 'none' | 'imprint' | 'supplier';
@@ -57,7 +65,11 @@ const ALL_COLUMNS: { key: ColKey; label: string; align?: 'right' }[] = [
   { key: 'sales_last_30d', label: '30d', align: 'right' },
   { key: 'sales_12mo', label: '12mo', align: 'right' },
   { key: 'last_sold_at', label: 'Last sold' },
+  // Only rendered when a sales date range is active.
+  { key: 'sales_in_range', label: 'Sold in range', align: 'right' },
+  { key: 'revenue_in_range', label: 'Revenue in range', align: 'right' },
 ];
+const RANGE_COLUMNS: ColKey[] = ['sales_in_range', 'revenue_in_range'];
 const ALL_KEYS = ALL_COLUMNS.map(c => c.key);
 // Vendor is off by default — it's the diagnostic behind Imprint, not everyday
 // reading. Turn it on from the Columns menu when auditing a mapping.
@@ -89,6 +101,8 @@ function cellValue(key: ColKey, r: ReviewRow) {
     case 'sales_last_30d': return r.sales_last_30d;
     case 'sales_12mo': return r.sales_12mo;
     case 'last_sold_at': return day(r.last_sold_at);
+    case 'sales_in_range': return r.sales_in_range ?? 0;
+    case 'revenue_in_range': return money(r.revenue_in_range ?? 0);
     default: return '';
   }
 }
@@ -114,6 +128,9 @@ export default function ReviewReport() {
   const [imprintId, setImprintId] = useState('');
   const [supplierId, setSupplierId] = useState('');
   const [unmappedOnly, setUnmappedOnly] = useState(false);
+  const [salesRange, setSalesRange] = useState<SalesRange | null>(null);
+  const [soldOnly, setSoldOnly] = useState(false);
+  const [lastPo, setLastPo] = useState<LastPoDates | null>(null);
 
   // Sort + paging
   const [sort, setSort] = useState<SortKey>('sales_12mo');
@@ -135,7 +152,11 @@ export default function ReviewReport() {
   const [freshness, setFreshness] = useState<ReviewFreshness[]>([]);
   const [directory, setDirectory] = useState<ImprintDirectory>({ imprints: [], suppliers: [] });
 
-  const visibleColumns = useMemo(() => ALL_COLUMNS.filter(c => visible[c.key]), [visible]);
+  const visibleColumns = useMemo(
+    () => ALL_COLUMNS.filter(c =>
+      visible[c.key] && (salesRange ? true : !RANGE_COLUMNS.includes(c.key))),
+    [visible, salesRange]
+  );
   const colSpan = Math.max(1, visibleColumns.length);
 
   useEffect(() => {
@@ -162,6 +183,9 @@ export default function ReviewReport() {
         neverSold,
         inStock,
         search: debouncedSearch || undefined,
+        salesFrom: salesRange?.from,
+        salesTo: salesRange?.to,
+        soldOnly: salesRange ? soldOnly : undefined,
       });
       setRows(resp.rows);
       setTotal(resp.total);
@@ -170,14 +194,23 @@ export default function ReviewReport() {
     } finally {
       setLoading(false);
     }
-  }, [offset, sort, order, groupBy, imprintId, supplierId, unmappedOnly, tag, neverSold, inStock, debouncedSearch]);
+  }, [offset, sort, order, groupBy, imprintId, supplierId, unmappedOnly, tag, neverSold, inStock, debouncedSearch, salesRange, soldOnly]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { fetchLastPoDates().then(setLastPo).catch(() => {}); }, []);
   useEffect(() => { fetchReviewFreshness().then(setFreshness).catch(() => {}); }, []);
   useEffect(() => { fetchImprintDirectory(true).then(setDirectory).catch(() => {}); }, []);
   useEffect(() => {
     setOffset(0);
-  }, [sort, order, groupBy, imprintId, supplierId, unmappedOnly, tag, neverSold, inStock, debouncedSearch]);
+  }, [sort, order, groupBy, imprintId, supplierId, unmappedOnly, tag, neverSold, inStock, debouncedSearch, salesRange, soldOnly]);
+
+  // Applying a range makes "what sold in it" the interesting order; clearing it
+  // sends the sort back to the 12-month default so no dead column is sorted on.
+  const applyRange = (r: SalesRange | null) => {
+    setSalesRange(r);
+    if (r) { setSort('sales_in_range'); setOrder('desc'); }
+    else if (RANGE_COLUMNS.includes(sort as ColKey)) { setSort('sales_12mo'); setOrder('desc'); }
+  };
 
   const onSort = (key: SortKey) => {
     if (sort === key) setOrder(o => (o === 'asc' ? 'desc' : 'asc'));
@@ -192,14 +225,30 @@ export default function ReviewReport() {
   const from = total === 0 ? 0 : offset + 1;
   const to = Math.min(offset + PAGE_SIZE, total);
 
+  // Anchor for "Since last PO": the PO date of whichever party is filtered.
+  const lastPoDate = useMemo(() => {
+    if (!lastPo) return null;
+    if (supplierId) return lastPo.by_root[supplierId] ?? lastPo.by_party[supplierId] ?? null;
+    if (imprintId) return lastPo.by_party[imprintId] ?? lastPo.by_root[imprintId] ?? null;
+    return null;
+  }, [lastPo, supplierId, imprintId]);
+
+  const lastPoLabel = useMemo(() => {
+    if (supplierId) return directory.suppliers.find(s => s.supplier_party_id === supplierId)?.supplier_name ?? null;
+    if (imprintId) return directory.imprints.find(i => i.imprint_party_id === imprintId)?.imprint_name ?? null;
+    return null;
+  }, [directory, supplierId, imprintId]);
+
   const clearFilters = () => {
     setSearch(''); setDebouncedSearch(''); setTag('');
     setNeverSold(false); setInStock(false);
     setImprintId(''); setSupplierId(''); setUnmappedOnly(false);
+    applyRange(null); setSoldOnly(false);
   };
   const filterCount =
     (imprintId ? 1 : 0) + (supplierId ? 1 : 0) + (unmappedOnly ? 1 : 0) +
-    (inStock ? 1 : 0) + (neverSold ? 1 : 0) + (tag ? 1 : 0) + (debouncedSearch ? 1 : 0);
+    (inStock ? 1 : 0) + (neverSold ? 1 : 0) + (tag ? 1 : 0) + (debouncedSearch ? 1 : 0) +
+    (salesRange ? 1 : 0);
 
   // ----- saved views: apply / build config -----
   const applyConfig = (cfg: ViewConfig) => {
@@ -211,6 +260,8 @@ export default function ReviewReport() {
     setImprintId(cfg.imprintId ?? '');
     setSupplierId(cfg.supplierId ?? '');
     setUnmappedOnly(!!cfg.unmappedOnly);
+    setSalesRange(cfg.salesFrom && cfg.salesTo ? { from: cfg.salesFrom, to: cfg.salesTo } : null);
+    setSoldOnly(!!cfg.soldOnly);
     // 'publisher' is a legacy value from before the imprint split.
     const g = cfg.groupBy === 'publisher' ? 'imprint' : (cfg.groupBy ?? 'none');
     setGroupBy(g as GroupBy);
@@ -232,6 +283,9 @@ export default function ReviewReport() {
     imprintId: imprintId || undefined,
     supplierId: supplierId || undefined,
     unmappedOnly: unmappedOnly || undefined,
+    salesFrom: salesRange?.from,
+    salesTo: salesRange?.to,
+    soldOnly: soldOnly || undefined,
     groupBy,
     columns: ALL_KEYS.filter(k => visible[k]),
   });
@@ -288,6 +342,9 @@ export default function ReviewReport() {
         unmappedOnly,
         tag: tag || undefined, neverSold, inStock,
         search: debouncedSearch || undefined,
+        salesFrom: salesRange?.from,
+        salesTo: salesRange?.to,
+        soldOnly: salesRange ? soldOnly : undefined,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'CSV export failed');
@@ -471,6 +528,15 @@ export default function ReviewReport() {
           ))}
         </select>
 
+        <SalesRangePicker
+          value={salesRange}
+          onChange={applyRange}
+          lastPoDate={lastPoDate}
+          lastPoLabel={lastPoLabel}
+          soldOnly={soldOnly}
+          onSoldOnlyChange={setSoldOnly}
+        />
+
         <input
           type="text"
           placeholder="Tag (e.g. preorder)"
@@ -509,6 +575,7 @@ export default function ReviewReport() {
       <div className="text-xs opacity-60">
         Sorted by <b>{ALL_COLUMNS.find(c => c.key === sort)?.label ?? sort}</b> {order === 'asc' ? 'ascending' : 'descending'}
         {groupBy !== 'none' && <> · within each {groupBy}</>}
+        {salesRange && <> · sales counted {salesRange.from} to {salesRange.to}</>}
         {' '}· click any column header to change
       </div>
 
