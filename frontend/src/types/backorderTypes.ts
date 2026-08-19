@@ -1,7 +1,10 @@
 // backorderTypes.ts
 // Types for the Backorder module. Shapes match backorder-service
 // /admin/backorders/* responses (vw_product_overview, vw_order_overview,
-// order_lines, actions).
+// vw_resolvable, order_lines, actions).
+//
+// On-order fields originate in reporting.on_order_by_item / on_order_lines,
+// owned by supply-chain-service. Same numbers as the Review report.
 
 export type UrgencyBucket = 'critical' | 'high' | 'medium' | 'low'
 
@@ -29,16 +32,25 @@ export interface BackorderProductRow {
   oldest_open_order_at: string | null
   last_restock_at: string | null
   updated_at: string
-  // Supply-chain joins (live from purchase_orders / purchase_order_lines)
+  // ---- on-order, from reporting.on_order_by_item ----
   on_order_qty: number
+  on_order_backordered_qty: number
+  po_has_backorder: boolean
+  open_po_lines: number
   next_expected_at: string | null
+  last_ordered_at: string | null
   po_numbers: string[] | null
+  supply_status_note: string | null
+  supply_status_noted_at: string | null
+  supplier_name: string | null
   lead_time_days: number | null
-  // Customer-service state
+  // ---- customer service ----
   last_customer_notified_at: string | null
   unnotified_open_lines: number
-  // Urgency
+  // ---- urgency / resolvability ----
   days_open: number
+  resolvable_qty: number
+  has_resolvable: boolean
   urgency_score: number
   urgency_bucket: UrgencyBucket
 }
@@ -82,6 +94,60 @@ export interface BackorderOrderRow {
   days_open: number
 }
 
+// ---- Open PO lines for the title sidebar (reporting.on_order_lines) ----
+export interface BackorderPoLine {
+  po_number: string | null
+  po_status: string | null
+  line_status: string | null
+  ordered_at: string | null
+  expected_at: string | null
+  quantity_ordered: number | null
+  quantity_received: number | null
+  quantity_outstanding: number | null
+  quantity_backordered: number | null
+  supply_status_note: string | null
+  supply_status_noted_at: string | null
+  supplier_name: string | null
+}
+
+// ---- Resolvable (fillable from stock on hand) ----
+export type Fillability = 'fully_fillable' | 'partially_fillable' | 'not_fillable'
+
+export interface ResolvableLine {
+  order_id: number
+  line_item_id: number
+  order_name: string | null
+  customer_email: string | null
+  open_qty: number
+  fillable_qty: number
+  fillability: Fillability
+  queue_position: number
+  order_created_at: string | null
+  days_open: number
+  last_customer_notified_at: string | null
+}
+
+export interface ResolvableProduct {
+  product_id: number
+  title: string | null
+  sku: string | null
+  vendor: string | null
+  available: number | null
+  open_backorder_qty: number
+  resolvable_qty: number
+  stranded_qty: number
+  lines: ResolvableLine[]
+}
+
+export interface ResolvableResponse {
+  data: ResolvableProduct[]
+  meta: {
+    products: number
+    fillable_units: number
+    stranded_units: number
+  }
+}
+
 export type BackorderActionType =
   | 'po_created'
   | 'po_linked'
@@ -122,6 +188,8 @@ export interface BackorderSummary {
   units_owed: number
   orders_affected: number
   not_on_order: number
+  resolvable_products: number
+  resolvable_units: number
   buckets: Record<UrgencyBucket, number>
   as_of: string
 }

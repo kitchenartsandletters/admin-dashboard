@@ -7,9 +7,11 @@ import type {
   BackorderProductRow,
   BackorderOrderLine,
   BackorderOrderRow,
+  BackorderPoLine,
   BackorderAction,
   BackorderActionCreate,
   BackorderSummary,
+  ResolvableResponse,
   UrgencyBucket,
   BackorderProductStatus,
 } from '../types/backorderTypes'
@@ -74,6 +76,7 @@ export async function fetchBackorderProducts(opts: {
   bucket?: UrgencyBucket
   status?: BackorderProductStatus
   includeResolved?: boolean
+  resolvableOnly?: boolean
   search?: string
   limit?: number
   offset?: number
@@ -83,6 +86,7 @@ export async function fetchBackorderProducts(opts: {
       bucket:           opts.bucket,
       status:           opts.status,
       include_resolved: opts.includeResolved,
+      resolvable_only:  opts.resolvableOnly,
       search:           opts.search,
       limit:            opts.limit ?? 500,
       offset:           opts.offset ?? 0,
@@ -94,8 +98,17 @@ export async function fetchBackorderProducts(opts: {
 export async function fetchProductOrders(productId: number): Promise<{
   lines: BackorderOrderLine[]
   actions: BackorderAction[]
+  po_lines: BackorderPoLine[]
 }> {
   return bo(`/admin/backorders/products/${productId}/orders`)
+}
+
+// ===========================================================================
+// RESOLVABLE (fillable from stock on hand, oldest order first)
+// ===========================================================================
+
+export async function fetchResolvable(limit = 200): Promise<ResolvableResponse> {
+  return bo(`/admin/backorders/resolvable${qs({ limit })}`)
 }
 
 // ===========================================================================
