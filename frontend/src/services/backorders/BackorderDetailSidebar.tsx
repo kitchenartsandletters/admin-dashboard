@@ -1,13 +1,14 @@
 // BackorderDetailSidebar.tsx
 // Right-side drill-down for a backordered title: per-order lines (what is owed
-// to whom), action buttons, and the action history trail.
+// to whom), open PO lines from reporting.on_order_lines, action buttons, and
+// the action history trail.
 import { useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import type {
   BackorderProductRow,
   BackorderOrderLine,
   BackorderAction,
+  BackorderPoLine,
 } from '../../types/backorderTypes'
 import { createBackorderAction, fetchProductOrders } from '../../api/backorderApi'
 
@@ -23,6 +24,7 @@ interface Props {
 export default function BackorderDetailSidebar({ row, onClose, onChanged }: Props) {
   const [lines, setLines] = useState<BackorderOrderLine[]>([])
   const [actions, setActions] = useState<BackorderAction[]>([])
+  const [poLines, setPoLines] = useState<BackorderPoLine[]>([])
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -34,10 +36,12 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
       const detail = await fetchProductOrders(productId)
       setLines(detail.lines)
       setActions(detail.actions)
+      setPoLines(detail.po_lines ?? [])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load detail')
       setLines([])
       setActions([])
+      setPoLines([])
     } finally {
       setLoading(false)
     }
@@ -86,10 +90,10 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
     })
   }
 
-  return createPortal(
+  return (
     <>
       <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <aside className="fixed inset-y-0 right-0 z-50 w-full sm:w-[520px] bg-white dark:bg-gray-900 border-l dark:border-gray-700 shadow-xl overflow-y-auto">
+      <aside className="fixed inset-y-0 right-0 z-50 w-full sm:w-[560px] bg-white dark:bg-gray-900 border-l dark:border-gray-700 shadow-xl overflow-y-auto">
         {/* Header */}
         <div className="sticky top-0 bg-white dark:bg-gray-900 border-b dark:border-gray-700 px-5 py-4 flex items-start justify-between gap-3 z-10">
           <div className="min-w-0">
@@ -97,10 +101,10 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
               {row.title ?? row.sku ?? row.product_id}
             </h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-              {row.vendor ?? ''} {row.sku ? `· ${row.sku}` : ''} · available {row.available ?? '—'}
+              {row.vendor ?? ''}{row.sku ? ` · ${row.sku}` : ''} · {row.available ?? '—'} in stock
             </p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0 text-gray-500 dark:text-gray-400">
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0">
             <X size={18} />
           </button>
         </div>
@@ -109,6 +113,15 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
           {error && (
             <div className="px-3 py-2 rounded-md border border-red-200 bg-red-50 text-red-700 text-xs dark:bg-red-950/40 dark:border-red-900 dark:text-red-300">
               {error}
+            </div>
+          )}
+
+          {/* Fillable-now callout */}
+          {row.has_resolvable && (
+            <div className="px-3 py-2 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs dark:bg-emerald-950/30 dark:border-emerald-900 dark:text-emerald-300">
+              <span className="font-semibold tabular-nums">{row.resolvable_qty}</span> of{' '}
+              <span className="tabular-nums">{row.open_backorder_qty}</span> owed units can ship from
+              stock on hand now (oldest orders first).
             </div>
           )}
 
@@ -125,29 +138,68 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
               </div>
             ))}
           </div>
-          {row.po_numbers?.length ? (
-            <p className="text-xs text-gray-500 dark:text-gray-400 -mt-3">
-              Open POs: {row.po_numbers.join(', ')}
-              {row.lead_time_days != null ? ` ·lead time ${row.lead_time_days}d` : ''}
-            </p>
-          ) : null}
 
           {/* Actions */}
           <div className="flex gap-2">
             <button
               onClick={logVendorInquiry}
               disabled={busy}
-              className="px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium shadow-sm"
+              className="px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium"
             >
               Log vendor inquiry
             </button>
             <button
               onClick={setEta}
               disabled={busy}
-              className="px-3 py-1.5 rounded-md border text-gray-700 dark:text-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 text-xs font-medium shadow-sm"
+              className="px-3 py-1.5 rounded-md border dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 text-xs font-medium"
             >
               Set expected date
             </button>
+          </div>
+
+          {/* Open PO lines (reporting.on_order_lines) */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
+              Open purchase orders ({poLines.length})
+            </h3>
+            {loading ? (
+              <div className="h-10 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+            ) : poLines.length === 0 ? (
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Nothing on order for this title. This is the main driver of its urgency score.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {poLines.map((po, i) => (
+                  <li key={`${po.po_number}-${i}`} className="border rounded-md dark:border-gray-700 p-2.5 text-xs">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="font-medium text-gray-900 dark:text-white">
+                        {po.po_number ?? '—'}
+                        {po.supplier_name ? (
+                          <span className="font-normal text-gray-500 dark:text-gray-400"> · {po.supplier_name}</span>
+                        ) : null}
+                      </span>
+                      <span className="tabular-nums whitespace-nowrap">
+                        {po.quantity_outstanding ?? 0} outstanding
+                      </span>
+                    </div>
+                    <div className="text-gray-500 dark:text-gray-400 mt-0.5">
+                      {po.line_status ?? po.po_status ?? ''}
+                      {po.ordered_at ? ` · ordered ${fmtDate(po.ordered_at)}` : ''}
+                      {po.expected_at ? ` · expected ${fmtDate(po.expected_at)}` : ''}
+                    </div>
+                    {po.supply_status_note && (
+                      <div className="mt-1 text-gray-700 dark:text-gray-200 italic">
+                        “{po.supply_status_note}”
+                        {po.supply_status_noted_at ? (
+                          <span className="not-italic text-gray-400"> — {fmtDate(po.supply_status_noted_at)}</span>
+                        ) : null}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           {/* Order lines */}
@@ -162,7 +214,7 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
                 ))}
               </div>
             ) : (
-              <div className="border rounded-md dark:border-gray-700 overflow-x-auto bg-white dark:bg-gray-950">
+              <div className="border rounded-md dark:border-gray-700 overflow-x-auto">
                 <table className="min-w-full text-xs">
                   <thead className="bg-gray-50 dark:bg-gray-800">
                     <tr>
@@ -173,17 +225,15 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700 text-gray-900 dark:text-gray-100">
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                     {lines.map((l) => (
-                      <tr key={`${l.order_id}-${l.line_item_id}`} className="even:bg-gray-50/50 dark:even:bg-gray-800/40 hover:bg-gray-50/80 dark:hover:bg-gray-800/30 transition-colors">
-                        <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-900 dark:text-white">{l.order_name ?? l.order_id}</td>
-                        <td className="px-3 py-2 max-w-[120px] truncate text-gray-600 dark:text-gray-300">{l.customer_email ?? '—'}</td>
+                      <tr key={`${l.order_id}-${l.line_item_id}`} className="even:bg-gray-50/50 dark:even:bg-gray-800/50">
+                        <td className="px-3 py-2 whitespace-nowrap font-medium">{l.order_name ?? l.order_id}</td>
+                        <td className="px-3 py-2 max-w-[120px] truncate">{l.customer_email ?? '—'}</td>
                         <td className="px-3 py-2 tabular-nums">{l.open_qty}/{l.qty_backordered}</td>
-                        <td className="px-3 py-2">
-                          <span className="capitalize">{l.status}</span>
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap text-gray-500 dark:text-gray-400">{fmtDate(l.order_created_at)}</td>
-                        <td className="px-3 py-2 whitespace-nowrap text-gray-500 dark:text-gray-400">
+                        <td className="px-3 py-2">{l.status}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{fmtDate(l.order_created_at)}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">
                           {l.last_customer_notified_at
                             ? `${fmtDate(l.last_customer_notified_at)} (${l.notification_count}x)`
                             : 'Never'}
@@ -193,7 +243,7 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
                             <button
                               onClick={() => markNotified(l)}
                               disabled={busy}
-                              className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-medium whitespace-nowrap shadow-sm"
+                              className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-medium whitespace-nowrap"
                             >
                               Mark notified
                             </button>
@@ -224,13 +274,11 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
                     {a.order_id ? ` · order ${a.order_id}` : ''}
                     {a.eta_date ? ` · ETA ${a.eta_date}` : ''}
                     <span className="text-gray-500 dark:text-gray-400">
-                      {' '} — {new Date(a.created_at).toLocaleString()}
+                      {' — '}{new Date(a.created_at).toLocaleString()}
                       {a.actor ? ` by ${a.actor}` : ''}
                     </span>
                     {a.details && 'note' in a.details && (
-                      <div className="text-gray-600 dark:text-gray-300 mt-0.5 bg-gray-50 dark:bg-gray-800/40 p-2 rounded border dark:border-gray-800">
-                        {String(a.details.note)}
-                      </div>
+                      <div className="text-gray-600 dark:text-gray-300 mt-0.5">{String(a.details.note)}</div>
                     )}
                   </li>
                 ))}
@@ -239,7 +287,6 @@ export default function BackorderDetailSidebar({ row, onClose, onChanged }: Prop
           </div>
         </div>
       </aside>
-    </>,
-    document.body
+    </>
   )
 }

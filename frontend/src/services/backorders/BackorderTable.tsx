@@ -1,5 +1,7 @@
 // BackorderTable.tsx
 // Product-level table of titles owed to customers, urgency-sorted.
+// On-order figures come from reporting.on_order_by_item (supply-chain-service)
+// and match the Review report exactly — never recomputed here.
 import type { BackorderProductRow, UrgencyBucket } from '../../types/backorderTypes'
 
 const BADGE_STYLES: Record<UrgencyBucket, string> = {
@@ -10,7 +12,7 @@ const BADGE_STYLES: Record<UrgencyBucket, string> = {
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  backorderable:   'Replenishable',
+  backorderable:   'Backorderable',
   temporarily_oos: 'Temporarily OOS',
   oop_suspect:     'OOP suspect',
   restock_pending: 'Restock pending',
@@ -31,7 +33,7 @@ export default function BackorderTable({ data, onRowClick }: Props) {
       <table className="min-w-full border-collapse text-sm">
         <thead className="bg-gray-50 dark:bg-gray-800">
           <tr>
-            {['Title', 'Owed', 'Orders', 'Days open', 'On order', 'Expected', 'Notified', 'Status', 'Urgency'].map(h => (
+            {['Title', 'Owed', 'In stock', 'Orders', 'Days open', 'On order', 'Supply note', 'Notified', 'Status', 'Urgency'].map(h => (
               <th key={h} className="px-4 py-3 border-b dark:border-gray-700 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                 {h}
               </th>
@@ -41,7 +43,7 @@ export default function BackorderTable({ data, onRowClick }: Props) {
         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
           {data.length === 0 && (
             <tr>
-              <td colSpan={9} className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+              <td colSpan={10} className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
                 No backorders match the current filters.
               </td>
             </tr>
@@ -59,21 +61,45 @@ export default function BackorderTable({ data, onRowClick }: Props) {
                 </div>
               </td>
               <td className="px-4 py-3 tabular-nums font-semibold">{row.open_backorder_qty}</td>
+              <td className="px-4 py-3 tabular-nums">
+                {row.available ?? '—'}
+                {row.has_resolvable && (
+                  <span className="ml-1 text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 font-medium whitespace-nowrap">
+                    {row.resolvable_qty} fillable
+                  </span>
+                )}
+              </td>
               <td className="px-4 py-3 tabular-nums">{row.open_orders_count}</td>
               <td className="px-4 py-3 tabular-nums">{row.days_open}</td>
               <td className="px-4 py-3 whitespace-nowrap">
                 {row.on_order_qty > 0 ? (
-                  <span className="tabular-nums">
-                    {row.on_order_qty}
-                    {row.po_numbers?.length ? (
-                      <span className="text-xs text-gray-500 dark:text-gray-400"> ({row.po_numbers.join(', ')})</span>
-                    ) : null}
-                  </span>
+                  <div>
+                    <span className="tabular-nums font-medium">{row.on_order_qty}</span>
+                    {row.po_has_backorder && (
+                      <span className="ml-1 text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 font-medium">
+                        pub backorder
+                      </span>
+                    )}
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                      {row.po_numbers?.length ? row.po_numbers.join(', ') : ''}
+                      {row.next_expected_at ? ` · exp ${fmtDate(row.next_expected_at)}` : ''}
+                    </div>
+                  </div>
                 ) : (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 font-medium">No</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 font-medium">
+                    Not ordered
+                  </span>
                 )}
               </td>
-              <td className="px-4 py-3 whitespace-nowrap">{fmtDate(row.next_expected_at)}</td>
+              <td className="px-4 py-3 max-w-[200px]">
+                {row.supply_status_note ? (
+                  <div className="text-xs text-gray-600 dark:text-gray-300 truncate" title={row.supply_status_note}>
+                    {row.supply_status_note}
+                  </div>
+                ) : (
+                  <span className="text-xs text-gray-400">—</span>
+                )}
+              </td>
               <td className="px-4 py-3 whitespace-nowrap">
                 {row.unnotified_open_lines > 0 ? (
                   <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 font-medium">

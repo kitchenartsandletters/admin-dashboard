@@ -1,24 +1,32 @@
 // BackorderService.tsx
 // Definitive overview of products/orders owed to customers (committed sales
-// deficit). Urgency heatmap + product table + order view + action tracking.
+// deficit). Ready-to-ship panel + urgency heatmap + product table + order view
+// + action tracking.
+//
 // Backend: backorder-service /admin/backorders/* via backorderApi.ts.
+// On-order figures originate in reporting.on_order_by_item (supply-chain-service)
+// and match the Review report exactly.
 import { useEffect, useMemo, useState } from 'react'
 import BackorderTable from './BackorderTable'
 import BackorderHeatmap from './BackorderHeatmap'
 import BackorderDetailSidebar from './BackorderDetailSidebar'
+import ResolvablePanel from './ResolvablePanel'
 import type {
   BackorderProductRow,
   BackorderOrderRow,
   BackorderSummary,
+  ResolvableProduct,
+  ResolvableResponse,
   UrgencyBucket,
 } from '../../types/backorderTypes'
 import {
   fetchBackorderSummary,
   fetchBackorderProducts,
   fetchBackorderOrders,
+  fetchResolvable,
 } from '../../api/backorderApi'
 
-type ViewMode = 'overview' | 'orders'
+type ViewMode = 'overview' | 'ready' | 'orders'
 
 const fmtDate = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString() : '—'
@@ -58,17 +66,26 @@ function SummaryCards({ summary, loading }: { summary: BackorderSummary | null; 
     { label: 'Units owed', value: summary?.units_owed },
     { label: 'Orders affected', value: summary?.orders_affected },
     { label: 'Not yet ordered', value: summary?.not_on_order, alert: (summary?.not_on_order ?? 0) > 0 },
+    { label: 'Ready to ship', value: summary?.resolvable_units, good: (summary?.resolvable_units ?? 0) > 0 },
     { label: 'Critical', value: summary?.buckets?.critical, alert: (summary?.buckets?.critical ?? 0) > 0 },
   ]
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
       {cards.map((c) => (
         <div key={c.label} className="border rounded-md dark:border-gray-700 bg-white dark:bg-gray-900 p-3 shadow-sm">
           <div className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">{c.label}</div>
           {loading ? (
             <div className="h-6 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mt-1" />
           ) : (
-            <div className={`text-xl font-bold tabular-nums ${c.alert ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
+            <div
+              className={`text-xl font-bold tabular-nums ${
+                c.alert
+                  ? 'text-red-600 dark:text-red-400'
+                  : c.good
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-gray-900 dark:text-white'
+              }`}
+            >
               {c.value ?? '—'}
             </div>
           )}
@@ -90,6 +107,8 @@ function BackorderService() {
   const [summary, setSummary] = useState<BackorderSummary | null>(null)
   const [products, setProducts] = useState<BackorderProductRow[]>([])
   const [orders, setOrders] = useState<BackorderOrderRow[]>([])
+  const [resolvable, setResolvable] = useState<ResolvableProduct[]>([])
+  const [resolvableMeta, setResolvableMeta] = useState<ResolvableResponse['meta'] | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('overview')
   const [bucketFilter, setBucketFilter] = useState<UrgencyBucket | 'all'>('all')
   const [searchFilter, setSearchFilter] = useState('')
@@ -101,14 +120,17 @@ function BackorderService() {
     setLoading(true)
     setError(null)
     try {
-      const [summaryData, productsData, ordersData] = await Promise.all([
+      const [summaryData, productsData, ordersData, resolvableData] = await Promise.all([
         fetchBackorderSummary(),
         fetchBackorderProducts(),
         fetchBackorderOrders({ openOnly: true }),
+        fetchResolvable(),
       ])
       setSummary(summaryData)
       setProducts(productsData)
       setOrders(ordersData)
+      setResolvable(resolvableData.data)
+      setResolvableMeta(resolvableData.meta)
     } catch (err) {
       console.error('Failed to load backorder data', err)
       setError(err instanceof Error ? err.message : 'Failed to load backorder data')
@@ -133,8 +155,14 @@ function BackorderService() {
       )
   }, [products, bucketFilter, searchFilter])
 
-  const VIEW_TABS: { key: ViewMode; label: string }[] = [
+  const openProductById = (productId: number) => {
+    const found = products.find((p) => p.product_id === productId)
+    if (found) setSelectedRow(found)
+  }
+
+  const VIEW_TABS: { key: ViewMode; label: string; count?: number }[] = [
     { key: 'overview', label: 'Overview' },
+    { key: 'ready', label: 'Ready to ship', count: summary?.resolvable_products },
     { key: 'orders', label: 'Orders' },
   ]
 
@@ -148,7 +176,7 @@ function BackorderService() {
               Backorders
             </h1>
             <p className="hidden sm:block text-sm text-gray-500 dark:text-gray-400">
-              Quantities owed to customers -- ordering status, ETAs, and customer notifications.
+              Quantities owed to customers — ordering status, ETAs, and customer notifications.
             </p>
           </div>
 
@@ -165,6 +193,11 @@ function BackorderService() {
                   onClick={() => setViewMode(tab.key)}
                 >
                   {tab.label}
+                  {tab.count != null && tab.count > 0 && (
+                    <span className="ml-1 px-1 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 text-[9px] font-bold tabular-nums">
+                      {tab.count}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -187,6 +220,16 @@ function BackorderService() {
 
         {viewMode === 'overview' && (
           <>
+            {/* Ready-to-ship gets surfaced on the overview too when non-empty */}
+            {!loading && resolvable.length > 0 && (
+              <ResolvablePanel
+                products={resolvable.slice(0, 3)}
+                meta={resolvableMeta}
+                loading={false}
+                onOpenProduct={openProductById}
+              />
+            )}
+
             {/* Heatmap */}
             <div>
               <div className="flex items-baseline justify-between mb-2">
@@ -242,6 +285,15 @@ function BackorderService() {
               <BackorderTable data={filteredProducts} onRowClick={setSelectedRow} />
             )}
           </>
+        )}
+
+        {viewMode === 'ready' && (
+          <ResolvablePanel
+            products={resolvable}
+            meta={resolvableMeta}
+            loading={loading}
+            onOpenProduct={openProductById}
+          />
         )}
 
         {viewMode === 'orders' && (
