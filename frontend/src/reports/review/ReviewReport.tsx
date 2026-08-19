@@ -122,6 +122,7 @@ export default function ReviewReport() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [tag, setTag] = useState('');
+  const [excludeTag, setExcludeTag] = useState('');
   const [neverSold, setNeverSold] = useState(false);
   const [inStock, setInStock] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
@@ -180,6 +181,7 @@ export default function ReviewReport() {
         supplierId: supplierId || undefined,
         unmappedOnly,
         tag: tag || undefined,
+        excludeTag: excludeTag || undefined,
         neverSold,
         inStock,
         search: debouncedSearch || undefined,
@@ -194,7 +196,7 @@ export default function ReviewReport() {
     } finally {
       setLoading(false);
     }
-  }, [offset, sort, order, groupBy, imprintId, supplierId, unmappedOnly, tag, neverSold, inStock, debouncedSearch, salesRange, soldOnly]);
+  }, [offset, sort, order, groupBy, imprintId, supplierId, unmappedOnly, tag, excludeTag, neverSold, inStock, debouncedSearch, salesRange, soldOnly]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { fetchLastPoDates().then(setLastPo).catch(() => {}); }, []);
@@ -202,7 +204,7 @@ export default function ReviewReport() {
   useEffect(() => { fetchImprintDirectory(true).then(setDirectory).catch(() => {}); }, []);
   useEffect(() => {
     setOffset(0);
-  }, [sort, order, groupBy, imprintId, supplierId, unmappedOnly, tag, neverSold, inStock, debouncedSearch, salesRange, soldOnly]);
+  }, [sort, order, groupBy, imprintId, supplierId, unmappedOnly, tag, excludeTag, neverSold, inStock, debouncedSearch, salesRange, soldOnly]);
 
   // Applying a range makes "what sold in it" the interesting order; clearing it
   // sends the sort back to the 12-month default so no dead column is sorted on.
@@ -240,14 +242,14 @@ export default function ReviewReport() {
   }, [directory, supplierId, imprintId]);
 
   const clearFilters = () => {
-    setSearch(''); setDebouncedSearch(''); setTag('');
+    setSearch(''); setDebouncedSearch(''); setTag(''); setExcludeTag('');
     setNeverSold(false); setInStock(false);
     setImprintId(''); setSupplierId(''); setUnmappedOnly(false);
     applyRange(null); setSoldOnly(false);
   };
   const filterCount =
     (imprintId ? 1 : 0) + (supplierId ? 1 : 0) + (unmappedOnly ? 1 : 0) +
-    (inStock ? 1 : 0) + (neverSold ? 1 : 0) + (tag ? 1 : 0) + (debouncedSearch ? 1 : 0) +
+    (inStock ? 1 : 0) + (neverSold ? 1 : 0) + (tag ? 1 : 0) + (excludeTag ? 1 : 0) + (debouncedSearch ? 1 : 0) +
     (salesRange ? 1 : 0);
 
   // ----- saved views: apply / build config -----
@@ -255,6 +257,7 @@ export default function ReviewReport() {
     setSearch(cfg.search ?? '');
     setDebouncedSearch(cfg.search ?? '');
     setTag(cfg.tag ?? '');
+    setExcludeTag(cfg.excludeTag ?? '');
     setNeverSold(!!cfg.neverSold);
     setInStock(!!cfg.inStock);
     setImprintId(cfg.imprintId ?? '');
@@ -278,6 +281,7 @@ export default function ReviewReport() {
     sort, order,
     search: search || undefined,
     tag: tag || undefined,
+    excludeTag: excludeTag || undefined,
     neverSold: neverSold || undefined,
     inStock: inStock || undefined,
     imprintId: imprintId || undefined,
@@ -340,7 +344,7 @@ export default function ReviewReport() {
         imprintId: imprintId || undefined,
         supplierId: supplierId || undefined,
         unmappedOnly,
-        tag: tag || undefined, neverSold, inStock,
+        tag: tag || undefined, excludeTag: excludeTag || undefined, neverSold, inStock,
         search: debouncedSearch || undefined,
         salesFrom: salesRange?.from,
         salesTo: salesRange?.to,
@@ -544,6 +548,22 @@ export default function ReviewReport() {
           onChange={e => setTag(e.target.value)}
           className="px-3 py-2 border rounded text-sm w-40 dark:bg-gray-800 dark:text-white"
         />
+        <input
+          type="text"
+          placeholder="Exclude tag"
+          value={excludeTag}
+          onChange={e => setExcludeTag(e.target.value)}
+          title="Hide variants carrying this tag — e.g. preorder, to see only what can be reordered now"
+          className="px-3 py-2 border rounded text-sm w-36 dark:bg-gray-800 dark:text-white"
+        />
+        <label className="text-sm flex items-center gap-1" title="Shortcut for Exclude tag = preorder">
+          <input
+            type="checkbox"
+            checked={excludeTag === 'preorder'}
+            onChange={e => setExcludeTag(e.target.checked ? 'preorder' : '')}
+          />
+          Hide preorders
+        </label>
         <label className="text-sm flex items-center gap-1">
           <input type="checkbox" checked={inStock} onChange={e => setInStock(e.target.checked)} />
           In stock
@@ -576,6 +596,7 @@ export default function ReviewReport() {
         Sorted by <b>{ALL_COLUMNS.find(c => c.key === sort)?.label ?? sort}</b> {order === 'asc' ? 'ascending' : 'descending'}
         {groupBy !== 'none' && <> · within each {groupBy}</>}
         {salesRange && <> · sales counted {salesRange.from} to {salesRange.to}</>}
+        {excludeTag && <> · excluding “{excludeTag}”</>}
         {' '}· click any column header to change
       </div>
 

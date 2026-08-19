@@ -91,6 +91,7 @@ export interface ReviewParams {
   unmappedOnly?: boolean
   groupBy?: string
   tag?: string
+  excludeTag?: string
   neverSold?: boolean
   inStock?: boolean
   search?: string
@@ -109,6 +110,7 @@ function reviewQuery(params: ReviewParams) {
     unmapped_only: params.unmappedOnly || undefined,
     group_by: params.groupBy && params.groupBy !== 'none' ? params.groupBy : undefined,
     tag: params.tag,
+    exclude_tag: params.excludeTag,
     never_sold: params.neverSold || undefined,
     in_stock: params.inStock || undefined,
     search: params.search,
@@ -178,6 +180,7 @@ export interface ViewConfig {
   order?: 'asc' | 'desc'
   search?: string
   tag?: string
+  excludeTag?: string
   neverSold?: boolean
   inStock?: boolean
   groupBy?: 'none' | 'imprint' | 'publisher' | 'supplier'
