@@ -12,7 +12,10 @@
 // One signal — "In stock, orders waiting" — is computed server-side and cached
 // for 24h, because ageing unfulfilled orders means paginating Shopify's orders
 // API. It is the only card whose number isn't live, so it carries an explicit
-// "as of <time>" subtitle rather than silently showing a stale count.
+// "as of <time>" subtitle rather than silently showing a stale count. It also
+// opens a modal instead of navigating: those titles are a fulfillment problem
+// and KAL has no shipping module, so there is no in-app screen that could
+// resolve them — the modal deep-links into the Shopify admin instead.
 
 import { useCallback, useEffect, useMemo, useState, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -27,8 +30,10 @@ import {
   fetchSupplierSyncLog,
   fetchStockWaiting,
 } from '../api/supplyChainApi';
+import type { StockWaitingResult } from '../api/supplyChainApi';
 import { fetchBackorderSummary } from '../api/backorderApi';
 import { fetchPreorderMetrics } from '../../api/preorderApi';
+import StockWaitingModal from './StockWaitingModal';
 
 const GARAMOND =
   'Garamond, "EB Garamond", "Adobe Garamond Pro", "Apple Garamond", "Times New Roman", Georgia, serif';
@@ -47,7 +52,10 @@ interface TriageCard {
   label: string;
   sub?: string;
   cta: string;
-  route: string;
+  route?: string;
+  // When set, the card opens this modal instead of navigating. Used where the
+  // work doesn't live in this app (e.g. fulfillment, which happens in Shopify).
+  modal?: 'stock-waiting';
 }
 
 interface ActivityRow {
@@ -131,6 +139,7 @@ function fmtTime(iso: string): string {
 function useHomeSignals(role: Role | null) {
   const [cards, setCards] = useState<TriageCard[]>([]);
   const [activity, setActivity] = useState<ActivityRow[]>([]);
+  const [stockWaiting, setStockWaiting] = useState<StockWaitingResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [nonce, setNonce] = useState(0);
@@ -185,22 +194,24 @@ function useHomeSignals(role: Role | null) {
       // In stock with customer orders waiting — the "backordered but never
       // shipped" case. Highest urgency: a customer is already waiting on a book
       // that is sitting on our shelf. Server-cached daily, so the card states
-      // when it was computed rather than implying a live number.
-      const stockWaiting = swR.data;
-      if (stockWaiting && stockWaiting.count > 0) {
-        const oldest = stockWaiting.items[0]?.days_waiting ?? null;
-        const asOf = stockWaiting.as_of ? fmtTime(stockWaiting.as_of) : null;
+      // when it was computed rather than implying a live number. Opens a modal
+      // rather than navigating: fulfillment happens in Shopify, not here.
+      const sw = swR.data;
+      setStockWaiting(sw);
+      if (sw && sw.count > 0) {
+        const oldest = sw.items[0]?.days_waiting ?? null;
+        const asOf = sw.as_of ? fmtTime(sw.as_of) : null;
         const parts = [
           oldest != null ? `oldest ${oldest}d` : null,
           asOf ? `as of ${asOf}` : null,
-          stockWaiting.stale ? 'refresh failed' : null,
+          sw.stale ? 'refresh failed' : null,
         ].filter(Boolean);
         next.push({
           key: 'stock-waiting', icon: 'alert', tone: 'red',
-          count: stockWaiting.count,
+          count: sw.count,
           sub: parts.join(' · ') || undefined,
           label: 'In stock, orders waiting',
-          cta: 'Open receiving', route: '/receiving',
+          cta: 'View titles', modal: 'stock-waiting',
         });
       }
 
@@ -312,7 +323,7 @@ function useHomeSignals(role: Role | null) {
     return () => { cancelled = true; };
   }, [role, nonce]);
 
-  return { cards, activity, loading, error, reload };
+  return { cards, activity, stockWaiting, loading, error, reload };
 }
 
 // ---------------------------------------------------------------------------
@@ -392,7 +403,8 @@ export default function WelcomePage() {
   const { user, role } = useAuth();
   const { activeStaff } = useStaff();
   const navigate = useNavigate();
-  const { cards, activity, loading, error, reload } = useHomeSignals(role);
+  const { cards, activity, stockWaiting, loading, error, reload } = useHomeSignals(role);
+  const [openModal, setOpenModal] = useState<'stock-waiting' | null>(null);
 
   const name = useMemo(() => {
     if (activeStaff?.name) return activeStaff.name;
@@ -461,7 +473,10 @@ export default function WelcomePage() {
                   return (
                     <button
                       key={c.key}
-                      onClick={() => navigate(c.route)}
+                      onClick={() => {
+                        if (c.modal) setOpenModal(c.modal);
+                        else if (c.route) navigate(c.route);
+                      }}
                       className={`text-left flex gap-3 items-start px-4 py-4 rounded-xl border border-l-[3px] ${t.border}
                                   border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm
                                   hover:-translate-y-px hover:border-blue-400 transition-all`}
@@ -549,6 +564,12 @@ export default function WelcomePage() {
           </div>
         </section>
       )}
+
+      <StockWaitingModal
+        open={openModal === 'stock-waiting'}
+        data={stockWaiting}
+        onClose={() => setOpenModal(null)}
+      />
     </div>
   );
 }
