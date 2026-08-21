@@ -16,6 +16,17 @@
 //                          'replacement_pending' — publisher reshipping on same
 //                                                  PO number, line stays open
 //                          null                  — no damage, or not yet resolved
+//
+// Receiving decision support:
+//   on_hand / committed / current_price / list_price / price_mismatch /
+//   stock_alert are NOT stored anywhere. The backend attaches them to each PO
+//   line at request time from live Shopify state
+//   (app/routes/po_enrich.attach_stock_and_price), so a receiver can see
+//   existing stock and price disagreements without opening each product page.
+//
+//   null/undefined means "not looked up / lookup failed" and MUST render
+//   differently from 0, which means "none on the shelf". Showing 0 for a failed
+//   lookup would wrongly tell a receiver nothing is waiting on the title.
 
 export type ReceiptStatus =
   | 'pending'
@@ -85,12 +96,36 @@ export interface ReceiveResult {
   errors: string[]
 }
 
+// Live Shopify context the backend attaches to each PO line. Shared by the
+// wizard line state and anything else that renders a PO line.
+//
+// Every numeric field is nullable on purpose: null = unknown (not fetched, or
+// the Shopify lookup failed), which is NOT the same as 0.
+export interface LineStockContext {
+  on_hand:        number | null   // units at the PO's destination
+  committed:      number | null   // units reserved by unfulfilled orders
+  available:      number | null   // on_hand - committed
+  current_price:  number | null   // live Shopify retail price
+  list_price:     number | null   // publisher list price (mirrors unit_cost)
+  price_mismatch: boolean | null  // true when Shopify disagrees with list price
+  // on_hand > 0 AND committed > 0: copies are already here with customer orders
+  // waiting on them — the "backordered but never shipped" case. Warn loudly;
+  // never block receiving on it.
+  stock_alert:    boolean
+}
+
 // UI state for each active (non-received) line in the wizard.
 // Damage fields:
 //   quantity_damaged   — set by the damage section in the line row
 //   damage_disposal    — UI only (donate_destroy / return) — goes into notes
 //   damage_resolution  — credit closes the line; replacement_pending keeps it open
-export interface WizardLine {
+//
+// Stock/price fields are read-only decision support, never sent back to the
+// backend. They extend Partial<LineStockContext> rather than LineStockContext
+// so that a line built anywhere that hasn't been enriched yet still type-checks;
+// an absent field reads as unknown, exactly like null. Renderers must treat
+// undefined and null identically and must never coerce either to 0.
+export interface WizardLine extends Partial<LineStockContext> {
   purchase_order_line_id: string
   inventory_item_id: string
   variant_id: string
@@ -102,4 +137,46 @@ export interface WizardLine {
   quantity_damaged: number               // damaged copies (NOT added to quantity_received)
   damage_disposal:   DamageDisposal | null    // UI only — folded into notes on submit
   damage_resolution: DamageResolution | null  // sent to backend
+}
+
+// Default stock context for a line built before/without backend enrichment.
+// Everything unknown, no alert — so a line that was never enriched can't
+// masquerade as "0 on hand, nothing waiting".
+export const EMPTY_STOCK_CONTEXT: LineStockContext = {
+  on_hand:        null,
+  committed:      null,
+  available:      null,
+  current_price:  null,
+  list_price:     null,
+  price_mismatch: null,
+  stock_alert:    false,
+}
+
+// Pull the decision-support fields off a raw PO line from the API.
+// Tolerates lines from an older backend (fields simply absent -> unknown).
+export function stockContextFromLine(line: any): LineStockContext {
+  if (!line) return { ...EMPTY_STOCK_CONTEXT }
+  const num = (v: any): number | null =>
+    v === null || v === undefined || v === '' ? null : Number(v)
+  return {
+    on_hand:        num(line.on_hand),
+    committed:      num(line.committed),
+    available:      num(line.available),
+    current_price:  num(line.current_price),
+    list_price:     num(line.list_price),
+    price_mismatch: line.price_mismatch === null || line.price_mismatch === undefined
+                      ? null
+                      : Boolean(line.price_mismatch),
+    stock_alert:    Boolean(line.stock_alert),
+  }
+}
+
+// Formatting helpers so every surface renders these signals identically —
+// and so "unknown" can never be accidentally displayed as 0.
+export function formatStockCount(value: number | null | undefined): string {
+  return value === null || value === undefined ? '—' : String(value)
+}
+
+export function formatMoney(value: number | null | undefined): string {
+  return value === null || value === undefined ? '—' : `$${value.toFixed(2)}`
 }
