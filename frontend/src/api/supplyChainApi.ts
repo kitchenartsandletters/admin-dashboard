@@ -306,6 +306,52 @@ export async function fetchPOReceipts(poId: string): Promise<ReceiptRecord[]> { 
 export async function fetchReceiptLines(receiptId: string): Promise<{ receipt: ReceiptRecord; lines: ReceiptLineRecord[] }> { return sc(`/api/receiving/${receiptId}`) }
 
 // ===========================================================================
+// NEEDS-ATTENTION STANDING CHECKS
+// ===========================================================================
+
+/**
+ * Titles that are physically in stock while customer orders sit unfulfilled
+ * beyond a threshold (default 2 days) — "backordered but never shipped".
+ *
+ * Distinct from the receiving-time warning, which only fires when a box
+ * arrives. A title on the shelf for a month with an order waiting never passes
+ * through receiving again, so this standing check is the only thing that
+ * surfaces it.
+ *
+ * The backend caches this for 24h because ageing orders means paginating
+ * Shopify's orders API. `as_of` is when the numbers were computed and `stale`
+ * means a recompute failed and the last good answer is being served — surface
+ * both rather than implying the count is live.
+ */
+export interface StockWaitingItem {
+  variant_id:        string
+  title:             string | null
+  isbn:              string | null
+  on_hand:           number
+  committed:         number | null
+  units_waiting:     number
+  orders_waiting:    number
+  oldest_order_name: string | null
+  oldest_order_at:   string | null
+  days_waiting:      number | null
+}
+
+export interface StockWaitingResult {
+  count:        number
+  items:        StockWaitingItem[]
+  as_of:        string | null
+  stale:        boolean
+  min_age_days: number
+  cached:       boolean
+}
+
+export async function fetchStockWaiting(
+  opts: { minAgeDays?: number; refresh?: boolean } = {}
+): Promise<StockWaitingResult> {
+  return sc(`/api/attention/stock-waiting${qs({ min_age_days: opts.minAgeDays, refresh: opts.refresh })}`)
+}
+
+// ===========================================================================
 // TRANSFERS
 // ===========================================================================
 export async function fetchTransfers(opts: { status?: string; fromLocationId?: string; toLocationId?: string; includeArchived?: boolean; limit?: number; offset?: number } = {}): Promise<InventoryTransfer[]> {
