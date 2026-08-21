@@ -318,11 +318,25 @@ export async function fetchReceiptLines(receiptId: string): Promise<{ receipt: R
  * through receiving again, so this standing check is the only thing that
  * surfaces it.
  *
+ * This is a FULFILLMENT problem and KAL has no shipping module — fulfillment
+ * happens in Shopify and ShipStation. Hence the admin deep links: the dashboard
+ * surfaces the problem and hands off to where the work is actually done. No
+ * customer data is carried; staff see the customer in the Shopify order itself.
+ *
  * The backend caches this for 24h because ageing orders means paginating
  * Shopify's orders API. `as_of` is when the numbers were computed and `stale`
  * means a recompute failed and the last good answer is being served — surface
  * both rather than implying the count is live.
  */
+export interface StockWaitingOrder {
+  order_id:     string | null
+  order_name:   string | null   // e.g. "#1042"
+  created_at:   string | null
+  units:        number
+  days_waiting: number | null
+  admin_url:    string | null   // null when the link can't be built — render plain
+}
+
 export interface StockWaitingItem {
   variant_id:        string
   title:             string | null
@@ -334,6 +348,11 @@ export interface StockWaitingItem {
   oldest_order_name: string | null
   oldest_order_at:   string | null
   days_waiting:      number | null
+  product_admin_url: string | null
+  orders:            StockWaitingOrder[]
+  // True when the title has more waiting orders than are listed in `orders`;
+  // the totals above still count every one of them.
+  orders_truncated:  boolean
 }
 
 export interface StockWaitingResult {
