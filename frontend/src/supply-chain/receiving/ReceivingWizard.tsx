@@ -19,11 +19,21 @@
 //   The confirm summary shows damaged-line details so staff can verify before submit.
 //   Disposal method and damage note are folded into receipt-level notes on submit.
 //
+// Receiving decision support:
+//   Each line row shows live on-hand, a loud warning when copies already here are
+//   committed to unfulfilled orders, and the publisher list price against the
+//   current Shopify price. The backend attaches these to the PO detail response;
+//   they are read-only and never sent back. They WARN and never block — a
+//   receiver with a box in hand must always be able to finish receiving.
+//
 // Other phases unchanged from previous commits (#11 notes seeding, #12 confirm, #14 PDF).
 
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { WizardLine, ReceiveResult, DamageDisposal, DamageResolution } from './receivingTypes'
+import {
+  WizardLine, ReceiveResult, DamageDisposal, DamageResolution,
+  stockContextFromLine, formatStockCount, formatMoney,
+} from './receivingTypes'
 import { PurchaseOrderDetail } from '../purchase-orders/purchaseOrderTypes'
 import {
   fetchPurchaseOrderDetail,
@@ -174,6 +184,82 @@ function WizardSlipScanner({
   )
 
   return null
+}
+
+// ---------------------------------------------------------------------------
+// Live stock + price context for a line.
+//
+// Two signals a receiver previously had to leave the flow to get:
+//   1. Copies already on hand, and whether any are committed to unfulfilled
+//      orders. on_hand > 0 AND committed > 0 means the title is sitting here
+//      while customers wait — surface it loudly, but never block receiving.
+//   2. Publisher list price vs the current Shopify price, flagged on ANY
+//      difference so staff can correct Shopify in the moment.
+//
+// null/undefined renders as an em dash. A failed Shopify lookup must never
+// display as 0, which would wrongly say "nothing on hand, nothing waiting".
+// ---------------------------------------------------------------------------
+
+function LineStockPriceContext({ line }: { line: WizardLine }) {
+  const knowsStock = line.on_hand !== null && line.on_hand !== undefined
+  const knowsPrice =
+    (line.list_price !== null && line.list_price !== undefined) ||
+    (line.current_price !== null && line.current_price !== undefined)
+
+  if (!knowsStock && !knowsPrice) return null
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-x-4 gap-y-1 flex-wrap text-[11px]">
+        {knowsStock && (
+          <span className="text-gray-500 dark:text-gray-400">
+            On hand:{' '}
+            <strong className="font-mono text-gray-900 dark:text-gray-100">
+              {formatStockCount(line.on_hand)}
+            </strong>
+          </span>
+        )}
+        {knowsPrice && (
+          <span className="text-gray-500 dark:text-gray-400">
+            List <strong className="font-mono text-gray-900 dark:text-gray-100">{formatMoney(line.list_price)}</strong>
+            {' · '}
+            Shopify{' '}
+            <strong className={`font-mono ${
+              line.price_mismatch
+                ? 'text-red-600 dark:text-red-400'
+                : 'text-gray-900 dark:text-gray-100'
+            }`}>
+              {formatMoney(line.current_price)}
+            </strong>
+          </span>
+        )}
+        {line.price_mismatch && (
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700
+                           dark:bg-red-900/30 dark:text-red-300 uppercase tracking-wide">
+            Price mismatch
+          </span>
+        )}
+      </div>
+
+      {line.price_mismatch && (
+        <p className="text-[11px] text-red-700 dark:text-red-300">
+          Shopify price differs from the publisher's list price — update the product before shelving.
+        </p>
+      )}
+
+      {line.stock_alert && (
+        <div className="px-2.5 py-2 rounded border border-red-300 dark:border-red-700
+                        bg-red-50 dark:bg-red-900/20">
+          <p className="text-[11px] font-semibold text-red-800 dark:text-red-200">
+            ⚠ {formatStockCount(line.committed)} unit{line.committed === 1 ? '' : 's'} committed to unfulfilled orders
+          </p>
+          <p className="text-[11px] text-red-700 dark:text-red-300 mt-0.5">
+            {formatStockCount(line.on_hand)} already on hand — check whether these should have shipped already.
+          </p>
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -364,7 +450,9 @@ function LineRow({
 
   return (
     <div className={`rounded-md border bg-white dark:bg-gray-900 px-4 py-3 space-y-3
-      ${fromScan && line.quantity_received === 0 && !hasDamage
+      ${line.stock_alert
+        ? 'border-red-300 dark:border-red-700'
+        : fromScan && line.quantity_received === 0 && !hasDamage
         ? 'border-amber-300 dark:border-amber-700'
         : hasDamage
         ? 'border-amber-400 dark:border-amber-600'
@@ -411,6 +499,9 @@ function LineRow({
           <p>Remaining: <strong className={remaining > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'}>{remaining}</strong></p>
         </div>
       </div>
+
+      {/* Live on-hand / committed / price context — warns, never blocks */}
+      <LineStockPriceContext line={line} />
 
       {/* Qty received (undamaged) — shown when damage section is not open */}
       {!showDamage && (
@@ -518,6 +609,9 @@ function ConfirmSummary({
   // Credit lines close even though qty_received < qty_ordered
   const creditLines   = damagedLines.filter(l => l.damage_resolution === 'credit')
   const replacementLines = damagedLines.filter(l => l.damage_resolution === 'replacement_pending')
+  // Lines being received that already have copies committed to unfulfilled
+  // orders — last chance to notice before the box goes on the shelf.
+  const alertLines    = activeLines.filter(l => l.stock_alert)
 
   const totalReceived = activeLines.reduce((s, l) => s + l.quantity_received, 0)
   const totalDamaged  = activeLines.reduce((s, l) => s + l.quantity_damaged, 0)
@@ -531,6 +625,25 @@ function ConfirmSummary({
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Confirm Receipt</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Review before applying inventory changes.</p>
       </div>
+
+      {/* Orders already waiting on titles in this receipt */}
+      {alertLines.length > 0 && (
+        <div className="px-4 py-3 rounded-md border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20 space-y-2">
+          <p className="text-sm font-semibold text-red-800 dark:text-red-200">
+            ⚠ {alertLines.length} title{alertLines.length !== 1 ? 's' : ''} in this receipt {alertLines.length !== 1 ? 'have' : 'has'} unfulfilled orders waiting
+          </p>
+          <div className="space-y-0.5">
+            {alertLines.map(l => (
+              <p key={l.purchase_order_line_id} className="text-xs text-red-700 dark:text-red-300 truncate">
+                · {l.title} — {formatStockCount(l.committed)} committed, {formatStockCount(l.on_hand)} on hand
+              </p>
+            ))}
+          </div>
+          <p className="text-xs text-red-600 dark:text-red-400">
+            Check whether these should have shipped already. Receiving is not blocked.
+          </p>
+        </div>
+      )}
 
       {/* Partial alert — outstanding + replacement-pending lines */}
       {isPartial && (outstandingLines.length > 0 || replacementLines.length > 0) && (
@@ -632,6 +745,9 @@ function ConfirmSummary({
                       {l.damage_resolution === 'replacement_pending' && ' · repl.'}
                       {!l.damage_resolution && ' · TBD'}
                     </p>
+                  )}
+                  {l.price_mismatch && (
+                    <p className="text-[10px] text-red-600 dark:text-red-400">price mismatch</p>
                   )}
                 </div>
               </div>
@@ -767,6 +883,9 @@ export default function ReceivingWizard() {
       quantity_damaged:             0,
       damage_disposal:              null,
       damage_resolution:            null,
+      // Live on-hand / committed / price attached by the backend. Absent fields
+      // read as unknown, never as zero.
+      ...stockContextFromLine(l),
     })))
   }
 
