@@ -24,9 +24,9 @@
 //   (app/routes/po_enrich.attach_stock_and_price), so a receiver can see
 //   existing stock and price disagreements without opening each product page.
 //
-//   null means "not looked up / lookup failed" and MUST render differently from
-//   0, which means "none on the shelf". Showing 0 for a failed lookup would
-//   wrongly tell a receiver nothing is waiting on the title.
+//   null/undefined means "not looked up / lookup failed" and MUST render
+//   differently from 0, which means "none on the shelf". Showing 0 for a failed
+//   lookup would wrongly tell a receiver nothing is waiting on the title.
 
 export type ReceiptStatus =
   | 'pending'
@@ -119,9 +119,13 @@ export interface LineStockContext {
 //   quantity_damaged   — set by the damage section in the line row
 //   damage_disposal    — UI only (donate_destroy / return) — goes into notes
 //   damage_resolution  — credit closes the line; replacement_pending keeps it open
-// Stock/price fields come from LineStockContext — read-only decision support,
-// never sent back to the backend.
-export interface WizardLine extends LineStockContext {
+//
+// Stock/price fields are read-only decision support, never sent back to the
+// backend. They extend Partial<LineStockContext> rather than LineStockContext
+// so that a line built anywhere that hasn't been enriched yet still type-checks;
+// an absent field reads as unknown, exactly like null. Renderers must treat
+// undefined and null identically and must never coerce either to 0.
+export interface WizardLine extends Partial<LineStockContext> {
   purchase_order_line_id: string
   inventory_item_id: string
   variant_id: string
@@ -165,4 +169,14 @@ export function stockContextFromLine(line: any): LineStockContext {
                       : Boolean(line.price_mismatch),
     stock_alert:    Boolean(line.stock_alert),
   }
+}
+
+// Formatting helpers so every surface renders these signals identically —
+// and so "unknown" can never be accidentally displayed as 0.
+export function formatStockCount(value: number | null | undefined): string {
+  return value === null || value === undefined ? '—' : String(value)
+}
+
+export function formatMoney(value: number | null | undefined): string {
+  return value === null || value === undefined ? '—' : `$${value.toFixed(2)}`
 }
