@@ -8,6 +8,11 @@
 // fetch is retried a couple of times on transient failure; if it still fails
 // we surface a small "couldn't load" notice with Retry rather than silently
 // showing all-clear, so a backend hiccup never masquerades as "nothing to do".
+//
+// One signal — "In stock, orders waiting" — is computed server-side and cached
+// for 24h, because ageing unfulfilled orders means paginating Shopify's orders
+// API. It is the only card whose number isn't live, so it carries an explicit
+// "as of <time>" subtitle rather than silently showing a stale count.
 
 import { useCallback, useEffect, useMemo, useState, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +25,7 @@ import {
   fetchUnrecognizedVendors,
   fetchFlaggedSnapshots,
   fetchSupplierSyncLog,
+  fetchStockWaiting,
 } from '../api/supplyChainApi';
 import { fetchBackorderSummary } from '../api/backorderApi';
 import { fetchPreorderMetrics } from '../../api/preorderApi';
@@ -141,11 +147,12 @@ function useHomeSignals(role: Role | null) {
       const isAdmin = role === 'admin';
       const isEditorOrAdmin = role === 'admin' || role === 'editor';
 
-      const [poR, trR, boR, histR] = await Promise.all([
+      const [poR, trR, boR, histR, swR] = await Promise.all([
         attempt(() => fetchPurchaseOrders({ limit: PO_PAGE_LIMIT })),
         attempt(() => fetchTransfers({ status: 'in_transit', limit: PO_PAGE_LIMIT })),
         attempt(() => fetchBackorderSummary()),
         attempt(() => fetchReceiptHistory({ limit: 6 }) as Promise<HistoryRow[]>),
+        attempt(() => fetchStockWaiting()),
       ]);
 
       // Editor + admin signals
@@ -174,6 +181,28 @@ function useHomeSignals(role: Role | null) {
       const pos = poR.data ?? [];
       const transfers = trR.data ?? [];
       const backorder = boR.data;
+
+      // In stock with customer orders waiting — the "backordered but never
+      // shipped" case. Highest urgency: a customer is already waiting on a book
+      // that is sitting on our shelf. Server-cached daily, so the card states
+      // when it was computed rather than implying a live number.
+      const stockWaiting = swR.data;
+      if (stockWaiting && stockWaiting.count > 0) {
+        const oldest = stockWaiting.items[0]?.days_waiting ?? null;
+        const asOf = stockWaiting.as_of ? fmtTime(stockWaiting.as_of) : null;
+        const parts = [
+          oldest != null ? `oldest ${oldest}d` : null,
+          asOf ? `as of ${asOf}` : null,
+          stockWaiting.stale ? 'refresh failed' : null,
+        ].filter(Boolean);
+        next.push({
+          key: 'stock-waiting', icon: 'alert', tone: 'red',
+          count: stockWaiting.count,
+          sub: parts.join(' · ') || undefined,
+          label: 'In stock, orders waiting',
+          cta: 'Open receiving', route: '/receiving',
+        });
+      }
 
       // POs awaiting receiving
       const awaiting = pos.filter(p => AWAITING_RECEIVING.has(p.status)).length;
@@ -276,7 +305,7 @@ function useHomeSignals(role: Role | null) {
       setActivity(rows);
 
       // Flag if any signal ultimately failed, so we don't imply all-clear.
-      setError(poR.failed || trR.failed || boR.failed || histR.failed || reqR.failed || preR.failed || unrecR.failed || flagR.failed || syncR.failed);
+      setError(poR.failed || trR.failed || boR.failed || histR.failed || swR.failed || reqR.failed || preR.failed || unrecR.failed || flagR.failed || syncR.failed);
       setLoading(false);
     })();
 
