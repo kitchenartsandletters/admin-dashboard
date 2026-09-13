@@ -12,12 +12,25 @@
 // and the POs that have been waiting longest are the ones worth surfacing when
 // only five fit. Newest-first would hide exactly the ones that need chasing.
 //
-// The dashboard still owns the fetch and passes results in, so mounting this
-// costs one line and there is no second request for the same data.
+// The dashboard still owns the fetch for the PO list and passes results in, so
+// mounting this costs one line and there is no second request for the same data.
+//
+// The "Needs attention" tab is the exception, and owns its own fetch. Two
+// reasons, both deliberate:
+//   - the dashboard does not have that data, and it is a 33KB file to thread it
+//     through for no benefit;
+//   - the pane hides itself when no POs await receipt, and unresolved damage
+//     outlives the PO that produced it. If the count lived in the child, the
+//     pane could not know whether it had anything to show before deciding
+//     whether to render. So the count is fetched here and the early return
+//     below accounts for it.
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PurchaseOrder } from '../purchase-orders/purchaseOrderTypes'
+import ReceivingExceptions from './ReceivingExceptions'
+import { fetchReceivingExceptions } from '../../api/attentionApi'
+import type { ReceivingException } from '../../api/attentionApi'
 
 const ROW_LIMIT = 5
 
@@ -31,6 +44,14 @@ const TAB_LABEL: Record<TabKey, string> = {
   confirmed: 'Confirmed',
   partial: 'Partial',
 }
+
+// Not a PO status — a cross-cut of lines needing a decision. Kept last so it
+// never displaces the queue, and only shown when it has rows.
+//
+// Note the selected-tab state below is `string`, not `TabKey`: this value is a
+// legitimate tab and is not a PO status, and typing the state as TabKey would
+// mean casting a lie at every use site.
+const ATTENTION_TAB = 'needs_attention'
 
 const STATUS_PILL: Record<string, string> = {
   confirmed: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',
@@ -67,8 +88,20 @@ interface Props {
 
 export default function AwaitingReceipt({ pos, loading }: Props) {
   const navigate = useNavigate()
-  const [tab, setTab] = useState<TabKey | null>(null)
+  const [tab, setTab] = useState<string | null>(null)
   const [showAll, setShowAll] = useState(false)
+  const [exceptions, setExceptions] = useState<ReceivingException[]>([])
+
+  // Failures here are swallowed to an empty list on purpose: this tab is an
+  // extra, and a broken attention check must never stop the receiving queue
+  // from rendering. It is logged rather than surfaced, because an error banner
+  // on a queue screen reads as "receiving is broken", which it would not be.
+  const loadExceptions = () => {
+    fetchReceivingExceptions()
+      .then(r => setExceptions(r.items ?? []))
+      .catch(e => console.error('[AwaitingReceipt] attention check failed:', e))
+  }
+  useEffect(loadExceptions, [])
 
   const byStatus = useMemo(() => {
     const buckets: Record<string, PurchaseOrder[]> = {}
@@ -96,11 +129,13 @@ export default function AwaitingReceipt({ pos, loading }: Props) {
     const extra = Object.keys(byStatus)
       .filter(k => !TAB_ORDER.includes(k as TabKey))
       .sort()
-    return [...present, ...extra] as string[]
-  }, [byStatus])
+    const attention = exceptions.length > 0 ? [ATTENTION_TAB] : []
+    return [...present, ...extra, ...attention] as string[]
+  }, [byStatus, exceptions.length])
 
   const activeTab = tab && tabs.includes(tab) ? tab : tabs[0]
-  const rows = activeTab ? byStatus[activeTab] ?? [] : []
+  const isAttention = activeTab === ATTENTION_TAB
+  const rows = isAttention ? [] : activeTab ? byStatus[activeTab] ?? [] : []
   const visible = rows.slice(0, ROW_LIMIT)
   const hidden = Math.max(rows.length - ROW_LIMIT, 0)
 
@@ -145,7 +180,9 @@ export default function AwaitingReceipt({ pos, loading }: Props) {
     )
   }
 
-  if (!loading && pos.length === 0) return null
+  // Unresolved damage outlives the PO that produced it, so an empty receiving
+  // queue is not a reason to hide a line still waiting on a decision.
+  if (!loading && pos.length === 0 && exceptions.length === 0) return null
 
   return (
     <>
@@ -172,26 +209,32 @@ export default function AwaitingReceipt({ pos, loading }: Props) {
                   return (
                     <button
                       key={k}
-                      onClick={() => { setTab(k as TabKey); setShowAll(false) }}
+                      onClick={() => { setTab(k); setShowAll(false) }}
                       className={`px-3 py-1.5 text-xs font-medium rounded-t border-b-2 whitespace-nowrap transition-colors ${
                         isActive
                           ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                           : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                       }`}
                     >
-                      {TAB_LABEL[k as TabKey] ?? k}
-                      <span className="ml-1.5 opacity-60 tabular-nums">{byStatus[k]?.length ?? 0}</span>
+                      {k === ATTENTION_TAB ? 'Needs attention' : TAB_LABEL[k as TabKey] ?? k}
+                      <span className="ml-1.5 opacity-60 tabular-nums">
+                        {k === ATTENTION_TAB ? exceptions.length : byStatus[k]?.length ?? 0}
+                      </span>
                     </button>
                   )
                 })}
               </div>
             )}
 
-            <div className="divide-y dark:divide-gray-800">
-              {visible.map(po => <Row key={po.id} po={po} />)}
-            </div>
+            {isAttention ? (
+              <ReceivingExceptions items={exceptions} onResolved={loadExceptions} />
+            ) : (
+              <div className="divide-y dark:divide-gray-800">
+                {visible.map(po => <Row key={po.id} po={po} />)}
+              </div>
+            )}
 
-            {hidden > 0 && (
+            {!isAttention && hidden > 0 && (
               <button
                 onClick={() => setShowAll(true)}
                 className="w-full px-4 py-2.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 border-t dark:border-gray-700 transition-colors"
