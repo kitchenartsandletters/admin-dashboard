@@ -168,6 +168,11 @@ function formatTime(iso: string) {
 // Group raw receipt rows by PO
 // ---------------------------------------------------------------------------
 
+/** Receipt statuses that actually moved stock, and so contribute units. */
+function isAppliedStatus(status: string) {
+  return status === 'applied' || status === 'partial' || status === 'test_applied'
+}
+
 function groupByPO(rows: RawReceiptRow[]): POReceivingGroup[] {
   const map = new Map<string, POReceivingGroup>()
 
@@ -207,10 +212,22 @@ function groupByPO(rows: RawReceiptRow[]): POReceivingGroup[] {
     }
     group.attempts.push(attempt)
 
-    if (row.status === 'applied' || row.status === 'partial' || row.status === 'test_applied') {
+    if (isAppliedStatus(row.status)) {
+      // units_received is per-receipt, so a PO received in several shipments
+      // has to sum them. This used to assign, and because the endpoint returns
+      // newest-first, last-write-wins left the OLDEST receipt's units standing
+      // and the Units received card under-reported the total.
+      //
+      // The fallback branch below seeds total_units from a pending or failed
+      // receipt when that is all a PO has so far. Drop that seed the first time
+      // a real receipt lands, so units that never moved are not folded in.
+      if (group.canonical_receipt && !isAppliedStatus(group.canonical_receipt.status)) {
+        group.total_units = 0
+      }
+      group.total_units      += row.units_received
+
       group.canonical_receipt = attempt
       group.canonical_status  = row.po_status ?? row.status
-      group.total_units       = row.units_received
       group.total_lines       = row.line_count
       group.lines_full        = row.lines_full    ?? 0
       group.lines_partial     = row.lines_partial ?? 0
