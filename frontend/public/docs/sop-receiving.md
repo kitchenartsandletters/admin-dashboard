@@ -36,15 +36,47 @@ known PO.
 If you already know the PO, you can also open it from the **Awaiting receipt**
 pane on the Receiving screen and hit **Receive →**.
 
-### 2. Scan the packing slip
+### 2. Always look for the PO first
 
-Tap **Add page 1**. Multi-page slips (RDH slips are routinely two pages) get one
-photo per page — add each separately, then tap **Process**.
+Before anything else, search **POs awaiting receipt** — type the PO number,
+supplier, or reference.
+
+Do this even when you intend to scan. Receiving against the real order is what
+closes the line, updates the outstanding quantity, and keeps the supplier's
+account straight. An ad hoc receipt for a shipment that *did* have a PO leaves
+the original order sitting open forever, and someone eventually reorders books
+that are already on the shelf.
+
+Only when nothing matches do you take **No PO number — create ad hoc receipt**.
+
+### 3. Choose the path: manual or scan
+
+Both paths end in the same wizard. Pick on the shape of the job in front of you.
+
+| Use **manual entry** when | Use **document scan** when |
+|---|---|
+| You already know the PO, or the slip shows a clear PO number | The slip has no usable PO reference — ISBN matching can still find the order |
+| The shipment is short — a handful of lines | The list is long. Typing thirty ISBNs by hand is where errors come from |
+| No slip in the box, or it's damaged, creased, or illegible | You're creating an **ad hoc** receipt and need the line list built for you |
+| The scan has already failed twice | One slip covers several POs — scanning routes them into a shared session |
+
+**Ad hoc receiving is the case that most rewards scanning.** With no PO to work
+from, every line has to be created from scratch; the scan builds that list for
+you instead of you typing it.
+
+Falling back to manual mid-session is always fine. If the scan misreads badly,
+hide the scanner and search for the PO instead.
+
+### 4. If scanning: capture the slip
+
+Tap **📷 Scan packing slip**, then **Add page 1**. Multi-page slips (RDH slips
+are routinely two pages) get one photo per page — add each separately, then tap
+**Process**.
 
 Lay the slip flat, phone directly above in portrait, all four edges in frame, no
 glare across the text.
 
-### 3. Fix what the scan read — before going further
+### 5. If scanning: fix what it read — before going further
 
 Check every ISBN, title, and quantity against the slip. Lines flagged for review
 are the system saying it isn't sure. Correct them here.
@@ -52,19 +84,18 @@ are the system saying it isn't sure. Correct them here.
 A misread ISBN that gets through becomes a much bigger problem downstream than a
 few seconds spent now.
 
-### 4. Confirm where it's going
+### 6. Confirm where it's going
 
 The system proposes an order — matched either by a PO reference on the slip or by
 comparing ISBNs against open orders. Confirm it, or override it.
 
 - **One PO** → continue to reconciliation.
 - **Several POs on one slip** → receive each from the shared session dashboard.
-- **No match** → use ad hoc receiving. The system creates the PO. Don't abandon
-  the box.
+- **No match** → ad hoc receiving, having already searched in step 2.
 
 Never accept a match you don't believe.
 
-### 5. Reconcile slip against order
+### 7. Reconcile slip against order
 
 Review the side-by-side:
 
@@ -73,17 +104,33 @@ Review the side-by-side:
   a title to add.
 - **On PO only** (gray) — still outstanding, not arriving today.
 
-### 6. Count and enter quantities
+### 8. Count the books and enter quantities
 
-Every line starts at **0**. Enter what you physically counted.
+**Every line starts at 0, on every path.** Scanning at intake identifies the
+order and builds the line list — it does not fill in counts. Nothing is received
+until you put a number on it. This is deliberate: when lines were pre-filled with
+the full outstanding quantity, a title that never shipped got received in full
+because nobody corrected it down.
 
-- **Qty received** means **undamaged copies only**. This is what goes to Shopify.
-- On a multi-line PO, **Receive all** fills in the full outstanding quantity —
-  use it only when the shipment is genuinely complete. **Clear all** resets.
-- Scanning the slip inside the wizard auto-fills quantities. Anything not on the
-  slip is set to 0 and badged **Not on slip** — verify before submitting.
+So you must do one of these, on purpose:
 
-### 7. Record damage
+- **Receive all** — fills every line to its full outstanding quantity. Use it
+  only when the shipment is genuinely complete, and check it afterwards.
+  **Clear all** puts everything back to 0.
+- **Enter lines selectively** — type the count on each line you actually counted.
+  Lines left at 0 are treated as not received, not as an error.
+- **📷 Scan slip** — the separate scan *inside* the wizard, which does fill
+  quantities. Filled lines are badged **From scan**; lines the slip doesn't
+  mention stay at 0 and are badged **Not on slip**.
+
+A slip scan fills in what the slip *claims*, not what you counted. Check the
+filled numbers against the box before submitting, and pay particular attention to
+**Not on slip** lines — that badge means the paperwork and the carton disagree.
+
+**Qty received means undamaged copies only.** That is the number that goes to
+Shopify.
+
+### 9. Record damage
 
 Tap **+ Damage** on the line. Then:
 
@@ -105,7 +152,7 @@ books. If the publisher hasn't said yet, **leave Publisher response unselected**
 it can be recorded later, and the line shows up under **Needs attention** until
 it is.
 
-### 8. Act on the two in-line warnings
+### 10. Act on the two in-line warnings
 
 Neither blocks receiving, but both need action:
 
@@ -114,13 +161,13 @@ Neither blocks receiving, but both need action:
 - **Units committed to unfulfilled orders** — copies are already here and
   customers are waiting. Check whether they should have shipped already.
 
-### 9. Mark anything that didn't ship
+### 11. Mark anything that didn't ship
 
 If the slip or the publisher says a title is **Backordered**, **Out of stock**, or
 **Out of print**, mark it on the line. The first two keep the line open; out of
 print closes it. This can also be done later from the PO detail panel.
 
-### 10. Review and confirm
+### 12. Review and confirm
 
 Check the confirm summary — especially the damaged lines and the unit count in
 the button. Then confirm. Don't close the page while it's applying.
@@ -128,7 +175,7 @@ the button. Then confirm. Don't close the page while it's applying.
 If the PO is flagged **Test**, Shopify will not be updated. That's expected on a
 test PO and not a failure.
 
-### 11. Save the record and report
+### 13. Save the record and report
 
 - **Download the receipt PDF** from the result screen. That is the record.
 - Post in `#receiving-issues` using the pinned template.
@@ -159,8 +206,9 @@ don't clear themselves.
 |---|---|
 | **Receipt comes back Failed** | You may receive against the PO again. **Reporting it is mandatory either way** — post the PO number and a screenshot in `#receiving-issues`, whether or not the retry worked. |
 | **Partial receipt — some lines failed** | Same as above: retry is allowed, the report is not optional. |
-| Scan won't read the slip | Rescan using document-scan mode. Still failing — use the manual PO search and enter lines by hand. |
-| No PO number anywhere on the slip | Ad hoc receiving. The system creates the PO for you. |
+| Scan won't read the slip | Rescan using document-scan mode. Still failing — switch to manual: hide the scanner, search for the PO, enter lines by hand. |
+| Scan finds no matching PO | Search manually before accepting ad hoc. The two matchers look at different things and a manual search can find what ISBN matching missed. |
+| No PO number anywhere on the slip | Search by supplier and by anything on the carton first. Only then ad hoc. |
 | A book isn't found in search | Catalog gap — go to **Catalog coverage**, register it by ISBN, then come back. |
 | Confirmation screen names the wrong order | Override it. |
 | Counted quantity disagrees with the slip | Enter what you counted, put the discrepancy in **Notes**, and report it. |
@@ -173,6 +221,7 @@ Post in `#receiving-issues` with:
 - PO number and supplier
 - What you received (units) and anything outstanding
 - Anything you overrode, corrected, or weren't sure about
+- Any ad hoc receipt you created, and what you searched before creating it
 - Any failed or retried receipt, with a screenshot
 
 ---
