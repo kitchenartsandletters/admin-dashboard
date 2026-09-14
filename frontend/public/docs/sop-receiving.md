@@ -91,7 +91,8 @@ comparing ISBNs against open orders. Confirm it, or override it.
 
 - **One PO** → continue to reconciliation.
 - **Several POs on one slip** → receive each from the shared session dashboard.
-- **No match** → ad hoc receiving, having already searched in step 2.
+- **No match** → ad hoc receiving, having already searched in step 2. See
+  **Ad hoc receipts** below before you continue.
 
 Never accept a match you don't believe.
 
@@ -185,6 +186,62 @@ carton was handled.
 
 ---
 
+## Ad hoc receipts
+
+You're here because step 2 found no PO. The system builds one from what's in the
+carton, then hands you to the same wizard. Two steps have no equivalent in the
+normal flow, and one control can quietly lose a book.
+
+### Identify the publisher
+
+Search by publisher or distributor name.
+
+This is the choice worth slowing down for. The ad hoc PO is created against that
+publisher's **primary active account**, and that account is where the cost and
+the receiving history land. Check the carton and the slip letterhead before
+picking — don't guess from the titles.
+
+Ad hoc POs are always created against **HQ**. If the carton belongs at another
+location, stop and report it rather than receiving it here.
+
+The slip reference, if the scan found one, is stored on the PO. That is how
+you'll find this receipt again later, so don't clear it.
+
+### Enter the lines
+
+One row per ISBN with a quantity. Unit cost and the slip title are optional, but
+enter the cost when the slip shows it — the ad hoc PO carries whatever you put
+here, and nothing downstream will supply it later.
+
+Each ISBN resolves to one of three states:
+
+| Badge | Meaning | What to do |
+|---|---|---|
+| **✓ In catalog** | Matched an existing product | Nothing — just check the quantity. |
+| **✓ New product** | Created during this session | Watch the summary for **⚠ Follow up in Shopify**. A product can be created with fields missing, and finishing it is yours. |
+| **Not found** (amber) | No product for that ISBN | Decide: **+ Create new product**, or **Skip this line**. |
+
+You can't reach the summary while any line is still unresolved, so every amber
+line has to be dealt with one way or the other.
+
+### What "Skip this line" actually does
+
+**A skipped line is never created on the PO.** It isn't flagged, queued, or
+recorded — it drops out of the session and nothing downstream knows the book was
+ever there. The summary mentions it only as a small gray "1 line skipped", which
+is easy to scroll past.
+
+So:
+
+- **Skip only when the book is not physically in the carton** — a slip line that
+  didn't ship, or something that isn't ours.
+- **If the book is in the box, create the product.** Skipping it puts stock on
+  the shelf that the system has never heard of, and nothing will ever surface it.
+
+Say in your `#receiving-issues` post what you skipped and why.
+
+---
+
 ## Clearing "Needs attention"
 
 The **Awaiting receipt** pane on the Receiving screen has a **Needs attention**
@@ -209,6 +266,8 @@ don't clear themselves.
 | Scan won't read the slip | Rescan using document-scan mode. Still failing — switch to manual: hide the scanner, search for the PO, enter lines by hand. |
 | Scan finds no matching PO | Search manually before accepting ad hoc. The two matchers look at different things and a manual search can find what ISBN matching missed. |
 | No PO number anywhere on the slip | Search by supplier and by anything on the carton first. Only then ad hoc. |
+| **"No supplier account available — cannot create PO"** | The publisher has no active account. Don't work around it by picking a different publisher — that files the books against the wrong account. Stop and report it. |
+| You skipped a line that *is* in the carton | Go back and create the product before confirming. If the PO is already created, report it — those books are on the shelf and invisible to the system. |
 | A book isn't found in search | Catalog gap — go to **Catalog coverage**, register it by ISBN, then come back. |
 | Confirmation screen names the wrong order | Override it. |
 | Counted quantity disagrees with the slip | Enter what you counted, put the discrepancy in **Notes**, and report it. |
@@ -221,7 +280,9 @@ Post in `#receiving-issues` with:
 - PO number and supplier
 - What you received (units) and anything outstanding
 - Anything you overrode, corrected, or weren't sure about
-- Any ad hoc receipt you created, and what you searched before creating it
+- Any ad hoc receipt you created, what you searched before creating it, and any
+  line you skipped
+- Any new product you created with fields still to finish in Shopify
 - Any failed or retried receipt, with a screenshot
 
 ---
