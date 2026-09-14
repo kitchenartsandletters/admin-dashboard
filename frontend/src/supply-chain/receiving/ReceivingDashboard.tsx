@@ -11,6 +11,12 @@
 //   Receipt-level status (applied, test_applied, failed) is shown only in the
 //   expanded attempt rows — the top-level badge always reflects PO state so
 //   a partially-received PO always shows "Partial", never "Received".
+//
+// Two documents open in the right-hand panel, and the split is deliberate:
+//   View SOP        — the procedure. What to do with the carton in front of you,
+//                     what to report, and where. Listed first because a receiver
+//                     mid-session wants the steps, not the reference.
+//   View Help Guide — the reference. What a badge, status, or stat card means.
 
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -24,6 +30,9 @@ import {
 import { PurchaseOrder, PurchaseOrderDetail } from '../purchase-orders/purchaseOrderTypes'
 import AwaitingReceipt from './AwaitingReceipt'
 import { SortConfig, SortIcon } from '../../utils/tableUtils'
+
+const SOP_DOC  = '/docs/sop-receiving.md'
+const HELP_DOC = '/docs/supply-chain-receiving.md'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -355,13 +364,23 @@ export default function ReceivingDashboard() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">Receiving</h1>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5">Incoming stock history and receipt management.</p>
         </div>
+        {/*
+          Three controls have to fit a phone header. The two document links are
+          held to their text width and the primary action takes the remaining
+          space, rather than the previous w-full which pushed the links out of
+          reach on narrow screens.
+        */}
         <div className="flex items-center gap-2">
-          <button onClick={() => setDocsFilePath('/docs/supply-chain-receiving.md')}
-            className="px-3 py-2 text-xs sm:text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
+          <button onClick={() => setDocsFilePath(SOP_DOC)}
+            className="shrink-0 whitespace-nowrap px-2.5 py-2 text-xs sm:text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
+            View SOP
+          </button>
+          <button onClick={() => setDocsFilePath(HELP_DOC)}
+            className="shrink-0 whitespace-nowrap px-2.5 py-2 text-xs sm:text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
             View Help Guide
           </button>
           <button onClick={() => navigate('/receiving/new')}
-            className="w-full sm:w-auto px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm flex items-center justify-center gap-1.5">
+            className="flex-1 sm:flex-none whitespace-nowrap px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold transition-colors shadow-sm flex items-center justify-center gap-1.5">
             <span>+ New Receipt</span>
           </button>
         </div>
@@ -390,6 +409,10 @@ export default function ReceivingDashboard() {
               {g.po_number} · {g.supplier_name} · {g.canonical_receipt ? formatDate(g.canonical_receipt.received_at) : '—'}
             </p>
           ))}
+          <button onClick={() => setDocsFilePath(SOP_DOC)}
+            className="text-[11px] sm:text-xs font-medium text-red-700 dark:text-red-300 underline underline-offset-2">
+            What to do about a failed receipt →
+          </button>
         </div>
       )}
 
@@ -601,7 +624,7 @@ export default function ReceivingDashboard() {
 
       {docsFilePath && (
         <RightSidebar
-          title="Receiving Guide"
+          title={docsFilePath === SOP_DOC ? 'Receiving SOP' : 'Receiving Guide'}
           docsFilePath={docsFilePath}
           onClose={() => setDocsFilePath(null)}
         />
