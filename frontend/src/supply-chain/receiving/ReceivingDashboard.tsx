@@ -173,6 +173,30 @@ function isAppliedStatus(status: string) {
   return status === 'applied' || status === 'partial' || status === 'test_applied'
 }
 
+/** Unparseable dates sort oldest rather than poisoning the comparison with NaN. */
+function receiptTime(iso: string): number {
+  const t = Date.parse(iso)
+  return Number.isNaN(t) ? -Infinity : t
+}
+
+/**
+ * Which of two receipts should represent the PO: a receipt that moved stock
+ * always outranks one that did not, and between two of the same kind the newer
+ * one wins.
+ *
+ * The order is computed here rather than inherited from the order the endpoint
+ * returned rows in. That order is an undocumented property of a service in
+ * another repo, and depending on it is precisely what left these fields holding
+ * the OLDEST receipt of each PO.
+ */
+function outranks(next: ReceiptAttempt, current: ReceiptAttempt | null): boolean {
+  if (!current) return true
+  const nextApplied    = isAppliedStatus(next.status)
+  const currentApplied = isAppliedStatus(current.status)
+  if (nextApplied !== currentApplied) return nextApplied
+  return receiptTime(next.received_at) > receiptTime(current.received_at)
+}
+
 function groupByPO(rows: RawReceiptRow[]): POReceivingGroup[] {
   const map = new Map<string, POReceivingGroup>()
 
@@ -212,20 +236,34 @@ function groupByPO(rows: RawReceiptRow[]): POReceivingGroup[] {
     }
     group.attempts.push(attempt)
 
+    // The one genuinely additive field: units_received is per-receipt, so a PO
+    // received in several shipments has to sum them.
     if (isAppliedStatus(row.status)) {
-      // units_received is per-receipt, so a PO received in several shipments
-      // has to sum them. This used to assign, and because the endpoint returns
-      // newest-first, last-write-wins left the OLDEST receipt's units standing
-      // and the Units received card under-reported the total.
-      //
-      // The fallback branch below seeds total_units from a pending or failed
-      // receipt when that is all a PO has so far. Drop that seed the first time
-      // a real receipt lands, so units that never moved are not folded in.
+      // The seed below fills total_units from a pending or failed receipt when
+      // that is all a PO has so far. Drop it the first time a real receipt
+      // lands, so units that never moved stock are not folded into the total.
       if (group.canonical_receipt && !isAppliedStatus(group.canonical_receipt.status)) {
         group.total_units = 0
       }
-      group.total_units      += row.units_received
+      group.total_units += row.units_received
+    }
 
+    /*
+      Everything below is a snapshot of the PO as it stood at a single receipt,
+      not a quantity to be summed, so the fields move together and take the
+      NEWEST receipt:
+
+        lines_full/partial/open/total  partition the PO's lines — summing them
+                                       reports more lines than the PO has and
+                                       breaks full+partial+open === total, which
+                                       POGroupRow renders side by side.
+        line_count                     is per-receipt but double-counts any line
+                                       received twice: 363 receipt-line rows
+                                       cover 340 distinct lines across the 19
+                                       multi-receipt POs.
+        is_test                        is advisory; newest wins.
+    */
+    if (outranks(attempt, group.canonical_receipt)) {
       group.canonical_receipt = attempt
       group.canonical_status  = row.po_status ?? row.status
       group.total_lines       = row.line_count
@@ -234,11 +272,11 @@ function groupByPO(rows: RawReceiptRow[]): POReceivingGroup[] {
       group.lines_open        = row.lines_open    ?? 0
       group.lines_total       = row.lines_total   ?? 0
       group.is_test           = row.is_test       ?? false
-    } else if (!group.canonical_receipt) {
-      group.canonical_receipt = attempt
-      group.canonical_status  = row.po_status ?? row.status
-      group.total_units       = row.units_received
-      group.total_lines       = row.line_count
+
+      // Only reachable before any applied receipt has been seen, since an
+      // applied receipt outranks one that never moved stock. Gives a PO whose
+      // receipts all failed something to show rather than a bare zero.
+      if (!isAppliedStatus(attempt.status)) group.total_units = row.units_received
     }
   }
 
