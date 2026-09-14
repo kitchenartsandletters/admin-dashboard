@@ -18,7 +18,7 @@
 //                     mid-session wants the steps, not the reference.
 //   View Help Guide — the reference. What a badge, status, or stat card means.
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PODetailSidebar from '../purchase-orders/PODetailSidebar'
 import RightSidebar from '../../components/RightSidebar'
@@ -29,6 +29,7 @@ import {
 } from '../../api/supplyChainApi'
 import { PurchaseOrder, PurchaseOrderDetail } from '../purchase-orders/purchaseOrderTypes'
 import AwaitingReceipt from './AwaitingReceipt'
+import POSearchModal from './POSearchModal'
 import { SortConfig, SortIcon } from '../../utils/tableUtils'
 
 const SOP_DOC  = '/docs/sop-receiving.md'
@@ -64,7 +65,30 @@ interface POReceivingGroup {
   lines_open:    number
   lines_total:   number
   is_test: boolean
+  /**
+   * When the PO was sent to the supplier.
+   *
+   * NOT from the receipt-history payload, which carries no submitted date —
+   * it is joined in from the purchase-orders endpoint after load. Null means
+   * the PO wasn't in that response, which renders as an em dash. An unknown
+   * send date must not be drawn as a real one.
+   */
+  ordered_at: string | null
 }
+
+// The history endpoint has no offset parameter, so this is a ceiling rather
+// than a page size. It was 100, and there are already more than 100 receipts —
+// the table has been quietly dropping the overflow.
+//
+// 200 is the server's maximum, not a number we chose: the endpoint validates
+// limit <= 200 and returns 422 above it. So this cannot simply be raised again
+// when receipts outgrow it — that needs paging on the endpoint first. Until
+// then, if a response ever comes back at exactly the ceiling the UI says so
+// instead of pretending the list is complete.
+const HISTORY_LIMIT = 200
+
+// Page sizes offered for the main table.
+const PAGE_SIZES = [10, 20, 50] as const
 
 interface RawReceiptRow {
   id: string
@@ -87,7 +111,7 @@ interface RawReceiptRow {
   is_test?: boolean
 }
 
-type SortKey = 'received_at' | 'supplier_name' | 'po_number' | 'canonical_status'
+type SortKey = 'received_at' | 'ordered_at' | 'supplier_name' | 'po_number' | 'canonical_status'
 
 // ---------------------------------------------------------------------------
 // Status config
@@ -166,6 +190,9 @@ function groupByPO(rows: RawReceiptRow[]): POReceivingGroup[] {
         lines_open:        0,
         lines_total:       0,
         is_test:           false,
+        // Joined in from the purchase-orders endpoint after load; receipt
+        // history does not carry it.
+        ordered_at:        null,
       })
     }
 
@@ -255,20 +282,26 @@ export default function ReceivingDashboard() {
     key: 'received_at', direction: 'desc',
   })
   const [searchQuery, setSearchQuery]   = useState('')
-  const [searching, setSearching]       = useState(false)
   const [selectedPODetail, setSelectedPODetail] = useState<PurchaseOrderDetail | null>(null)
   const [docsFilePath, setDocsFilePath] = useState<string | null>(null)
   const [submittedPOs, setSubmittedPOs] = useState<PurchaseOrder[]>([])
   const [posLoading, setPosLoading]     = useState(true)
-  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [poDates, setPoDates]           = useState<Record<string, string | null>>({})
+  const [pageSize, setPageSize]         = useState<number>(20)
+  const [showAll, setShowAll]           = useState(false)
+  const [historyCapped, setHistoryCapped] = useState(false)
 
   // Track expanded cards on mobile view specifically
   const [mobileExpandedCardIds, setMobileExpandedCardIds] = useState<Record<string, boolean>>({})
 
   // Initial load
   useEffect(() => {
-    fetchReceiptHistory({ limit: 100 })
-      .then(rows => setGroups(groupByPO(rows as RawReceiptRow[])))
+    fetchReceiptHistory({ limit: HISTORY_LIMIT })
+      .then(rows => {
+        const list = rows as RawReceiptRow[]
+        setHistoryCapped(list.length >= HISTORY_LIMIT)
+        setGroups(groupByPO(list))
+      })
       .catch(e => setError(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => setLoading(false))
   }, [])
@@ -281,19 +314,37 @@ export default function ReceivingDashboard() {
       .finally(() => setPosLoading(false))
   }, [])
 
-  // Debounced search
+  /*
+    Submitted dates for the main table.
+
+    Receipt history carries no submitted date, so it is joined in from the
+    purchase-orders endpoint. Paged rather than fetched with one large limit:
+    a single limit that silently caps is how the receipt list ended up missing
+    rows in the first place, and here it would show wrong dates rather than
+    missing ones. Two calls today at ~102 POs, and it stays correct as that grows.
+  */
   useEffect(() => {
-    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
-    searchDebounceRef.current = setTimeout(async () => {
-      setSearching(true)
+    let cancelled = false
+    const PAGE = 100
+    const MAX_PAGES = 20   // a stop, so a misbehaving endpoint cannot loop forever
+
+    ;(async () => {
+      const map: Record<string, string | null> = {}
       try {
-        const rows = await fetchReceiptHistory({ limit: 100, search: searchQuery || undefined })
-        setGroups(groupByPO(rows as RawReceiptRow[]))
-      } catch { /* keep results on error */ }
-      finally { setSearching(false) }
-    }, 300)
-    return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current) }
-  }, [searchQuery])
+        for (let page = 0; page < MAX_PAGES; page++) {
+          const rows = await fetchPurchaseOrders({ limit: PAGE, offset: page * PAGE })
+          for (const po of rows) map[po.id] = po.ordered_at ?? po.created_at ?? null
+          if (rows.length < PAGE) break
+        }
+        if (!cancelled) setPoDates(map)
+      } catch {
+        // Leave the column showing em dashes rather than guessing. The rest of
+        // the table is unaffected.
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [])
 
   const handleSort = (key: SortKey) => {
     setSortConfig(prev => ({
@@ -307,10 +358,18 @@ export default function ReceivingDashboard() {
     setMobileExpandedCardIds(prev => ({ ...prev, [poId]: !prev[poId] }))
   }
 
+  // Submitted dates arrive after the groups do, so they are merged here rather
+  // than mutated into `groups` — that keeps sorting by Submitted working off the
+  // same generic key lookup below.
+  const enriched = useMemo(
+    () => groups.map(g => ({ ...g, ordered_at: poDates[g.po_id] ?? null })),
+    [groups, poDates],
+  )
+
   const filtered = useMemo(() => {
     let list = statusFilter === 'all'
-      ? groups
-      : groups.filter(g => g.canonical_status === statusFilter)
+      ? enriched
+      : enriched.filter(g => g.canonical_status === statusFilter)
 
     if (sortConfig) {
       const { key, direction } = sortConfig
@@ -334,7 +393,10 @@ export default function ReceivingDashboard() {
     }
 
     return list
-  }, [groups, statusFilter, sortConfig])
+  }, [enriched, statusFilter, sortConfig])
+
+  const visible = filtered.slice(0, pageSize)
+  const hiddenCount = Math.max(filtered.length - pageSize, 0)
 
   const totalUnits    = groups.filter(g => ['received','partial'].includes(g.canonical_status)).reduce((s,g) => s+g.total_units, 0)
   const failedGroups  = groups.filter(g => g.canonical_status === 'failed')
@@ -422,7 +484,7 @@ export default function ReceivingDashboard() {
           type="search"
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
-          placeholder="Search by PO number, supplier, or reference…"
+          placeholder="Search all purchase orders by number, supplier, or reference…"
           className="w-full pl-9 pr-4 py-1.5 border dark:border-gray-700 rounded-md text-xs sm:text-sm
                      bg-white dark:bg-gray-900 dark:text-white
                      focus:ring-2 focus:ring-blue-500/20 outline-none placeholder-gray-400 dark:placeholder-gray-500 shadow-sm"
@@ -432,10 +494,21 @@ export default function ReceivingDashboard() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
             d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
         </svg>
-        {searching && (
-          <div className="absolute right-3 top-2.5 w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-        )}
       </div>
+
+      {/*
+        Results open in a modal over the table rather than filtering it. The
+        table stays put, and the search covers every PO rather than only those
+        that already have receipts — a PO you are hunting for because it has
+        NOT arrived was previously unfindable here.
+      */}
+      {searchQuery.trim().length > 0 && (
+        <POSearchModal
+          query={searchQuery}
+          onClose={() => setSearchQuery('')}
+          onSelect={handleRowClick}
+        />
+      )}
 
       {/* Awaiting receipt — tabbed, abridged, with a Show all modal. */}
       <AwaitingReceipt pos={submittedPOs} loading={posLoading} />
@@ -477,20 +550,48 @@ export default function ReceivingDashboard() {
       {!loading && !error && filtered.length === 0 && (
         <div className="py-16 text-center">
           <p className="text-gray-400 dark:text-gray-500 text-xs sm:text-sm">
-            {searchQuery ? `No receipts match "${searchQuery}"` : 'No receipts found.'}
+            No receipts found.
           </p>
-          {!searchQuery && (
-            <button onClick={() => navigate('/receiving/new')} className="mt-3 text-xs sm:text-sm text-blue-500 hover:underline">
-              Start a new receipt? &rarr;
-            </button>
-          )}
+          <button onClick={() => navigate('/receiving/new')} className="mt-3 text-xs sm:text-sm text-blue-500 hover:underline">
+            Start a new receipt? &rarr;
+          </button>
+        </div>
+      )}
+
+      {historyCapped && (
+        <div className="px-3 py-2 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-700 dark:text-amber-300">
+          Showing the most recent {HISTORY_LIMIT} receipts. Older ones are not on this
+          screen — use search, which covers every purchase order.
         </div>
       )}
 
       {/* PO-grouped receipt lists */}
       {!loading && !error && filtered.length > 0 && (
         <div className="w-full">
-          
+
+          <div className="flex items-center justify-between gap-3 pb-2">
+            <span className="text-[11px] text-gray-400">
+              {filtered.length} order{filtered.length === 1 ? '' : 's'}
+              {hiddenCount > 0 && ` · showing ${visible.length}`}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-gray-400">Rows</span>
+              {PAGE_SIZES.map(n => (
+                <button
+                  key={n}
+                  onClick={() => setPageSize(n)}
+                  className={`px-2 py-0.5 text-[11px] rounded border transition-colors ${
+                    pageSize === n
+                      ? 'border-blue-500 text-blue-600 dark:text-blue-400 font-semibold'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* --- MOBILE VIEW: Card List --- */}
           <div className="block md:hidden space-y-3">
             {/* Quick Mobile Sorter Chips */}
@@ -507,7 +608,7 @@ export default function ReceivingDashboard() {
               </button>
             </div>
 
-            {filtered.map(group => {
+            {visible.map(group => {
               const mobileExpanded = !!mobileExpandedCardIds[group.po_id]
               const hasMultipleAttempts = group.attempts.length > 1
               const supplementaryAttempts = group.attempts.filter(a => a.id !== group.canonical_receipt?.id)
@@ -528,7 +629,9 @@ export default function ReceivingDashboard() {
                     </div>
                     <div className="shrink-0 text-right text-xs text-gray-500">
                       <p className="font-medium">{group.canonical_receipt ? formatDate(group.canonical_receipt.received_at) : '—'}</p>
-                      <p className="text-[10px] text-gray-400">{group.canonical_receipt ? formatTime(group.canonical_receipt.received_at) : ''}</p>
+                      <p className="text-[10px] text-gray-400">
+                        sent {group.ordered_at ? formatDate(group.ordered_at) : '—'}
+                      </p>
                     </div>
                   </div>
 
@@ -585,6 +688,15 @@ export default function ReceivingDashboard() {
                 </div>
               )
             })}
+
+            {hiddenCount > 0 && (
+              <button
+                onClick={() => setShowAll(true)}
+                className="w-full px-4 py-2.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 border dark:border-gray-700 rounded-xl transition-colors"
+              >
+                Show all {filtered.length} · {hiddenCount} more
+              </button>
+            )}
           </div>
 
           {/* --- DESKTOP VIEW: Standalone Grid-Table --- */}
@@ -592,7 +704,12 @@ export default function ReceivingDashboard() {
             <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
               <div className="w-4 shrink-0" />
               <div className="w-24 shrink-0">
-                <ThSortable label="Date" sortKey="received_at" sortConfig={sortConfig} onSort={handleSort} />
+                <ThSortable label="Submitted" sortKey="ordered_at" sortConfig={sortConfig} onSort={handleSort} />
+              </div>
+              <div className="w-24 shrink-0">
+                {/* Was "Date". With two of them on the row, which one it meant
+                    was guesswork. */}
+                <ThSortable label="Received" sortKey="received_at" sortConfig={sortConfig} onSort={handleSort} />
               </div>
               <div className="flex-1">
                 <ThSortable label="Supplier" sortKey="supplier_name" sortConfig={sortConfig} onSort={handleSort} />
@@ -607,11 +724,61 @@ export default function ReceivingDashboard() {
                 Lines
               </div>
             </div>
-            {filtered.map(group => (
+            {visible.map(group => (
               <POGroupRow key={group.po_id} group={group} onRowClick={handleRowClick} />
             ))}
+
+            {hiddenCount > 0 && (
+              <button
+                onClick={() => setShowAll(true)}
+                className="w-full px-4 py-2.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 border-t dark:border-gray-700 transition-colors"
+              >
+                Show all {filtered.length} · {hiddenCount} more
+              </button>
+            )}
           </div>
 
+        </div>
+      )}
+
+      {/* Show all — same shape as the Awaiting receipt modal, so the two read
+          as one pattern rather than two. */}
+      {showAll && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setShowAll(false)}
+        >
+          <div
+            className="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-5xl w-full max-h-[80vh] flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b dark:border-gray-700 flex items-center justify-between gap-3">
+              <div>
+                <div className="font-semibold text-sm">
+                  All receipts{statusFilter !== 'all' ? ` — ${statusFilter}` : ''}
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5">
+                  {filtered.length} order{filtered.length === 1 ? '' : 's'}, same sort as the table
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAll(false)}
+                className="text-sm px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="overflow-y-auto">
+              {filtered.map(group => (
+                <POGroupRow
+                  key={group.po_id}
+                  group={group}
+                  onRowClick={poId => { setShowAll(false); handleRowClick(poId) }}
+                />
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
@@ -654,6 +821,12 @@ function POGroupRow({ group, onRowClick }: { group: POReceivingGroup; onRowClick
             ${hasMultiple ? 'cursor-pointer hover:text-gray-700 dark:hover:text-gray-200' : 'cursor-default opacity-0'}`}>
           {expanded ? '▾' : '▸'}
         </button>
+
+        <div className="w-24 shrink-0">
+          <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
+            {group.ordered_at ? formatDate(group.ordered_at) : '—'}
+          </p>
+        </div>
 
         <div className="w-24 shrink-0">
           <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
