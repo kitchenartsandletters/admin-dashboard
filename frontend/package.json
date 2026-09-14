@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "start": "serve -l $PORT dist"
   },
@@ -35,7 +36,8 @@
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",
     "serve": "^14.2.4",
-    "tailwindcss": "^3.4.17"
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.9.3"
   },
   "engines": {
     "node": ">=16"
