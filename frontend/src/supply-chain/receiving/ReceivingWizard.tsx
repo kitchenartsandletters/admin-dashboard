@@ -44,6 +44,7 @@ import {
 import { useLocations } from '../hooks/useLocations'
 import { formatDate } from '../../utils/tableUtils'
 import RightSidebar from '../../components/RightSidebar'
+import { createPortal } from 'react-dom'
 
 type Phase = 'idle' | 'review' | 'confirm' | 'confirming' | 'result'
 type ScanState = 'idle' | 'scanning' | 'done' | 'error'
@@ -1058,7 +1059,7 @@ export default function ReceivingWizard({ poId: poIdProp, onDone }: ReceivingWiz
   // and disables "Clear all" when there is nothing to clear.
   const enteredCount = lines.filter(l => l.quantity_received > 0 || l.quantity_damaged > 0).length
 
-  return (
+  return createPortal(
     <>
       {/* No onClick. A stray click must not discard a half-entered receipt.
           Cancel and Escape are the only ways out. */}
@@ -1297,6 +1298,7 @@ export default function ReceivingWizard({ poId: poIdProp, onDone }: ReceivingWiz
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   )
 }
