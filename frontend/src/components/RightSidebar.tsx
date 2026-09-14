@@ -73,13 +73,23 @@ export default function RightSidebar({ title, onClose, row, renderRowContent, do
       <div
         className={`fixed top-0 right-0 h-screen w-full sm:w-[28rem] bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 shadow-xl z-50 transition-transform duration-300 transform ${isVisible ? 'translate-x-0' : 'translate-x-full'}`}
       >
+        {/*
+          A caller-supplied `title` now wins. The path checks below are the legacy
+          fallback for screens that never passed one — dropping them would regress
+          the Blacklist and Reports panels to the generic "Help Docs" heading.
+
+          This matters beyond cosmetics: the panel is now used for both reference
+          guides and SOPs, and a procedure opening under a heading that reads
+          "Help Docs" undercuts the distinction the two document types exist to make.
+        */}
         <div className="flex items-center justify-between p-3 border-b dark:border-gray-700">
           <h3 className="font-semibold text-lg">
-            {docsFilePath
+            {title
+            ?? (docsFilePath
             ? docsFilePath.includes('blacklist') ? 'Blacklist Manager Guide'
             : docsFilePath.includes('reports')   ? 'Reports Help'
             : 'Help Docs'
-            : 'Damaged Details'}
+            : 'Damaged Details')}
           </h3>
           <button
             onClick={() => {
