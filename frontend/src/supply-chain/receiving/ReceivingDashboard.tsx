@@ -30,6 +30,7 @@ import {
 import { PurchaseOrder, PurchaseOrderDetail } from '../purchase-orders/purchaseOrderTypes'
 import AwaitingReceipt from './AwaitingReceipt'
 import POSearchModal from './POSearchModal'
+import ReceivingWizard from './ReceivingWizard'
 import { SortConfig, SortIcon } from '../../utils/tableUtils'
 
 const SOP_DOC  = '/docs/sop-receiving.md'
@@ -345,6 +346,11 @@ export default function ReceivingDashboard() {
   const [pageSize, setPageSize]         = useState<number>(20)
   const [showAll, setShowAll]           = useState(false)
   const [historyCapped, setHistoryCapped] = useState(false)
+  const [wizardPoId, setWizardPoId]     = useState<string | null>(null)
+  // Bumped when a receipt completes, to refetch history. The initial-load
+  // effect had an empty dependency array and no named loader, so there was
+  // no way to ask it to run again.
+  const [historyNonce, setHistoryNonce] = useState(0)
 
   // Track expanded cards on mobile view specifically
   const [mobileExpandedCardIds, setMobileExpandedCardIds] = useState<Record<string, boolean>>({})
@@ -359,7 +365,7 @@ export default function ReceivingDashboard() {
       })
       .catch(e => setError(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => setLoading(false))
-  }, [])
+  }, [historyNonce])
 
   // Awaiting receipt POs
   useEffect(() => {
@@ -837,10 +843,17 @@ export default function ReceivingDashboard() {
         </div>
       )}
 
+      {wizardPoId && (
+        <ReceivingWizard
+          poId={wizardPoId}
+          onDone={() => { setWizardPoId(null); setHistoryNonce(n => n + 1) }}
+        />
+      )}
+
       <PODetailSidebar
         detail={selectedPODetail}
         onClose={() => setSelectedPODetail(null)}
-        onReceive={poId => navigate(`/receiving/wizard?po=${poId}`)}
+        onReceive={poId => { setSelectedPODetail(null); setWizardPoId(poId) }}
         wide={true}
       />
 
