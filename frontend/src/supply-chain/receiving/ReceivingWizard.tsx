@@ -824,9 +824,16 @@ function ReceiptPdfButton({ receiptId }: { receiptId: string }) {
 // Main wizard
 // ---------------------------------------------------------------------------
 
-export default function ReceivingWizard() {
+interface ReceivingWizardProps {
+  /** Modal mount passes this. Route mount omits it and the URL wins. */
+  poId?: string
+  /** Modal mount closes itself. Route mount omits it and navigates instead. */
+  onDone?: () => void
+}
+
+export default function ReceivingWizard({ poId: poIdProp, onDone }: ReceivingWizardProps = {}) {
   const [searchParams] = useSearchParams()
-  const poId = searchParams.get('po')
+  const poId = poIdProp ?? searchParams.get('po')
   const { locationName } = useLocations()
 
   const [phase,         setPhase]         = useState<Phase>('idle')
@@ -1015,7 +1022,35 @@ export default function ReceivingWizard() {
     }
   }
 
-  function handleReset() { navigate('/receiving') }
+  /* Has the receiver typed anything that would be lost?
+     `result` means the receipt already went through — nothing left to lose. */
+  const isDirty =
+    !result &&
+    (phase === 'review' || phase === 'confirm') &&
+    lines.some(l => l.quantity_received > 0 || l.quantity_damaged > 0)
+
+  const [isVisible, setIsVisible] = useState(false)
+  useEffect(() => { setIsVisible(true) }, [])
+
+  /* The single exit. Route mount navigates, modal mount calls onDone.
+     The 300ms matches the fade so the panel isn't yanked away mid-transition. */
+  function handleReset() {
+    setIsVisible(false)
+    setTimeout(() => { onDone ? onDone() : navigate('/receiving') }, 300)
+  }
+
+  /* Escape confirms when there is entered work, unlike POBuilder which
+     discards silently. Backdrop click does nothing at all — see B3. */
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      if (isDirty && !window.confirm('Discard this receipt? Entered quantities will be lost.')) return
+      handleReset()
+    }
+    window.addEventListener('keydown', onEsc, true)
+    return () => window.removeEventListener('keydown', onEsc, true)
+  })
 
   const order  = poDetail?.order as any
   const isTest = !!order?.is_test
@@ -1024,7 +1059,22 @@ export default function ReceivingWizard() {
   const enteredCount = lines.filter(l => l.quantity_received > 0 || l.quantity_damaged > 0).length
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <>
+      {/* No onClick. A stray click must not discard a half-entered receipt.
+          Cancel and Escape are the only ways out. */}
+      <div
+        className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`}
+      />
+      <div className={`fixed inset-0 z-50 flex items-start justify-center pt-6 px-4 pb-6 transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`}>
+        <div className="w-full max-w-2xl bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 shadow-2xl flex flex-col max-h-[92vh]">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-800 shrink-0">
+            <h2 className="text-sm font-semibold">Receive purchase order</h2>
+            <button onClick={handleReset} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
+              Cancel
+            </button>
+          </div>
+          <div className="overflow-y-auto px-5 py-4">
+            <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Receive Stock</h1>
@@ -1243,6 +1293,10 @@ export default function ReceivingWizard() {
           onClose={() => setDocsFilePath(null)}
         />
       )}
-    </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   )
 }
