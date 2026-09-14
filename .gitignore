@@ -39,3 +39,5 @@ tests/
 *.csv
 frontend/backfill_tags_collections.py
 frontend/CollectionBackfill.py
+
+/spec
