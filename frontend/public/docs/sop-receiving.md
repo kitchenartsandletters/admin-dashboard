@@ -24,7 +24,7 @@ known PO.
 - The packing slip, if the carton has one. You can receive without it.
 
 Everything below can be done by hand from the screen in front of you. Document
-scanning is an optional shortcut, introduced in step 3.
+scanning is an optional shortcut, covered in step 3.
 
 ---
 
@@ -39,8 +39,8 @@ pane on the Receiving screen and hit **Receive →**.
 
 ### 2. Always look for the PO first
 
-Before anything else, search **POs awaiting receipt** — type the PO number,
-supplier, or reference.
+Search **POs awaiting receipt** — type the PO number, supplier, or reference.
+Select the order and you go straight to counting.
 
 Do this even when you intend to scan. Receiving against the real order is what
 closes the line, updates the outstanding quantity, and keeps the supplier's
@@ -48,20 +48,22 @@ account straight. An ad hoc receipt for a shipment that *did* have a PO leaves
 the original order sitting open forever, and someone eventually reorders books
 that are already on the shelf.
 
-Only when nothing matches do you take **No PO number — create ad hoc receipt**.
+If the order you pick has already been fully received, you'll get a warning
+screen instead of the wizard. Don't push past it — check you have the right PO.
 
-### 3. Work manually unless you have a reason not to
+Only when nothing matches do you take **No PO number — create ad hoc receipt**,
+and see **Ad hoc receipts** below.
 
-Search for the PO, select it, and count the carton in the wizard. That is the
-whole job. It needs nothing but the screen in front of you, and it's how you
-learn what the wizard is actually doing with your numbers.
+### 3. Optional: scan the packing slip
 
-**If you're new to receiving, stay on this path until it's second nature.**
-Scanning hides steps rather than removing them, and it's much easier to catch a
-bad scan once you know what a good session looks like.
+**You don't need this.** Steps 1, 2, and 4 onward are the whole job, and they
+need nothing but the screen in front of you. **If you're new to receiving, work
+this way until it's second nature** — scanning hides steps rather than removing
+them, and a bad scan is only catchable by someone who knows what a good session
+looks like.
 
-Reach for the **document scan** when the work is genuinely tedious or the order
-is hard to find:
+Reach for the document scan when the work is genuinely tedious or the order is
+hard to find:
 
 - **Long lists.** Typing thirty ISBNs by hand is where errors come from.
 - **No usable PO reference on the slip.** ISBN matching can still find the order
@@ -71,54 +73,40 @@ is hard to find:
 - **One slip covering several POs.** Scanning routes them into a shared session.
 
 Scanning needs a phone with a document-scan feature (Notes or Files — a plain
-camera photo won't do). Both paths end in the same wizard, and falling back is
-always fine: hide the scanner and search for the PO instead.
+camera photo won't do). Falling back is always fine: hide the scanner and search
+for the PO instead.
 
-### 4. If scanning: capture the slip
+Scanning inserts four screens before the wizard.
 
-Tap **📷 Scan packing slip**, then **Add page 1**. Multi-page slips (RDH slips
-are routinely two pages) get one photo per page — add each separately, then tap
-**Process**.
+**Capture the slip.** Tap **📷 Scan packing slip**, then **Add page 1**.
+Multi-page slips (RDH slips are routinely two pages) get one photo per page — add
+each separately, then tap **Process**. Lay the slip flat, phone directly above in
+portrait, all four edges in frame, no glare across the text.
 
-Lay the slip flat, phone directly above in portrait, all four edges in frame, no
-glare across the text.
+**Check what it read, before going further.** Check every ISBN, title, and
+quantity against the slip. Lines flagged for review are the system saying it
+isn't sure. Correct them here. A misread ISBN that gets through becomes a much
+bigger problem downstream than a few seconds spent now.
 
-### 5. If scanning: fix what it read — before going further
+**Confirm where it's going.** The system proposes an order, matched either by a
+PO reference on the slip or by comparing ISBNs against open orders. Confirm it,
+or override it — never accept a match you don't believe. Several POs on one slip
+routes into a shared session dashboard; no match at all sends you to ad hoc.
 
-Check every ISBN, title, and quantity against the slip. Lines flagged for review
-are the system saying it isn't sure. Correct them here.
+**Reconcile slip against order.** A side-by-side review. **Matched** lines are on
+both — check the delta badge. **On slip only** (amber) arrived but isn't on this
+PO: a possible mis-ship, or a title to add. **On PO only** (gray) is still
+outstanding and not arriving today.
 
-A misread ISBN that gets through becomes a much bigger problem downstream than a
-few seconds spent now.
+Confirm, and you land in the same wizard the manual path goes to. Continue below.
 
-### 6. Confirm where it's going
+### 4. Count the books and enter quantities
 
-The system proposes an order — matched either by a PO reference on the slip or by
-comparing ISBNs against open orders. Confirm it, or override it.
-
-- **One PO** → continue to reconciliation.
-- **Several POs on one slip** → receive each from the shared session dashboard.
-- **No match** → ad hoc receiving, having already searched in step 2. See
-  **Ad hoc receipts** below before you continue.
-
-Never accept a match you don't believe.
-
-### 7. Reconcile slip against order
-
-Review the side-by-side:
-
-- **Matched** — on both the slip and the PO. Check the delta badge.
-- **On slip only** (amber) — arrived but isn't on this PO. Possible mis-ship, or
-  a title to add.
-- **On PO only** (gray) — still outstanding, not arriving today.
-
-### 8. Count the books and enter quantities
-
-**Every line starts at 0, on every path.** Scanning at intake identifies the
-order and builds the line list — it does not fill in counts. Nothing is received
-until you put a number on it. This is deliberate: when lines were pre-filled with
-the full outstanding quantity, a title that never shipped got received in full
-because nobody corrected it down.
+**Every line starts at 0, on every path.** Scanning identifies the order and
+builds the line list — it does not fill in counts. Nothing is received until you
+put a number on it. This is deliberate: when lines were pre-filled with the full
+outstanding quantity, a title that never shipped got received in full because
+nobody corrected it down.
 
 So you must do one of these, on purpose:
 
@@ -127,7 +115,7 @@ So you must do one of these, on purpose:
   **Clear all** puts everything back to 0.
 - **Enter lines selectively** — type the count on each line you actually counted.
   Lines left at 0 are treated as not received, not as an error.
-- **📷 Scan slip** — the separate scan *inside* the wizard, which does fill
+- **📷 Scan slip** — a separate scan *inside* the wizard, which does fill
   quantities. Filled lines are badged **From scan**; lines the slip doesn't
   mention stay at 0 and are badged **Not on slip**.
 
@@ -138,7 +126,7 @@ filled numbers against the box before submitting, and pay particular attention t
 **Qty received means undamaged copies only.** That is the number that goes to
 Shopify.
 
-### 9. Record damage
+### 5. Record damage
 
 Tap **+ Damage** on the line. Then:
 
@@ -160,7 +148,7 @@ books. If the publisher hasn't said yet, **leave Publisher response unselected**
 it can be recorded later, and the line shows up under **Needs attention** until
 it is.
 
-### 10. Act on the two in-line warnings
+### 6. Act on the two in-line warnings
 
 Neither blocks receiving, but both need action:
 
@@ -169,13 +157,13 @@ Neither blocks receiving, but both need action:
 - **Units committed to unfulfilled orders** — copies are already here and
   customers are waiting. Check whether they should have shipped already.
 
-### 11. Mark anything that didn't ship
+### 7. Mark anything that didn't ship
 
 If the slip or the publisher says a title is **Backordered**, **Out of stock**, or
 **Out of print**, mark it on the line. The first two keep the line open; out of
 print closes it. This can also be done later from the PO detail panel.
 
-### 12. Review and confirm
+### 8. Review and confirm
 
 Check the confirm summary — especially the damaged lines and the unit count in
 the button. Then confirm. Don't close the page while it's applying.
@@ -183,7 +171,7 @@ the button. Then confirm. Don't close the page while it's applying.
 If the PO is flagged **Test**, Shopify will not be updated. That's expected on a
 test PO and not a failure.
 
-### 13. Save the record and report
+### 9. Save the record and report
 
 - **Download the receipt PDF** from the result screen. That is the record.
 - Post in `#receiving-issues` using the pinned template.
@@ -196,8 +184,8 @@ carton was handled.
 ## Ad hoc receipts
 
 You're here because step 2 found no PO. The system builds one from what's in the
-carton, then hands you to the same wizard. Two steps have no equivalent in the
-normal flow, and one control can quietly lose a book.
+carton, then hands you to the same wizard at step 4. Two screens have no
+equivalent in the normal flow, and one control can quietly lose a book.
 
 ### Identify the publisher
 
@@ -267,7 +255,8 @@ don't clear themselves.
 |---|---|
 | **Receipt comes back Failed** | You may receive against the PO again. **Reporting it is mandatory either way** — post the PO number and a screenshot in `#receiving-issues`, whether or not the retry worked. |
 | **Partial receipt — some lines failed** | Same as above: retry is allowed, the report is not optional. |
-| Scan won't read the slip | Rescan using document-scan mode. Still failing — switch to manual: hide the scanner, search for the PO, enter lines by hand. |
+| The PO you picked is already fully received | Stop. You have the wrong order, or the carton was received already — check before doing anything else. |
+| Scan won't read the slip | Rescan using document-scan mode. Still failing — switch to manual: hide the scanner and search for the PO. |
 | Scan finds no matching PO | Search manually before accepting ad hoc. The two matchers look at different things and a manual search can find what ISBN matching missed. |
 | No PO number anywhere on the slip | Search by supplier and by anything on the carton first. Only then ad hoc. |
 | **"No supplier account available — cannot create PO"** | The publisher has no active account. Don't work around it by picking a different publisher — that files the books against the wrong account. Stop and report it. |
