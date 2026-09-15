@@ -21,9 +21,10 @@ known PO.
 ## Before you start
 
 - One carton at a time. Don't open a second box mid-session.
-- Packing slip in hand, plus a phone with a **document scan** feature (Notes or
-  Files — not a plain camera photo).
-- Know which location you're receiving into. It defaults to the PO's destination.
+- The packing slip, if the carton has one. You can receive without it.
+
+Everything below can be done by hand from the screen in front of you. Document
+scanning is an optional shortcut, introduced in step 3.
 
 ---
 
@@ -49,23 +50,29 @@ that are already on the shelf.
 
 Only when nothing matches do you take **No PO number — create ad hoc receipt**.
 
-### 3. Choose the path: manual or scan
+### 3. Work manually unless you have a reason not to
 
-Both paths end in the same wizard. Pick on the shape of the job in front of you.
+Search for the PO, select it, and count the carton in the wizard. That is the
+whole job. It needs nothing but the screen in front of you, and it's how you
+learn what the wizard is actually doing with your numbers.
 
-| Use **manual entry** when | Use **document scan** when |
-|---|---|
-| You already know the PO, or the slip shows a clear PO number | The slip has no usable PO reference — ISBN matching can still find the order |
-| The shipment is short — a handful of lines | The list is long. Typing thirty ISBNs by hand is where errors come from |
-| No slip in the box, or it's damaged, creased, or illegible | You're creating an **ad hoc** receipt and need the line list built for you |
-| The scan has already failed twice | One slip covers several POs — scanning routes them into a shared session |
+**If you're new to receiving, stay on this path until it's second nature.**
+Scanning hides steps rather than removing them, and it's much easier to catch a
+bad scan once you know what a good session looks like.
 
-**Ad hoc receiving is the case that most rewards scanning.** With no PO to work
-from, every line has to be created from scratch; the scan builds that list for
-you instead of you typing it.
+Reach for the **document scan** when the work is genuinely tedious or the order
+is hard to find:
 
-Falling back to manual mid-session is always fine. If the scan misreads badly,
-hide the scanner and search for the PO instead.
+- **Long lists.** Typing thirty ISBNs by hand is where errors come from.
+- **No usable PO reference on the slip.** ISBN matching can still find the order
+  when a manual search can't.
+- **Ad hoc receipts.** With no PO to work from, every line otherwise gets typed
+  from scratch — this is the case scanning helps most.
+- **One slip covering several POs.** Scanning routes them into a shared session.
+
+Scanning needs a phone with a document-scan feature (Notes or Files — a plain
+camera photo won't do). Both paths end in the same wizard, and falling back is
+always fine: hide the scanner and search for the PO instead.
 
 ### 4. If scanning: capture the slip
 
@@ -201,11 +208,8 @@ publisher's **primary active account**, and that account is where the cost and
 the receiving history land. Check the carton and the slip letterhead before
 picking — don't guess from the titles.
 
-Ad hoc POs are always created against **HQ**. If the carton belongs at another
-location, stop and report it rather than receiving it here.
-
-The slip reference, if the scan found one, is stored on the PO. That is how
-you'll find this receipt again later, so don't clear it.
+The slip reference, if a scan found one, is stored on the PO. That is how you'll
+find this receipt again later, so don't clear it.
 
 ### Enter the lines
 
