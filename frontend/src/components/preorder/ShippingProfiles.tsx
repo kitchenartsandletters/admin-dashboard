@@ -35,13 +35,15 @@ interface ReconcileReport {
     correctly_assigned: { product_id: number; title: string; pub_date: string; profile: string }[];
     wrong_profile: { product_id: number; title: string; pub_date: string; expected_profile: string; current_profile: string }[];
     missing_from_profile: { product_id: number; title: string; pub_date: string; expected_profile: string }[];
+    arrived_should_detach?: { product_id: number; title: string; pub_date: string; current_profile: string; arrived_at: string | null }[];
     should_be_removed: { product_id: number; title: string; pub_date: string; current_profile: string }[];
-    exempt: { product_id: number; title: string; pub_date: string; status: string; inventory: number; current_profile: string; reason: string }[];
+    exempt: { product_id: number; title: string; pub_date: string; status: string; inventory: number; current_profile: string; arrived_at?: string | null; reason: string }[];
     no_pub_date: { product_id: number; title: string; status: string }[];
   };
   migration?: {
     titles_on_week_profile: number;
     titles_needing_migration: number;
+    arrived_to_detach?: number;
     repurpose_ready_profiles: RepurposeReadyProfile[];
   };
 }
@@ -137,13 +139,13 @@ const ShippingProfiles = () => {
   const [actionResults, setActionResults] = useState<Record<number | string, string>>({});
   const [expandedProfile, setExpandedProfile] = useState<number | null>(null);
 
-  // Confirm modal (per-title assign / remove)
+  // Confirm modal (per-title assign / remove / detach)
   const [confirmModal, setConfirmModal] = useState<{
     open: boolean;
     productId: number;
     pubDate: string;
     title: string;
-    action: 'assign' | 'remove';
+    action: 'assign' | 'remove' | 'detach';
     profileName?: string;
   }>({ open: false, productId: 0, pubDate: '', title: '', action: 'assign' });
 
@@ -228,14 +230,14 @@ const ShippingProfiles = () => {
     }
   };
 
-  // ── Remove (→ General) ──
-  const removeProduct = async (productId: number) => {
+  // ── Remove / Detach (→ General) ──
+  const removeProduct = async (productId: number, resultLabel = '→ General') => {
     setActionLoading((p) => ({ ...p, [productId]: true }));
     try {
       const res = await fetch(`${BASE}/remove/${productId}`, { method: 'POST', headers: apiHeaders() });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed');
-      setActionResults((p) => ({ ...p, [productId]: '→ General' }));
+      setActionResults((p) => ({ ...p, [productId]: resultLabel }));
       await refreshAll();
     } catch (e: any) {
       setActionResults((p) => ({ ...p, [productId]: `Error: ${e.message}` }));
@@ -304,10 +306,20 @@ const ShippingProfiles = () => {
     profiles.filter((p) => !p.is_default && p.product_count === 0).sort((a, b) => a.name.localeCompare(b.name)),
     [profiles]);
 
-  // Weeks with anything to do (a title that isn't already on its week profile)
-  const actionableWeeks = useMemo(() =>
-    (weekPlan?.weeks || []).filter((w) => w.titles.some((t) => t.action !== 'already')),
+  // Weeks worth batching: 2+ titles not already on their week profile. A lone
+  // straggler is handled by its per-title Fix/Assign instead, so we don't show
+  // two routes for the same title.
+  const batchWeeks = useMemo(() =>
+    (weekPlan?.weeks || []).filter((w) => w.titles.filter((t) => t.action !== 'already').length >= 2),
     [weekPlan]);
+
+  // Titles covered by a batch week — suppressed from the per-title panes below
+  // so each title appears in exactly one place.
+  const batchedProductIds = useMemo(() => {
+    const s = new Set<number>();
+    batchWeeks.forEach((w) => w.titles.forEach((t) => { if (t.action !== 'already') s.add(t.product_id); }));
+    return s;
+  }, [batchWeeks]);
 
   // ── Loading / error ──
   if (loading) {
@@ -336,20 +348,25 @@ const ShippingProfiles = () => {
 
   const migration = reconcile?.migration;
   const repurposeReady = migration?.repurpose_ready_profiles || [];
+  const arrivedToDetach = reconcile?.report.arrived_should_detach || [];
+  const wrongProfileUnbatched = (reconcile?.report.wrong_profile || []).filter((i) => !batchedProductIds.has(i.product_id));
+  const missingUnbatched = (reconcile?.report.missing_from_profile || []).filter((i) => !batchedProductIds.has(i.product_id));
 
   // ── Small presentational helper for a title row with one action ──
   const TitleRow = ({ item, variant, actionLabel, onAction, meta }: {
     item: { product_id: number; title: string; pub_date?: string };
-    variant: 'amber' | 'red' | 'blue';
+    variant: 'amber' | 'red' | 'blue' | 'teal';
     actionLabel: string;
     onAction: () => void;
     meta?: ReactNode;
   }) => {
     const border = variant === 'amber' ? 'border-amber-100 dark:border-amber-800/50'
       : variant === 'red' ? 'border-red-100 dark:border-red-800/50'
+      : variant === 'teal' ? 'border-teal-100 dark:border-teal-800/50'
       : 'border-blue-100 dark:border-blue-800/50';
     const btn = variant === 'amber' ? 'bg-amber-600 hover:bg-amber-700'
       : variant === 'red' ? 'bg-red-600 hover:bg-red-700'
+      : variant === 'teal' ? 'bg-teal-600 hover:bg-teal-700'
       : 'bg-blue-600 hover:bg-blue-700';
     return (
       <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm bg-white dark:bg-gray-800 rounded-xl sm:rounded-lg px-4 py-3 sm:py-2 border ${border} shadow-sm`}>
@@ -383,6 +400,12 @@ const ShippingProfiles = () => {
                 <span className="font-semibold text-green-600 dark:text-green-400">{migration.titles_on_week_profile}</span> on week profiles
                 {' · '}
                 <span className="font-semibold text-amber-600 dark:text-amber-400">{migration.titles_needing_migration}</span> to migrate
+                {migration.arrived_to_detach ? (
+                  <>
+                    {' · '}
+                    <span className="font-semibold text-teal-600 dark:text-teal-400">{migration.arrived_to_detach}</span> to detach
+                  </>
+                ) : null}
                 {' · '}
                 {weekProfiles.length} week profiles · {legacyDateProfiles.length} legacy
               </>
@@ -416,17 +439,43 @@ const ShippingProfiles = () => {
         </div>
       )}
 
-      {/* ── Migration: apply whole weeks ── */}
-      {actionableWeeks.length > 0 && (
+      {/* ── Stock Received — detach (arrived, fulfillable now) ── */}
+      {arrivedToDetach.length > 0 && (
+        <div className="rounded-xl border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-900/10 p-4">
+          <h3 className="text-sm font-semibold text-teal-900 dark:text-teal-200 mb-1">
+            Stock Received — Detach ({arrivedToDetach.length})
+          </h3>
+          <p className="text-xs text-teal-700/80 dark:text-teal-400/80 mb-3 leading-relaxed">
+            These titles have physically arrived and are fulfillable now. Detach each from its shipping profile — it falls back to General.
+          </p>
+          <div className="space-y-2.5">
+            {arrivedToDetach.map((item) => (
+              <TitleRow key={item.product_id} item={item} variant="teal" actionLabel="Detach"
+                onAction={() => setConfirmModal({ open: true, productId: item.product_id, pubDate: item.pub_date, title: item.title, action: 'detach', profileName: item.current_profile })}
+                meta={
+                  <>
+                    <span className="text-gray-400">on {item.current_profile}</span>
+                    {item.arrived_at && (
+                      <span className="text-teal-600 dark:text-teal-400">· arrived {formatDate(item.arrived_at.slice(0, 10))}</span>
+                    )}
+                  </>
+                } />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Migration: apply whole weeks (2+ titles) ── */}
+      {batchWeeks.length > 0 && (
         <div className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/60 dark:bg-indigo-900/10 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">
-              Migration — {actionableWeeks.length} week{actionableWeeks.length === 1 ? '' : 's'} to consolidate
+              Migration — {batchWeeks.length} week{batchWeeks.length === 1 ? '' : 's'} to consolidate
             </h3>
-            <span className="text-xs text-indigo-500 dark:text-indigo-400">Apply one week, rate-check, repeat</span>
+            <span className="text-xs text-indigo-500 dark:text-indigo-400">Consolidate a release week onto one profile</span>
           </div>
           <div className="space-y-2.5">
-            {actionableWeeks.map((week) => {
+            {batchWeeks.map((week) => {
               const key = `apply-${week.week_start}`;
               const movingCount = week.titles.filter((t) => t.action !== 'already').length;
               return (
@@ -477,14 +526,14 @@ const ShippingProfiles = () => {
         </div>
       )}
 
-      {/* ── To Migrate (wrong_profile) — per-title fix ── */}
-      {reconcile && reconcile.report.wrong_profile.length > 0 && (
+      {/* ── To Migrate (wrong_profile) — per-title fix (single stragglers) ── */}
+      {wrongProfileUnbatched.length > 0 && (
         <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 p-4">
           <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200 mb-3">
-            To Migrate ({reconcile.report.wrong_profile.length})
+            To Migrate ({wrongProfileUnbatched.length})
           </h3>
           <div className="space-y-2.5">
-            {reconcile.report.wrong_profile.map((item) => (
+            {wrongProfileUnbatched.map((item) => (
               <TitleRow key={item.product_id} item={item} variant="amber" actionLabel="Fix"
                 onAction={() => setConfirmModal({ open: true, productId: item.product_id, pubDate: item.pub_date, title: item.title, action: 'assign', profileName: item.expected_profile })}
                 meta={
@@ -499,14 +548,14 @@ const ShippingProfiles = () => {
         </div>
       )}
 
-      {/* ── Missing from Profile ── */}
-      {reconcile && reconcile.report.missing_from_profile.length > 0 && (
+      {/* ── Missing from Profile (single stragglers) ── */}
+      {missingUnbatched.length > 0 && (
         <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10 p-4">
           <h3 className="text-sm font-semibold text-red-900 dark:text-red-200 mb-3">
-            Missing from Profile ({reconcile.report.missing_from_profile.length})
+            Missing from Profile ({missingUnbatched.length})
           </h3>
           <div className="space-y-2.5">
-            {reconcile.report.missing_from_profile.map((item) => (
+            {missingUnbatched.map((item) => (
               <TitleRow key={item.product_id} item={item} variant="red" actionLabel="Assign"
                 onAction={() => setConfirmModal({ open: true, productId: item.product_id, pubDate: item.pub_date, title: item.title, action: 'assign', profileName: item.expected_profile })}
                 meta={<span className="font-medium bg-green-50 dark:bg-green-950/40 px-1.5 py-0.5 rounded text-green-700 dark:text-green-300">{item.expected_profile}</span>} />
@@ -531,11 +580,11 @@ const ShippingProfiles = () => {
         </div>
       )}
 
-      {/* ── Exempt ── */}
+      {/* ── Exempt (on hand / arrived) ── */}
       {reconcile && reconcile.report.exempt.length > 0 && (
         <div className="rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/10 p-4">
           <h3 className="text-sm font-semibold text-purple-900 dark:text-purple-200 mb-3">
-            Exempt — Early Stock ({reconcile.report.exempt.length})
+            Exempt — On Hand ({reconcile.report.exempt.length})
           </h3>
           <div className="space-y-2.5">
             {reconcile.report.exempt.map((item) => (
@@ -546,13 +595,15 @@ const ShippingProfiles = () => {
                   <div className="flex flex-wrap items-center gap-x-2 text-xs text-purple-600 dark:text-purple-400 mt-1 sm:mt-0.5 sm:ml-2 sm:inline-flex">
                     <span className="font-mono text-gray-400 sm:text-purple-600 dark:text-purple-400">{formatDate(item.pub_date)}</span>
                     <span>•</span>
-                    <span>{item.inventory} in stock</span>
+                    {item.inventory > 0
+                      ? <span>{item.inventory} in stock</span>
+                      : <span>arrived {item.arrived_at ? formatDate(item.arrived_at.slice(0, 10)) : '—'}</span>}
                     <span>•</span>
                     <span className="truncate max-w-[140px]">{item.current_profile}</span>
                   </div>
                 </div>
                 <span className="text-xs font-semibold sm:font-normal text-purple-500 dark:text-purple-400 italic shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-50 dark:border-gray-700/60 text-right">
-                  Fulfillable
+                  {item.inventory > 0 ? 'Fulfillable' : 'Arrived'}
                 </span>
               </div>
             ))}
@@ -657,24 +708,32 @@ const ShippingProfiles = () => {
         </div>
       )}
 
-      {/* ── Confirm Modal (assign / remove) ── */}
+      {/* ── Confirm Modal (assign / remove / detach) ── */}
       <ConfirmModal
         open={confirmModal.open}
         onCancel={() => setConfirmModal((p) => ({ ...p, open: false }))}
         onConfirm={async () => {
+          const action = confirmModal.action;
           setConfirmModal((p) => ({ ...p, open: false }));
-          if (confirmModal.action === 'assign') await weekAssign(confirmModal.productId, confirmModal.pubDate);
+          if (action === 'assign') await weekAssign(confirmModal.productId, confirmModal.pubDate);
+          else if (action === 'detach') await removeProduct(confirmModal.productId, '→ General (detached)');
           else await removeProduct(confirmModal.productId);
         }}
-        title={confirmModal.action === 'assign' ? 'Assign to Week Profile' : 'Remove from Profile'}
-        variant={confirmModal.action === 'assign' ? 'primary' : 'danger'}
-        confirmLabel={confirmModal.action === 'assign' ? 'Assign' : 'Remove'}
+        title={confirmModal.action === 'assign' ? 'Assign to Week Profile' : confirmModal.action === 'detach' ? 'Detach — Stock Received' : 'Remove from Profile'}
+        variant={confirmModal.action === 'remove' ? 'danger' : 'primary'}
+        confirmLabel={confirmModal.action === 'assign' ? 'Assign' : confirmModal.action === 'detach' ? 'Detach' : 'Remove'}
       >
         {confirmModal.action === 'assign' ? (
           <div className="space-y-2">
             <p>Assign this title to its release-week profile:</p>
             <p className="font-semibold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-800 p-2.5 rounded-lg border border-gray-150 dark:border-gray-700 line-clamp-2">{confirmModal.title}</p>
             <p className="text-xs text-gray-400 dark:text-gray-500 pt-1">Target: <span className="font-semibold text-gray-700 dark:text-gray-300">{confirmModal.profileName}</span>. Created on the verified builder if it doesn't exist yet.</p>
+          </div>
+        ) : confirmModal.action === 'detach' ? (
+          <div className="space-y-2">
+            <p>This title has arrived and is fulfillable now. Detach it from its shipping profile (falls back to General):</p>
+            <p className="font-semibold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-800 p-2.5 rounded-lg border border-gray-150 dark:border-gray-700 line-clamp-2">{confirmModal.title}</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 pt-1">Currently on <span className="font-semibold text-gray-700 dark:text-gray-300">{confirmModal.profileName}</span>.</p>
           </div>
         ) : (
           <div className="space-y-2">
