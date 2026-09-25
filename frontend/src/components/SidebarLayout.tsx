@@ -40,7 +40,7 @@ const navItems = [
       { label: 'Purchase Orders', path: '/purchase-orders', roles: ['admin','editor','user'] },
       { label: 'Receiving',       path: '/receiving',       roles: ['admin','editor','user'] },
       { label: 'Transfers',       path: '/transfers',       roles: ['admin','editor','user'] },
-      { label: 'Returns',         path: '/supply-chain/returns', roles: ['admin', 'editor'] },
+      { label: 'Returns',         path: '/supply-chain/returns', roles: ['admin', 'editor', 'user'] },
       { label: 'Vendors/Publishers',       path: '/suppliers',       roles: ['admin','editor','user'] },
       { label: 'Vendor Cosmology',       path: '/supply-chain/cosmology', roles: ['admin', 'editor','user'] },
       { label: 'Catalog Gaps', path: '/suppliers/catalog-gaps', roles: ['admin', 'editor', 'user'] },
