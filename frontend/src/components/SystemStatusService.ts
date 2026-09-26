@@ -58,15 +58,17 @@ export async function fetchSystemStatuses(): Promise<ServiceStatus[]> {
       name: 'Admin Dashboard Backend',
       lastChecked: now,
       endpoints: await Promise.all([
-        check(`${import.meta.env.VITE_ADMIN_BACKEND}/api/interest?token=${import.meta.env.VITE_ADMIN_TOKEN}`),
+        // Unauthenticated liveness endpoint; the old /api/interest check moved to request-service.
+        check(`${import.meta.env.VITE_ADMIN_BACKEND}/api/health`),
       ]),
     },
     {
       name: 'Request Service',
       lastChecked: now,
       endpoints: await Promise.all([
-        check(`${import.meta.env.VITE_REQ_PUBLIC}/api/interest?token=${import.meta.env.VITE_ADMIN_TOKEN}`),
-        check(`${import.meta.env.VITE_REQ_RAILWAY}/api/interest?token=${import.meta.env.VITE_ADMIN_TOKEN}`),
+        // Unauthenticated liveness endpoints (no token in URLs, no data returned).
+        check(`${import.meta.env.VITE_REQ_PUBLIC}/api/health`),
+        check(`${import.meta.env.VITE_REQ_RAILWAY}/api/health`),
       ]),
     },
     {
