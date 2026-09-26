@@ -349,13 +349,12 @@ const TILES: Record<string, Tile> = {
   reports:    { key: 'reports',    label: 'Reports',            icon: 'bar',       route: '/reports' },
   status:     { key: 'status',     label: 'System Status',      icon: 'status',    route: '/status' },
   catalog:    { key: 'catalog',    label: 'Catalog Gaps',       icon: 'grid',      route: '/suppliers/catalog-gaps' },
-  campaigns:  { key: 'campaigns',  label: 'Campaigns',          icon: 'megaphone', route: '/campaigns' },
 };
 
 const LAUNCH: Record<Role, string[]> = {
   user:   ['po', 'receiving', 'transfers', 'backorders', 'edelweiss', 'vendors'],
   editor: ['po', 'receiving', 'transfers', 'backorders', 'preorders', 'requests', 'reports', 'edelweiss'],
-  admin:  ['po', 'receiving', 'transfers', 'backorders', 'preorders', 'requests', 'reports', 'status', 'catalog', 'campaigns'],
+  admin:  ['po', 'receiving', 'transfers', 'backorders', 'preorders', 'requests', 'reports', 'status', 'catalog'],
 };
 
 // ---------------------------------------------------------------------------

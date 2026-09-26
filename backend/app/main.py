@@ -1,8 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.reports import router as reports_router
-from app.routes.campaign_stats import router as campaign_stats_router
-from app.routes.campaign_responses import router as campaign_responses_router
 
 # Request-module routes (interest, status, archive, notes, blacklist, Shopify proxy)
 # moved to request-service (api.kitchenartsandletters.com) — decoupling steps 1-3.
@@ -29,5 +27,3 @@ def health():
 
 
 app.include_router(reports_router, prefix="/api")
-app.include_router(campaign_stats_router, prefix="/api")
-app.include_router(campaign_responses_router, prefix="/api")

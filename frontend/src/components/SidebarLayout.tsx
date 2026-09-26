@@ -31,7 +31,6 @@ const navItems = [
     ]
   },
   { label: 'Backorders', path: '/backorders', roles: ['admin', 'editor', 'user'] },
-  { label: 'Campaigns', path: '/campaigns', roles: ['admin'] },
   {
     label: 'Supply Chain',
     path: '/purchase-orders',
