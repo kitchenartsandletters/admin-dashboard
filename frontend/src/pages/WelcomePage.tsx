@@ -34,6 +34,7 @@ import type { StockWaitingResult } from '../api/supplyChainApi';
 import { fetchBackorderSummary } from '../api/backorderApi';
 import { fetchPreorderMetrics } from '../../api/preorderApi';
 import StockWaitingModal from './StockWaitingModal';
+import { requestFetch } from '../services/requests/requestApi';
 
 const GARAMOND =
   'Garamond, "EB Garamond", "Adobe Garamond Pro", "Apple Garamond", "Times New Roman", Georgia, serif';
@@ -94,13 +95,12 @@ async function attempt<T>(fn: () => Promise<T>, retries = 2, backoff = 400): Pro
   }
 }
 
-// Count of open (New) service requests, via the same interest endpoint the
-// Requests screen uses. Reads the total from the x-total-count header (or
+// Count of open (New) service requests, via the same request-service endpoint
+// the Requests screen uses. Reads the total from the X-Total-Count header (or
 // meta.total), so limit=1 keeps it cheap rather than pulling every row.
+// (The old admin-dashboard endpoint never returned a total, so this showed at most 1.)
 async function fetchOpenRequestCount(): Promise<number> {
-  const base = import.meta.env.VITE_API_BASE_URL;
-  const token = import.meta.env.VITE_ADMIN_TOKEN;
-  const res = await fetch(`${base}/api/interest?token=${token}&page=1&limit=1&statuses=${encodeURIComponent('New')}`);
+  const res = await requestFetch(`/api/interest?page=1&limit=1&statuses=${encodeURIComponent('New')}`);
   if (!res.ok) throw new Error(`[${res.status}] interest`);
   const header = res.headers.get('x-total-count');
   const fromHeader = header ? parseInt(header, 10) : NaN;

@@ -12,8 +12,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useStaff } from '../auth/StaffProvider';
 import { useAuth } from '../auth/AuthProvider';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL;
-const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN;
+import { requestFetch, requestPost } from '../services/requests/requestApi';
 
 export interface RequestNote {
   id: string;
@@ -90,8 +89,8 @@ export default function RequestNotes({ requestId, crId }: RequestNotesProps) {
     setError(null);
 
     try {
-      const res = await fetch(
-        `${API_BASE}/api/notes?request_id=${requestId}&token=${ADMIN_TOKEN}`
+      const res = await requestFetch(
+        `/api/notes?request_id=${encodeURIComponent(requestId)}`
       );
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
 
@@ -117,16 +116,12 @@ export default function RequestNotes({ requestId, crId }: RequestNotesProps) {
     setError(null);
 
     try {
-      const res = await fetch(`${API_BASE}/api/notes/add?token=${ADMIN_TOKEN}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          request_id: requestId,
-          cr_id: crId ?? null,
-          body,
-          author_name: authorName,
-          author_staff_id: authorStaffId,
-        }),
+      const res = await requestPost('/api/notes/add', {
+        request_id: requestId,
+        cr_id: crId ?? null,
+        body,
+        author_name: authorName,
+        author_staff_id: authorStaffId,
       });
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
 
@@ -149,11 +144,7 @@ export default function RequestNotes({ requestId, crId }: RequestNotesProps) {
     setError(null);
 
     try {
-      const res = await fetch(`${API_BASE}/api/notes/update?token=${ADMIN_TOKEN}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, body }),
-      });
+      const res = await requestPost('/api/notes/update', { id, body });
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
 
       const json = await res.json();
@@ -181,11 +172,7 @@ export default function RequestNotes({ requestId, crId }: RequestNotesProps) {
     setNotes((prev) => prev.filter((n) => n.id !== id));
 
     try {
-      const res = await fetch(`${API_BASE}/api/notes/remove?token=${ADMIN_TOKEN}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
+      const res = await requestPost('/api/notes/remove', { id });
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
     } catch (err) {
       console.error('[RequestNotes] remove failed:', err);
