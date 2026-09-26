@@ -2,6 +2,8 @@
 
 Conventions for AI assistants (Claude Code and chat) working in this repo. Keep it short and current.
 
+**Read `docs/DOCS_STATUS.md` first.** `docs/Infrastructure.md` is untrusted and no longer relevant. For the request module, `request-service/docs/DOCS_STATUS.md` is authoritative.
+
 ## Branches & deploys
 - **`main` is the live branch.** Frontend and backend both deploy automatically from `main` on Railway; the branch Railway builds is configured in the Railway dashboard, not in this repo.
 - **Open every PR against `main`.**
