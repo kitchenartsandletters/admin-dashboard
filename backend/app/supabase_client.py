@@ -2,9 +2,9 @@ import os
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-# Supabase client for this backend's own routes (reports, calendar, exclusions,
-# campaign stats). Request-module helpers moved to request-service in decoupling
-# step 3. This backend no longer talks to Shopify.
+# Supabase client for this backend's own routes (reports, calendar, exclusions).
+# Request-module helpers moved to request-service in decoupling step 3; the
+# signed-copy campaign routes were retired 2026-09-26. No Shopify calls here.
 
 load_dotenv()
 

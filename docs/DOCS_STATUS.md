@@ -10,7 +10,7 @@ storefront request form), the authoritative doc is
 **`request-service/docs/DOCS_STATUS.md`**, which holds the verified dependency
 map across both repos.
 
-Last updated: 2026-09-26 (decoupling step 3)
+Last updated: 2026-09-26 (signed-copy campaign retired)
 
 | Document | Status |
 |---|---|
@@ -33,7 +33,8 @@ Last updated: 2026-09-26 (decoupling step 3)
 | Backend (`backend/`) | `outofstock-notify-frontend-production.up.railway.app` | **Misleading legacy name — this is the backend.** Frontend reaches it as `VITE_API_BASE_URL`. Uses the `request-service` Supabase project. |
 
 The backend serves **only** reports, calendar/schedule overrides, exclusions,
-campaign stats, and an unauthenticated `GET /api/health`. It no longer talks to
+and an unauthenticated `GET /api/health`. Admin auth is `Authorization: Bearer`
+with `VITE_ADMIN_TOKEN` only (no `?token=`). It no longer talks to
 Shopify. The whole request module (list, status, archive, notes, blacklist,
 storefront ingest) runs in `request-service` since decoupling steps 1–3.
 
@@ -87,6 +88,17 @@ drop the lookup and take the title from the caller.
 A blanket `tests/` rule meant new test files were silently never committed
 (the same trap preorder-service hit). Step 3 adds `!backend/tests/`. If you add
 tests elsewhere, check `git check-ignore -v <file>` first.
+
+### Retired: signed-copy campaign screens (2026-09-26)
+
+The `/campaigns` page (sidebar link, Welcome tile), `services/campaigns/*`,
+`types/campaign.ts`, and the backend `campaign_stats.py` /
+`campaign_responses.py` routes were removed. They read the campaign tables
+directly from request-service's database. Everything is archived verbatim in
+the private repo `kitchenartsandletters/signed-copy-campaign`; the data is in
+an offline vault. See `request-service/docs/DOCS_STATUS.md` Landmine 4.
+With them went this backend's `?token=` support (they were its only users);
+`tests/test_backend_auth.py` asserts both.
 
 ---
 

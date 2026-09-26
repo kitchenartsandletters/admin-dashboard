@@ -45,14 +45,20 @@ def test_every_other_route_requires_this_backends_token_only():
     for m,p in ROUTES:
         if p=="/api/health" or m in ("OPTIONS","HEAD"): continue
         path=p.replace("{","").replace("}","")
-        for kw in [{}, {"headers":{"Authorization":"Bearer dbstok"}}, {"params":{"token":"dbstok"}}, {"headers":{"Authorization":"Bearer nope"}}]:
+        # ?token= with the CORRECT token must also fail: query-param auth was removed with the campaign.
+        for kw in [{}, {"headers":{"Authorization":"Bearer dbstok"}}, {"params":{"token":"admintok"}}, {"headers":{"Authorization":"Bearer nope"}}]:
             r=c.request(m, path, json={}, **kw); assert r.status_code==403, (m,p,kw,r.status_code)
         n+=1
-    assert n>=10, n
+    assert n>=12, n
 
-def test_valid_token_passes_auth_both_transports():
+def test_valid_bearer_token_passes_auth():
     assert c.get("/api/reports/exclusions", headers={"Authorization":"Bearer admintok"}).status_code!=403
-    assert c.get("/api/campaign-stats", params={"token":"admintok"}).status_code!=403
+
+def test_signed_copy_campaign_routes_are_retired():
+    # Archived in kitchenartsandletters/signed-copy-campaign; data vaulted offline 2026-09-26.
+    assert not any("campaign" in p for _, p in ROUTES)
+    for p in ["/api/campaign-stats", "/api/campaign-responses"]:
+        assert c.get(p, headers={"Authorization":"Bearer admintok"}).status_code == 404
 
 def test_exclusion_title_is_taken_from_caller_no_shopify():
     INSERTS.clear()
