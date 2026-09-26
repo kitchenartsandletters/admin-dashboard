@@ -221,12 +221,12 @@ const App = () => {
                         </ProtectedRoute>
                       } />
                       <Route path="/supply-chain/returns" element={
-                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                        <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
                           <ReturnsWorkspace />
                         </ProtectedRoute>
                       } />
                       <Route path="/supply-chain/returns/:returnId" element={
-                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                        <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
                           <ReturnDraft />
                         </ProtectedRoute>
                       } />
