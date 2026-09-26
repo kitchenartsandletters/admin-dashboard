@@ -27,7 +27,7 @@ const ONLINE_STORE_PREFIX = 'https://www.kitchenartsandletters.com/products/';
 
 // Fallback logic to ensure we have a URL to hit
 const API_BASE = import.meta.env.VITE_BLACKLIST_URL || import.meta.env.VITE_REQUEST_URL;
-const ADMIN_TOKEN = import.meta.env.VITE_DBS_ADMIN_TOKEN;
+const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN; // request-service token (was VITE_DBS_ADMIN_TOKEN, which belongs to damaged-books-service)
 
 // GraphQL Fetcher for Handle
 const fetchShopifyHandle = async (productId: number): Promise<string | null> => {

@@ -3,7 +3,7 @@ import ConfirmModal from "./ConfirmModal";
 import RightSidebar from "./RightSidebar";
 
 interface BlacklistEntry {
-  barcode: string;
+  barcode: string | null;
   title: string;
   handle: string;
   author: string;
@@ -13,6 +13,20 @@ interface BlacklistEntry {
 const ADMIN_API_TOKEN = import.meta.env.VITE_ADMIN_TOKEN;
 const BLACKLIST_API_BASE = import.meta.env.VITE_BLACKLIST_URL;
 const SHOPIFY_ADMIN_PREFIX = 'https://admin.shopify.com/store/castironbooks/products/';
+
+// Throws on proxy/auth/Shopify errors so they are not misreported as "not found".
+const shopifyLookup = async (query: string) => {
+  const res = await fetch(`${BLACKLIST_API_BASE}/api/shopify/graphql`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Admin-Token": ADMIN_API_TOKEN || "" },
+    body: JSON.stringify({ query })
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok || json?.errors) {
+    throw new Error(`Lookup failed (HTTP ${res.status})${json?.errors ? `: ${JSON.stringify(json.errors).slice(0, 200)}` : ""}`);
+  }
+  return json;
+};
 
 const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry | null> => {
   const barcodeQuery = `{
@@ -27,57 +41,40 @@ const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry
     }
   }`;
 
-  try {
-    const res = await fetch(`${BLACKLIST_API_BASE}/api/shopify/graphql`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: barcodeQuery })
-    });
-
-    const json = await res.json();
-    const variant = json?.data?.productVariants?.edges?.[0]?.node;
-    if (variant?.product) {
-      return {
-        barcode: variant.barcode,
-        title: variant.product.title,
-        handle: variant.product.handle,
-        author: variant.sku || "Unknown",
-        product_id: parseInt(variant.product.id.split("/").pop())
-      };
-    }
-
-    const productIdQuery = `{
-      product(id: "gid://shopify/Product/${input}") {
-        id title handle
-        variants(first: 1) {
-          edges { node { barcode sku } }
-        }
-      }
-    }`;
-
-    const productRes = await fetch(`${BLACKLIST_API_BASE}/api/shopify/graphql`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: productIdQuery })
-    });
-
-    const productJson = await productRes.json();
-    const product = productJson?.data?.product;
-    const pidVariant = product?.variants?.edges?.[0]?.node;
-    if (product && pidVariant) {
-      return {
-        barcode: pidVariant.barcode,
-        title: product.title,
-        handle: product.handle,
-        author: pidVariant.sku || "Unknown",
-        product_id: parseInt(product.id.split("/").pop())
-      };
-    }
-    return null;
-  } catch (err) {
-    console.error("Shopify fetch error:", err);
-    return null;
+  const json = await shopifyLookup(barcodeQuery);
+  const variant = json?.data?.productVariants?.edges?.[0]?.node;
+  if (variant?.product) {
+    return {
+      barcode: variant.barcode,
+      title: variant.product.title,
+      handle: variant.product.handle,
+      author: variant.sku || "Unknown",
+      product_id: parseInt(variant.product.id.split("/").pop())
+    };
   }
+
+  const productIdQuery = `{
+    product(id: "gid://shopify/Product/${input}") {
+      id title handle
+      variants(first: 1) {
+        edges { node { barcode sku } }
+      }
+    }
+  }`;
+
+  const productJson = await shopifyLookup(productIdQuery);
+  const product = productJson?.data?.product;
+  const pidVariant = product?.variants?.edges?.[0]?.node;
+  if (product && pidVariant) {
+    return {
+      barcode: pidVariant.barcode,
+      title: product.title,
+      handle: product.handle,
+      author: pidVariant.sku || "Unknown",
+      product_id: parseInt(product.id.split("/").pop())
+    };
+  }
+  return null;
 };
 
 const BlacklistManager = () => {
@@ -122,19 +119,40 @@ const BlacklistManager = () => {
 
     setLoading(true);
     const fetchedEntries: BlacklistEntry[] = [];
+    const notFound: string[] = [];
+    const alreadyListed: string[] = [];
+    const failed: string[] = [];
+    let lastError = "";
     
     try {
       for (const input of normalizedInputs) {
-        const enriched = await fetchShopifyProductDetails(input);
-        if (enriched && !entries.some(e => e.product_id === enriched.product_id)) {
+        let enriched: BlacklistEntry | null = null;
+        try {
+          enriched = await fetchShopifyProductDetails(input);
+        } catch (err) {
+          console.error("Shopify lookup error:", err);
+          failed.push(input);
+          lastError = err instanceof Error ? err.message : String(err);
+          continue;
+        }
+        if (!enriched) {
+          notFound.push(input);
+        } else if (entries.some(e => e.product_id === enriched!.product_id)) {
+          alreadyListed.push(input);
+        } else {
           fetchedEntries.push(enriched);
         }
       }
 
       if (fetchedEntries.length === 0) {
+        const parts = [
+          failed.length ? `Lookup failed for: ${failed.join(", ")}${lastError ? ` (${lastError})` : ""}` : "",
+          notFound.length ? `Not found in Shopify: ${notFound.join(", ")}` : "",
+          alreadyListed.length ? `Already on the blacklist: ${alreadyListed.join(", ")}` : "",
+        ].filter(Boolean);
         setErrorModal({ 
-          title: "No New Products", 
-          message: "Products not found or already exist in the blacklist." 
+          title: failed.length ? "Lookup Failed" : "No New Products", 
+          message: parts.join(". ") + "." 
         });
       } else {
         setPreviewEntries(fetchedEntries);
@@ -186,7 +204,7 @@ const BlacklistManager = () => {
   const filteredEntries = useMemo(() => {
     let filtered = entries.filter(e => {
       const term = searchTerm.toLowerCase();
-      return e.title.toLowerCase().includes(term) || e.barcode.includes(term) || e.author.toLowerCase().includes(term);
+      return (e.title ?? "").toLowerCase().includes(term) || (e.barcode ?? "").includes(term) || (e.author ?? "").toLowerCase().includes(term);
     });
     if (sortConfig) {
       filtered.sort((a, b) => {
