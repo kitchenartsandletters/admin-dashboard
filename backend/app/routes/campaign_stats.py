@@ -1,24 +1,13 @@
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 from app.supabase_client import supabase
+from app.auth import validate_admin_token
 from typing import Dict, Any
 import time
 import os
 import logging
 logger = logging.getLogger("uvicorn.error")
 
-def validate_admin_token(request: Request, token: str = ""):
-    """Accept token via query param OR Authorization header"""
-    header = request.headers.get("Authorization", "")
-    provided = token
-
-    if header.lower().startswith("bearer "):
-        provided = header.split(" ", 1)[1].strip()
-
-    expected = os.getenv("VITE_ADMIN_TOKEN")
-    if not expected or provided != expected:
-        raise HTTPException(status_code=403, detail="Unauthorized")
-
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(validate_admin_token)])
 
 @router.get("/campaign-stats")
 async def get_campaign_stats(
@@ -27,7 +16,6 @@ async def get_campaign_stats(
     token: str = ""
 ) -> Dict[str, Any]:
 
-    validate_admin_token(request, token)
 
     # --- 1. TOTALS (recipients) ---
     try:

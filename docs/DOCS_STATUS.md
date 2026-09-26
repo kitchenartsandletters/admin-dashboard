@@ -10,7 +10,7 @@ storefront request form), the authoritative doc is
 **`request-service/docs/DOCS_STATUS.md`**, which holds the verified dependency
 map across both repos.
 
-Last updated: 2026-09-26
+Last updated: 2026-09-26 (decoupling step 3)
 
 | Document | Status |
 |---|---|
@@ -32,15 +32,16 @@ Last updated: 2026-09-26
 | Frontend | `admin.kitchenartsandletters.com` | Calls each module's backend directly from the browser. |
 | Backend (`backend/`) | `outofstock-notify-frontend-production.up.railway.app` | **Misleading legacy name — this is the backend.** Frontend reaches it as `VITE_API_BASE_URL`. Uses the `request-service` Supabase project. |
 
-The backend serves reports, calendar/schedule overrides, exclusions, campaign
-stats, **and half of the request module** (list, status, archive, notes).
-The other half runs in `request-service`. See the map there.
+The backend serves **only** reports, calendar/schedule overrides, exclusions,
+campaign stats, and an unauthenticated `GET /api/health`. It no longer talks to
+Shopify. The whole request module (list, status, archive, notes, blacklist,
+storefront ingest) runs in `request-service` since decoupling steps 1–3.
 
 ---
 
 ## Live code landmines (backend)
 
-### Landmine 1: dead duplicate request routes, including an unauthenticated Shopify proxy
+### Landmine 1: dead duplicate request routes, including an unauthenticated Shopify proxy — RESOLVED by decoupling step 3 (routes, `routes.py`, proxy and retired-token code deleted)
 
 `backend/app/routes/interest.py` is mounted and contains `POST /interest`,
 `/blacklist*`, and `POST /shopify/graphql`. **No frontend code calls them**
@@ -52,7 +53,7 @@ copy.
 **Needs:** delete the unused routes and `routes.py` (decoupling phase, or
 sooner as a standalone PR).
 
-### Landmine 2: `validate_admin_token` prefers the damaged-books token
+### Landmine 2: `validate_admin_token` prefers the damaged-books token — RESOLVED by decoupling step 3 (one `app/auth.py`, `VITE_ADMIN_TOKEN` only, applied as a router dependency so auth runs before body validation)
 
 In `routes/reports.py` (and the helpers in `interest.py` / `routes.py`),
 `expected = VITE_DBS_ADMIN_TOKEN or VITE_ADMIN_TOKEN`. Reports and campaign
@@ -61,7 +62,7 @@ DBS token is unset on this service or equal to the admin token.
 `VITE_DBS_ADMIN_TOKEN` belongs to damaged-books-service and should not appear
 here. **Needs:** one token owned by this backend.
 
-### Landmine 3: retired Shopify token in `reports.py`
+### Landmine 3: retired Shopify token in `reports.py` — RESOLVED by decoupling step 3 (lookup removed; staff type the optional title)
 
 The exclusions route reads `SHOPIFY_ACCESS_TOKEN` to look up a product title.
 It fails gracefully (title stays empty), and also reads
@@ -78,9 +79,14 @@ drop the lookup and take the title from the caller.
   `src/services/requests/requestApi.ts` — one `VITE_REQUEST_BASE_URL`, one
   `VITE_REQUEST_ADMIN_TOKEN`, sent as `X-Admin-Token`. `VITE_API_BASE_URL` is
   now used only for this backend's own routes (reports, calendar, campaign).
-- Remaining: `SystemStatusService.ts` still health-checks `/api/interest` on
-  both backends with `?token=`. Update in step 3, when this backend's
-  `/api/interest` is deleted.
+- Step 3: `SystemStatusService.ts` checks `GET /api/health` on both backends
+  (no token, no data) instead of `/api/interest?token=`.
+
+### Landmine 5: `.gitignore` ignored every `tests/` directory — FIXED for `backend/tests/` in step 3
+
+A blanket `tests/` rule meant new test files were silently never committed
+(the same trap preorder-service hit). Step 3 adds `!backend/tests/`. If you add
+tests elsewhere, check `git check-ignore -v <file>` first.
 
 ---
 

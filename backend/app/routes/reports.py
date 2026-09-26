@@ -1,14 +1,16 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from app.supabase_client import supabase
+from app.auth import validate_admin_token
 import os
 import logging
-import requests
 
 logger = logging.getLogger("uvicorn.error")
 
-router = APIRouter(prefix="/reports", tags=["reports"])
+# Auth runs as a router dependency, before request-body validation, so an
+# unauthenticated call gets 403 rather than a 422 that describes the schema.
+router = APIRouter(prefix="/reports", tags=["reports"], dependencies=[Depends(validate_admin_token)])
 
 VALID_REPORT_IDS = {
     "daily_sales_kal",
@@ -46,21 +48,10 @@ class CalendarOverrideRequest(BaseModel):
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
 
-def validate_admin_token(request: Request):
-    header = request.headers.get("Authorization", "")
-    token  = None
-    if header.lower().startswith("bearer "):
-        token = header.split(" ", 1)[1].strip()
-    expected = os.getenv("VITE_DBS_ADMIN_TOKEN") or os.getenv("VITE_ADMIN_TOKEN")
-    if not expected or token != expected:
-        raise HTTPException(status_code=403, detail="Unauthorized")
-
-
 # ─── Report job routes ────────────────────────────────────────────────────────
 
 @router.post("/run")
 def run_report(payload: RunReportRequest, request: Request):
-    validate_admin_token(request)
 
     if payload.report_id not in VALID_REPORT_IDS:
         raise HTTPException(
@@ -92,7 +83,6 @@ def run_report(payload: RunReportRequest, request: Request):
 
 @router.get("/jobs/{job_id}")
 def get_job(job_id: str, request: Request):
-    validate_admin_token(request)
 
     try:
         resp = (
@@ -116,7 +106,6 @@ def get_job(job_id: str, request: Request):
 
 @router.get("/jobs")
 def list_jobs(request: Request, report_id: Optional[str] = None):
-    validate_admin_token(request)
 
     try:
         q = (
@@ -144,7 +133,6 @@ def get_schedule_override(
     report_id: str,
     scheduled_date: str,
 ):
-    validate_admin_token(request)
 
     try:
         resp = (
@@ -167,7 +155,6 @@ def get_schedule_override(
 
 @router.post("/schedule-override")
 def upsert_schedule_override(payload: ScheduleOverrideRequest, request: Request):
-    validate_admin_token(request)
 
     if payload.report_id not in VALID_REPORT_IDS:
         raise HTTPException(status_code=422, detail=f"Unknown report_id '{payload.report_id}'")
@@ -222,7 +209,6 @@ def upsert_schedule_override(payload: ScheduleOverrideRequest, request: Request)
 
 @router.delete("/schedule-override/{override_id}")
 def delete_schedule_override(override_id: str, request: Request):
-    validate_admin_token(request)
 
     try:
         supabase \
@@ -245,7 +231,6 @@ def list_calendar_overrides(
     year: Optional[int] = None,
     location_id: str = "kal",
 ):
-    validate_admin_token(request)
 
     try:
         q = (
@@ -267,7 +252,6 @@ def list_calendar_overrides(
 
 @router.post("/calendar-overrides")
 def upsert_calendar_override(payload: CalendarOverrideRequest, request: Request):
-    validate_admin_token(request)
 
     if payload.override_type not in VALID_OVERRIDE_TYPES:
         raise HTTPException(
@@ -323,7 +307,6 @@ def delete_calendar_override(
     override_type: str,
     location_id: str = "kal",
 ):
-    validate_admin_token(request)
 
     try:
         supabase \
@@ -350,7 +333,6 @@ class ExclusionRequest(BaseModel):
 
 @router.get("/exclusions")
 def list_exclusions(request: Request):
-    validate_admin_token(request)
     try:
         resp = (
             supabase
@@ -368,40 +350,11 @@ def list_exclusions(request: Request):
 
 @router.post("/exclusions")
 def add_exclusion(payload: ExclusionRequest, request: Request):
-    validate_admin_token(request)
 
-    product_title = payload.product_title
-
-    if not product_title:
-        try:
-            shop_url     = os.getenv("SHOP_URL", "")
-            access_token = os.getenv("SHOPIFY_ACCESS_TOKEN", "")
-            api_version  = os.getenv("SHOPIFY_API_VERSION", "2025-10")
-
-            if shop_url and access_token:
-                numeric_id = payload.product_id.split("/")[-1]
-                gql_query  = """
-                    query GetProduct($id: ID!) {
-                      product(id: $id) { title }
-                    }
-                """
-                gid = payload.product_id if payload.product_id.startswith("gid://") \
-                    else f"gid://shopify/Product/{numeric_id}"
-
-                resp = requests.post(
-                    f"https://{shop_url}/admin/api/{api_version}/graphql.json",
-                    headers={
-                        "X-Shopify-Access-Token": access_token,
-                        "Content-Type": "application/json",
-                    },
-                    json={"query": gql_query, "variables": {"id": gid}},
-                    timeout=10,
-                )
-                if resp.ok:
-                    data = resp.json()
-                    product_title = (data.get("data") or {}).get("product", {}).get("title")
-        except Exception as e:
-            logger.warning(f"Could not resolve product title from Shopify: {e}")
+    # Title comes from the caller (the form's optional field). This backend no
+    # longer calls Shopify; the old lookup used the retired SHOPIFY_ACCESS_TOKEN
+    # and had been failing silently. Blank titles are stored as NULL.
+    product_title = (payload.product_title or "").strip() or None
 
     try:
         product_id = payload.product_id if payload.product_id.startswith("gid://") \
@@ -428,7 +381,6 @@ def add_exclusion(payload: ExclusionRequest, request: Request):
 
 @router.delete("/exclusions/{exclusion_id}")
 def remove_exclusion(exclusion_id: str, request: Request):
-    validate_admin_token(request)
     try:
         supabase \
             .schema("reports") \

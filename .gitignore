@@ -36,6 +36,9 @@ env/
 .supabase/
 
 tests/
+# Keep the backend's guard tests under version control (a blanket tests/ rule
+# silently dropped them). See docs/DOCS_STATUS.md Landmine 5.
+!backend/tests/
 *.csv
 frontend/backfill_tags_collections.py
 frontend/CollectionBackfill.py
