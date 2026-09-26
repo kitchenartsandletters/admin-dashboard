@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import ConfirmModal from "./ConfirmModal";
 import RightSidebar from "./RightSidebar";
+import { requestFetch, requestPost, shopifyGraphQL } from "../services/requests/requestApi";
 
 interface BlacklistEntry {
   barcode: string | null;
@@ -10,23 +11,10 @@ interface BlacklistEntry {
   product_id: number;
 }
 
-const ADMIN_API_TOKEN = import.meta.env.VITE_ADMIN_TOKEN;
-const BLACKLIST_API_BASE = import.meta.env.VITE_BLACKLIST_URL;
 const SHOPIFY_ADMIN_PREFIX = 'https://admin.shopify.com/store/castironbooks/products/';
 
 // Throws on proxy/auth/Shopify errors so they are not misreported as "not found".
-const shopifyLookup = async (query: string) => {
-  const res = await fetch(`${BLACKLIST_API_BASE}/api/shopify/graphql`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Admin-Token": ADMIN_API_TOKEN || "" },
-    body: JSON.stringify({ query })
-  });
-  const json = await res.json().catch(() => null);
-  if (!res.ok || json?.errors) {
-    throw new Error(`Lookup failed (HTTP ${res.status})${json?.errors ? `: ${JSON.stringify(json.errors).slice(0, 200)}` : ""}`);
-  }
-  return json;
-};
+const shopifyLookup = (query: string) => shopifyGraphQL(query);
 
 const fetchShopifyProductDetails = async (input: string): Promise<BlacklistEntry | null> => {
   const barcodeQuery = `{
@@ -96,7 +84,7 @@ const BlacklistManager = () => {
 
   const fetchBlacklist = async () => {
     try {
-      const res = await fetch(`${BLACKLIST_API_BASE}/api/blacklist?token=${ADMIN_API_TOKEN}`);
+      const res = await requestFetch('/api/blacklist');
       const json = await res.json();
       setEntries(json);
     } catch (err) { console.error(err); }
@@ -170,17 +158,18 @@ const BlacklistManager = () => {
   const confirmAdd = async (entriesToAdd: BlacklistEntry[]) => {
     setLoading(true);
     try {
-      const res = await fetch(`${BLACKLIST_API_BASE}/api/blacklist/add?token=${ADMIN_API_TOKEN}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(entriesToAdd),
-      });
+      const res = await requestPost('/api/blacklist/add', entriesToAdd);
       if (res.ok) {
         setSuccessModal("Successfully added to blacklist");
         fetchBlacklist();
         setBarcodeInput("");
+      } else {
+        setErrorModal({ title: "Add Failed", message: `The server rejected the add (HTTP ${res.status}). Nothing was saved.` });
       }
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+      setErrorModal({ title: "Add Failed", message: "A network error occurred. Nothing was saved." });
+    }
     setLoading(false);
     setPreviewEntries(null);
   };
@@ -190,13 +179,14 @@ const BlacklistManager = () => {
     setRemoving(product_id.toString());
     removeTimeoutRef.current = setTimeout(async () => {
       try {
-        await fetch(`${BLACKLIST_API_BASE}/api/blacklist/remove?token=${ADMIN_API_TOKEN}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ product_id })
-        });
+        const res = await requestPost('/api/blacklist/remove', { product_id });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        // Only drop the row once the server confirms (a failed remove used to vanish from the UI anyway).
         setEntries((prev) => prev.filter(e => e.product_id !== product_id));
-      } catch (err) { console.error(err); }
+      } catch (err) {
+        console.error(err);
+        setErrorModal({ title: "Remove Failed", message: `The entry was not removed (${err instanceof Error ? err.message : "network error"}).` });
+      }
       setRemoving(null);
     }, 400);
   };
@@ -225,9 +215,7 @@ const BlacklistManager = () => {
   const handleExport = async () => {
     setIsExporting(true);
     try {
-      const res = await fetch(`${BLACKLIST_API_BASE}/api/blacklist/export_snippet?token=${ADMIN_API_TOKEN}`, { 
-        method: "POST" 
-      });
+      const res = await requestPost('/api/blacklist/export_snippet');
       const json = await res.json();
       setExportModal({ 
         success: json.success, 

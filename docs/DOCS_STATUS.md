@@ -68,13 +68,19 @@ It fails gracefully (title stays empty), and also reads
 `SHOPIFY_API_VERSION` with its own default. **Needs:** client credentials, or
 drop the lookup and take the title from the caller.
 
-### Landmine 4: frontend cross-wiring (partly fixed in Phase 0)
+### Landmine 4: frontend cross-wiring — RESOLVED by decoupling step 2
 
 - `RequestService.tsx` / `RequestTable.tsx` sent `VITE_DBS_ADMIN_TOKEN` to
-  request-service. **Fixed in Phase 0:** they send `VITE_ADMIN_TOKEN`.
-- Request code uses three base-URL vars (`VITE_API_BASE_URL`,
-  `VITE_BLACKLIST_URL`, `VITE_REQUEST_URL`) for two hosts. **Needs:** one
-  `VITE_REQUEST_BASE_URL` after decoupling.
+  request-service. Fixed in Phase 0 (PR #86).
+- Request code used three base-URL vars (`VITE_API_BASE_URL`,
+  `VITE_BLACKLIST_URL`, `VITE_REQUEST_URL`) for two hosts and put the token in
+  `?token=` query strings. **Step 2:** every request call now goes through
+  `src/services/requests/requestApi.ts` — one `VITE_REQUEST_BASE_URL`, one
+  `VITE_REQUEST_ADMIN_TOKEN`, sent as `X-Admin-Token`. `VITE_API_BASE_URL` is
+  now used only for this backend's own routes (reports, calendar, campaign).
+- Remaining: `SystemStatusService.ts` still health-checks `/api/interest` on
+  both backends with `?token=`. Update in step 3, when this backend's
+  `/api/interest` is deleted.
 
 ---
 

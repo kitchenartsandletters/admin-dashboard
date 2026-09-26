@@ -5,6 +5,7 @@ import RequestTable from './RequestTable';
 import { InterestEntry, StatusPhase, STATUS_ORDER, getStatusIndex } from '../types';
 import ConfirmModal from './ConfirmModal';
 import UndoToast from './UndoToast';
+import { requestFetch, requestPost, shopifyGraphQL } from '../services/requests/requestApi';
 
 declare module 'jspdf' {
   interface jsPDF {
@@ -25,47 +26,18 @@ function decodeHTMLEntities(str: string) {
 const SHOPIFY_ADMIN_PREFIX = 'https://admin.shopify.com/store/castironbooks/products/';
 const ONLINE_STORE_PREFIX = 'https://www.kitchenartsandletters.com/products/';
 
-// Fallback logic to ensure we have a URL to hit
-const API_BASE = import.meta.env.VITE_BLACKLIST_URL || import.meta.env.VITE_REQUEST_URL;
-const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN; // request-service token (was VITE_DBS_ADMIN_TOKEN, which belongs to damaged-books-service)
-
-// GraphQL Fetcher for Handle
+// Product handle lookup via request-service's admin-gated Shopify proxy.
 const fetchShopifyHandle = async (productId: number): Promise<string | null> => {
-  if (!API_BASE) {
-    console.warn("[RequestService] API_BASE is missing.");
-    return null;
-  }
-
   const query = `{
     product(id: "gid://shopify/Product/${productId}") {
       handle
     }
   }`;
-
   try {
-    console.log(`[RequestService] 🚀 Sending GraphQL for ${productId}...`);
-    const res = await fetch(`${API_BASE}/api/shopify/graphql`, {
-      method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-        "X-Admin-Token": ADMIN_TOKEN || "", 
-      },
-      body: JSON.stringify({ query })
-    });
-
-    if (!res.ok) {
-      console.error(`[RequestService] ❌ HTTP Error: ${res.status}`);
-      return null;
-    }
-
-    const json = await res.json();
-    console.log(`[RequestService] ✅ JSON Received for ${productId}`, json);
-    
-    // Safety check for deep nesting
-    const handle = json?.data?.product?.handle;
-    return handle || null;
+    const json = await shopifyGraphQL(query);
+    return json?.data?.product?.handle || null;
   } catch (err) {
-    console.error("[RequestService] 💥 Exception:", err);
+    console.error("[RequestService] handle lookup failed:", err);
     return null;
   }
 };
@@ -512,14 +484,10 @@ const RequestService = () => {
         return updated;
       });
 
-      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/update_status?token=${import.meta.env.VITE_ADMIN_TOKEN}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          request_id: requestId,
-          new_status: newStatus,
-          changed_by: "admin"
-        })
+      const res = await requestPost('/api/update_status', {
+        request_id: requestId,
+        new_status: newStatus,
+        changed_by: "admin"
       });
 
       if (!res.ok) throw new Error("Failed to update status");
@@ -557,8 +525,8 @@ useEffect(() => {
     // -----------------------------------------------------------
 
     try {
-      const res = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL}/api/interest?token=${import.meta.env.VITE_ADMIN_TOKEN}&collection_filter=${collectionFilter}&page=${page}&limit=${limit}&search=${encodeURIComponent(selectedFilter)}&statuses=${encodeURIComponent(selectedStatuses.join(","))}&sort_field=${sortConfig?.key || ''}&sort_order=${sortConfig?.direction || ''}&_ts=${Date.now()}`
+      const res = await requestFetch(
+        `/api/interest?collection_filter=${collectionFilter}&page=${page}&limit=${limit}&search=${encodeURIComponent(selectedFilter)}&statuses=${encodeURIComponent(selectedStatuses.join(","))}&sort_field=${sortConfig?.key || ''}&sort_order=${sortConfig?.direction || ''}&_ts=${Date.now()}`
       );
       let json: any;
       try {
@@ -809,10 +777,7 @@ useEffect(() => {
           if (ids.length === 0) { setArchiveConfirmOpen(false); return; }
           setArchiveBusy(true);
           try {
-            const res = await fetch(
-              `${import.meta.env.VITE_API_BASE_URL}/api/archive/bulk?token=${import.meta.env.VITE_ADMIN_TOKEN}`,
-              { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) }
-            );
+            const res = await requestPost('/api/archive/bulk', { ids });
             if (!res.ok) throw new Error('Failed to archive selected');
             setData(prev => prev.filter(item => !ids.includes(item.id)));
             clearSelection();

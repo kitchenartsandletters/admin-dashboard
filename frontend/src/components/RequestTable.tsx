@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { InterestEntry, StatusPhase, STATUS_ORDER } from '../types';
 import RightSidebar from './RightSidebar';
 import RequestNotes from './RequestNotes';
+import { shopifyGraphQL } from '../services/requests/requestApi';
 
 interface RequestTableProps {
   filteredData: InterestEntry[];
@@ -20,39 +21,18 @@ const statuses = STATUS_ORDER;
 const SHOPIFY_ADMIN_PREFIX = 'https://admin.shopify.com/store/castironbooks/products/';
 const ONLINE_STORE_PREFIX = 'https://www.kitchenartsandletters.com/products/';
 
-// --- Environment Variables ---
-// Fallback logic to ensure we have a URL to hit
-const API_BASE = import.meta.env.VITE_REQUEST_URL || 'http://localhost:5173';
-const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN; // request-service token (was VITE_DBS_ADMIN_TOKEN, which belongs to damaged-books-service)
-
-// --- GraphQL Fetcher ---
+// --- GraphQL Fetcher (request-service's admin-gated Shopify proxy) ---
 const fetchShopifyHandle = async (productId: number): Promise<string | null> => {
-  if (!API_BASE) return null;
-
   const query = `{
     product(id: "gid://shopify/Product/${productId}") {
       handle
     }
   }`;
-
   try {
-    const res = await fetch(`${API_BASE}/api/shopify/graphql`, {
-      method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-        "X-Admin-Token": ADMIN_TOKEN || "", // Pass token if available
-      },
-      body: JSON.stringify({ query })
-    });
-
-    if (!res.ok) {
-      // Return null on HTTP error so UI can stop loading
-      return null;
-    }
-
-    const json = await res.json();
+    const json = await shopifyGraphQL(query);
     return json?.data?.product?.handle || null;
   } catch (err) {
+    // Return null so the UI can stop loading
     console.error("Error fetching Shopify handle:", err);
     return null;
   }
