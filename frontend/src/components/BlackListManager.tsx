@@ -72,7 +72,6 @@ const BlacklistManager = () => {
   const [previewEntries, setPreviewEntries] = useState<BlacklistEntry[] | null>(null);
   const [successModal, setSuccessModal] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [exportModal, setExportModal] = useState<{ success: boolean; message: string } | null>(null);
   const [inputError, setInputError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortConfig, setSortConfig] = useState<{ key: keyof BlacklistEntry; direction: "asc" | "desc" } | null>(null);
@@ -80,7 +79,6 @@ const BlacklistManager = () => {
   const [selectedEntry, setSelectedEntry] = useState<BlacklistEntry | null>(null);
   const [docsFilePath, setDocsFilePath] = useState<string | null>(null);
   const removeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [isExporting, setIsExporting] = useState(false);
 
   const fetchBlacklist = async () => {
     try {
@@ -209,23 +207,6 @@ const BlacklistManager = () => {
   const closeModal = () => {
     setErrorModal(null);
     setSuccessModal(null);
-    setExportModal(null);
-  };
-
-  const handleExport = async () => {
-    setIsExporting(true);
-    try {
-      const res = await requestPost('/api/blacklist/export_snippet');
-      const json = await res.json();
-      setExportModal({ 
-        success: json.success, 
-        message: json.success ? "Liquid snippet exported successfully." : "Export failed." 
-      });
-    } catch (err) {
-      setExportModal({ success: false, message: "A network error occurred during export." });
-    } finally {
-      setIsExporting(false);
-    }
   };
 
   return (
@@ -325,33 +306,10 @@ const BlacklistManager = () => {
         </table>
       </div>
 
-      <div className="flex justify-end pt-4 border-t dark:border-gray-800">
-        <button
-          onClick={handleExport}
-          disabled={isExporting}
-          className={`
-            flex items-center gap-2 px-6 py-2.5 rounded-md text-sm font-bold transition-all
-            ${isExporting 
-              ? "bg-gray-400 cursor-not-allowed text-white" 
-              : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm active:scale-95"
-            }
-          `}
-        >
-          {isExporting ? (
-            <>
-              <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-              Exporting to Shopify...
-            </>
-          ) : (
-            <>
-              Export to Shopify
-            </>
-          )}
-        </button>
-      </div>
+      <p className="pt-4 border-t dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400">
+        Changes apply to the storefront immediately: each listed product carries the Shopify
+        metafield <code>custom.hide_request_form</code>, which hides its request form. No export step.
+      </p>
 
       {/* Sidebar and Guides */}
       <RightSidebar
@@ -404,11 +362,11 @@ const BlacklistManager = () => {
         </ConfirmModal>
       )}
 
-      {(errorModal || successModal || exportModal) && (
+      {(errorModal || successModal) && (
         <ConfirmModal
           open={true}
-          title={errorModal?.title || (exportModal?.success ? "Success" : "Status")}
-          description={errorModal?.message || successModal || exportModal?.message}
+          title={errorModal?.title || "Success"}
+          description={errorModal?.message || successModal || undefined}
           confirmLabel="OK"
           onConfirm={closeModal}
           onCancel={closeModal} // Missing property fixed
