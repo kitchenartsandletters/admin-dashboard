@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../auth/AuthProvider';
+import { DASHBOARD_ADMIN_TOKEN, DASHBOARD_BASE_URL } from '../../services/dashboard/dashboardApi';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -30,8 +31,8 @@ export default function ReportExclusionsPage() {
   const { role } = useAuth();
   const canEdit  = role === 'admin' || role === 'editor';
 
-  const apiBase = import.meta.env.VITE_API_BASE_URL;
-  const token   = import.meta.env.VITE_ADMIN_TOKEN;
+  const apiBase = DASHBOARD_BASE_URL;
+  const token   = DASHBOARD_ADMIN_TOKEN;
 
   const [exclusions, setExclusions] = useState<Exclusion[]>([]);
   const [loading, setLoading]       = useState(true);

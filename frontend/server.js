@@ -1,7 +1,6 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createProxyMiddleware } from 'http-proxy-middleware';
 import dotenv from 'dotenv';
 
 // Load environment variables from .env file
@@ -12,25 +11,10 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 4173;
-const VITE_API_BASE_URL = process.env.VITE_API_BASE_URL; // Get directly, will validate
-
-// Validate VITE_API_BASE_URL early
-if (!VITE_API_BASE_URL) {
-  console.error('❌ ERROR: VITE_API_BASE_URL is not set in your .env file.');
-  process.exit(1);
-}
-
-try {
-  new URL(VITE_API_BASE_URL); // Validate if it's a valid URL format
-} catch (err) {
-  console.error(`❌ ERROR: Invalid VITE_API_BASE_URL "${VITE_API_BASE_URL}". Please ensure it's a valid URL.`);
-  console.error('[DETAILS]', err.message);
-  process.exit(1);
-}
-
-// Log the resolved VITE_API_BASE_URL for debugging
-console.log(`[INFO] Resolved VITE_API_BASE_URL: ${VITE_API_BASE_URL}`);
-
+// Serves the built dashboard (dist/) with a client-side-routing fallback.
+// The former /api proxy to the dashboard backend was removed: every screen calls
+// its backend by absolute URL (see src/services/*/*Api.ts, src/api/*), so the
+// proxy was unused, yet its required VITE_API_BASE_URL could crash startup.
 
 // Scoped Basic authentication middleware
 // app.use((req, res, next) => {
@@ -51,35 +35,6 @@ console.log(`[INFO] Resolved VITE_API_BASE_URL: ${VITE_API_BASE_URL}`);
 // Serve static files from the 'dist' directory
 app.use(express.static(path.resolve(__dirname, 'dist')));
 console.log(`[INFO] Serving static files from: ${path.resolve(__dirname, 'dist')}`);
-
-try {
-  const apiProxy = createProxyMiddleware({
-    target: VITE_API_BASE_URL,
-    changeOrigin: true,
-    // Using a function for pathRewrite for more explicit control and debugging
-    pathRewrite: function (path, req) {
-      const newPath = path.replace(/^\/api/, '');
-      console.log(`[PROXY REWRITE] Original path: ${path} -> Rewritten path: ${newPath}`);
-      return newPath;
-    },
-    logLevel: 'debug', // Keep debug level for detailed proxy logs
-    onProxyReq: (proxyReq, req, res) => {
-      console.log(`[PROXY REQ] Proxying ${req.method} ${req.originalUrl} to ${proxyReq.protocol}//${proxyReq.host}${proxyReq.path}`);
-    },
-    onError: (err, req, res, target) => {
-      console.error(`[PROXY ERROR] Proxy error for request ${req.method} ${req.originalUrl} to ${target}:`, err);
-      res.status(500).send('Proxy error');
-    }
-  });
-
-  app.use('/api', apiProxy);
-  console.log('[INFO] Proxy initialized for /api with target:', VITE_API_BASE_URL);
-} catch (err) {
-  console.error('[PROXY INIT ERROR] Failed to initialize proxy:', err.message);
-  // Log the full error stack for more context if it's not a URL validation issue
-  console.error('[DETAILS]', err);
-  process.exit(1);
-}
 
 // Catch-all to serve index.html for all other routes (for client-side routing)
 app.get('/*', (req, res) => {
