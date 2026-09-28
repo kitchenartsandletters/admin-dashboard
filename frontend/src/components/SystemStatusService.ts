@@ -1,3 +1,4 @@
+import { DASHBOARD_BASE_URL } from '../services/dashboard/dashboardApi';
 export type EndpointStatus = {
   url: string;
   status: 'Healthy' | 'Degraded' | 'Offline';
@@ -59,7 +60,7 @@ export async function fetchSystemStatuses(): Promise<ServiceStatus[]> {
       lastChecked: now,
       endpoints: await Promise.all([
         // Unauthenticated liveness endpoint; the old /api/interest check moved to request-service.
-        check(`${import.meta.env.VITE_ADMIN_BACKEND}/api/health`),
+        check(`${DASHBOARD_BASE_URL}/api/health`),
       ]),
     },
     {

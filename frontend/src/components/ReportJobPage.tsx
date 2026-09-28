@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getReportById } from '../reports/registry';
+import { DASHBOARD_ADMIN_TOKEN, DASHBOARD_BASE_URL } from '../services/dashboard/dashboardApi';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -518,8 +519,8 @@ export default function ReportJobPage() {
   const pollTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tickTimer   = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const apiBase = import.meta.env.VITE_API_BASE_URL;
-  const token   = import.meta.env.VITE_ADMIN_TOKEN;
+  const apiBase = DASHBOARD_BASE_URL;
+  const token   = DASHBOARD_ADMIN_TOKEN;
 
   const isTerminal = (status: JobStatus) =>
     ['success', 'failed', 'cancelled', 'skipped'].includes(status);

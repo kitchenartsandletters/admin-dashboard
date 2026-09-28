@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ReportDefinition, DeliveryMethod, ReportFormat } from './registry';
 import { useAuth } from '../auth/AuthProvider';
+import { DASHBOARD_ADMIN_TOKEN, DASHBOARD_BASE_URL } from '../services/dashboard/dashboardApi';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -199,8 +200,8 @@ export default function ReportCard({ report, onRun }: Props) {
   const [recipients, setRecipients]                 = useState<string>('');  // comma-separated, empty = use env default
   const [ignoreExclusions, setIgnoreExclusions]       = useState(false);
 
-  const apiBase = import.meta.env.VITE_API_BASE_URL;
-  const token   = import.meta.env.VITE_ADMIN_TOKEN;
+  const apiBase = DASHBOARD_BASE_URL;
+  const token   = DASHBOARD_ADMIN_TOKEN;
 
   // Initialise on-demand date range to the default window
   useEffect(() => {
