@@ -10,7 +10,7 @@ storefront request form), the authoritative doc is
 **`request-service/docs/DOCS_STATUS.md`**, which holds the verified dependency
 map across both repos.
 
-Last updated: 2026-09-26 (signed-copy campaign retired)
+Last updated: 2026-09-28 (backend renamed + custom domain; frontend env pairs; server.js)
 
 | Document | Status |
 |---|---|
@@ -25,16 +25,34 @@ Last updated: 2026-09-26 (signed-copy campaign retired)
 
 ---
 
-## What this repo deploys (verified 2026-09-26)
+## What this repo deploys (verified 2026-09-28)
 
-| Piece | Railway domain | Notes |
+| Piece | Domain | Notes |
 |---|---|---|
-| Frontend | `admin.kitchenartsandletters.com` | Calls each module's backend directly from the browser. |
-| Backend (`backend/`) | `outofstock-notify-frontend-production.up.railway.app` | **Misleading legacy name — this is the backend.** Frontend reaches it as `VITE_API_BASE_URL`. Uses the `request-service` Supabase project. |
+| Frontend (`frontend/`) | `admin.kitchenartsandletters.com` | Railway start command **`node server.js`**: serves `dist/` with a client-side-routing fallback (no proxy since #91). Calls each module's backend directly from the browser. |
+| Backend (`backend/`) | **`dashboard-api.kitchenartsandletters.com`** (the legacy `outofstock-notify-frontend-production.up.railway.app` is still attached but unused by the dashboard) | Railway service **`admin-dashboard-backend`** (renamed 2026-09-28 from `outofstock-notify-frontend`). Uses the `request-service` Supabase project. |
+
+### Frontend → backend configuration
+
+Each backend is reached through one base-URL + token pair (Vite bakes these in
+at build time, so set them **before** merging a change that reads them):
+
+| Frontend vars | Backend | Read in |
+|---|---|---|
+| `VITE_DASHBOARD_BASE_URL` + `VITE_DASHBOARD_ADMIN_TOKEN` | this repo's backend | `src/services/dashboard/dashboardApi.ts` |
+| `VITE_REQUEST_BASE_URL` + `VITE_REQUEST_ADMIN_TOKEN` | request-service (`api.kitchenartsandletters.com`) | `src/services/requests/requestApi.ts` |
+| `VITE_SC_BASE_URL` + `VITE_SC_ADMIN_TOKEN` | supply-chain-service | `src/api/*` (not re-verified here) |
+| `VITE_BACKORDER_*`, `VITE_PREORDER_*`, `VITE_DBS_*` | their own services | not re-verified here |
+
+**Retired (do not reintroduce):** `VITE_API_BASE_URL`, `VITE_ADMIN_BACKEND`,
+the frontend's `VITE_ADMIN_TOKEN` (#91), `VITE_BLACKLIST_URL`,
+`VITE_REQUEST_URL` (decoupling step 2). None remain in the frontend's Railway
+variables (last removed 2026-09-28).
 
 The backend serves **only** reports, calendar/schedule overrides, exclusions,
-and an unauthenticated `GET /api/health`. Admin auth is `Authorization: Bearer`
-with `VITE_ADMIN_TOKEN` only (no `?token=`). It no longer talks to
+and an unauthenticated `GET /api/health`. Admin auth is `Authorization: Bearer`;
+the backend reads `VITE_ADMIN_TOKEN` (the frontend sends the same value as
+`VITE_DASHBOARD_ADMIN_TOKEN`). No `?token=`. It no longer talks to
 Shopify. The whole request module (list, status, archive, notes, blacklist,
 storefront ingest) runs in `request-service` since decoupling steps 1–3.
 
@@ -78,16 +96,33 @@ drop the lookup and take the title from the caller.
   `VITE_BLACKLIST_URL`, `VITE_REQUEST_URL`) for two hosts and put the token in
   `?token=` query strings. **Step 2:** every request call now goes through
   `src/services/requests/requestApi.ts` — one `VITE_REQUEST_BASE_URL`, one
-  `VITE_REQUEST_ADMIN_TOKEN`, sent as `X-Admin-Token`. `VITE_API_BASE_URL` is
-  now used only for this backend's own routes (reports, calendar, campaign).
+  `VITE_REQUEST_ADMIN_TOKEN`, sent as `X-Admin-Token`. This backend's own
+  routes use the matching pair `VITE_DASHBOARD_BASE_URL` /
+  `VITE_DASHBOARD_ADMIN_TOKEN` since #91.
 - Step 3: `SystemStatusService.ts` checks `GET /api/health` on both backends
-  (no token, no data) instead of `/api/interest?token=`.
+  (no token, no data) instead of `/api/interest?token=`. Since #91 it uses
+  `VITE_DASHBOARD_BASE_URL` (the duplicate `VITE_ADMIN_BACKEND` is retired).
 
 ### Landmine 5: `.gitignore` ignored every `tests/` directory — FIXED for `backend/tests/` in step 3
 
 A blanket `tests/` rule meant new test files were silently never committed
 (the same trap preorder-service hit). Step 3 adds `!backend/tests/`. If you add
 tests elsewhere, check `git check-ignore -v <file>` first.
+
+### Landmine 6: `server.js` exited at startup without `VITE_API_BASE_URL` — RESOLVED #91
+
+The frontend service runs `node server.js` (not `npm start`). It refused to
+start unless `VITE_API_BASE_URL` was set, only to configure an `/api` proxy
+that nothing used (every screen calls its backend by absolute URL). Deleting
+that variable would have taken the whole dashboard down. #91 removed the proxy
+and the check; static serving and the routing fallback are unchanged
+(verified locally with the variable unset). Leftover: `http-proxy-middleware`
+is still listed in `frontend/package.json` but unused.
+
+Note: `server.js` also contains a **commented-out HTTP basic-auth gate**. With
+it disabled, the dashboard's JavaScript bundle (including every `VITE_*` token)
+is served to anyone who loads the site. See request-service `DOCS_STATUS.md`
+Remaining: *session-based admin auth*.
 
 ### Retired: signed-copy campaign screens (2026-09-26)
 
