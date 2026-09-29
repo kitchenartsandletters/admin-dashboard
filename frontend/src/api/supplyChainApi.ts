@@ -19,6 +19,7 @@ import type {
 import type {
   B2bCustomer, B2bCustomerCreate,
 } from '../supply-chain/b2b-customers/b2bCustomerTypes'
+import { poPdfFilename } from '../supply-chain/purchase-orders/poNumber'
 
 const SC_BASE_URL = import.meta.env.VITE_SC_BASE_URL as string
 const SC_TOKEN    = import.meta.env.VITE_SC_ADMIN_TOKEN as string
@@ -168,7 +169,7 @@ export interface POLookupResult extends PurchaseOrder { match_type: 'exact' | 'f
 export async function lookupPurchaseOrders(opts: { poNumber?: string; supplierName?: string }): Promise<POLookupResult[]> {
   return sc(`/api/purchase-orders/lookup${qs({ po_number: opts.poNumber, supplier_name: opts.supplierName })}`)
 }
-export async function downloadPOPdf(poId: string, poNumber: string): Promise<void> { return _downloadBlob(`/api/purchase-orders/${poId}/pdf`, `KAL-${poNumber}.pdf`) }
+export async function downloadPOPdf(poId: string, poNumber: string): Promise<void> { return _downloadBlob(`/api/purchase-orders/${poId}/pdf`, poPdfFilename(poNumber)) }
 export async function downloadReceiptPdf(receiptId: string): Promise<void> {
   const shortId = receiptId.slice(0, 8).toUpperCase()
   return _downloadBlob(`/api/receiving/${receiptId}/pdf`, `KAL-RECEIPT-${shortId}.pdf`)
