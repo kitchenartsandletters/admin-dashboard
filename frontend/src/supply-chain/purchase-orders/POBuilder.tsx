@@ -809,9 +809,9 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                   <Label>PO number prefix</Label>
                   <Input value={poNumberPrefix} maxLength={8}
                     onChange={e => setPoNumberPrefix(e.target.value)}
-                    placeholder="KAL (default)" />
+                    placeholder="none (optional)" />
                   <p className="text-[11px] text-gray-400 mt-1">
-                    Optional. Sets the auto-number prefix, e.g. {poNumberPrefix.trim() ? `${poNumberPrefix.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)}-10001` : 'KAL-10001'}. Leave blank for KAL.
+                    Optional. Sets the auto-number prefix, e.g. {poNumberPrefix.trim() ? `${poNumberPrefix.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)}-10001` : '10001'}. Leave blank for no prefix — PO numbers are plain from now on.
                   </p>
                 </div>
 
