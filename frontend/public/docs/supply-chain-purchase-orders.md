@@ -63,6 +63,22 @@ A few things worth knowing:
 
 This is the same reading technology used for packing slips in Receiving, so if you're comfortable scanning slips there, this will feel familiar.
 
+## Importing a PO from a document
+
+**📄 Import from document** (on the Purchase Orders page) creates a whole PO from a supplier's packing list, invoice, or order form in one go — useful when an order was placed outside the system and the paperwork is the only record.
+
+1. **Upload** — add each page. Your phone's document scan works best.
+2. **Review** — every line the system read is listed, whether or not it's in the catalog.
+   - **Ordered** is what goes on the PO. **Shipped** is what the document says was sent, shown so you can compare. If they differ you'll see "2 short" or "1 over", and the difference is noted on the PO line. Record what actually arrives in Receiving, as usual.
+   - **Edit ISBN** on any line if the document's ISBN is wrong. The line is looked up again straight away.
+   - **Check the ISBN** alerts appear when a line looks suspicious — most often a pack or set code with the real book's ISBN printed underneath (Hachette prints these as "BOM Component"). Pick the right ISBN, or confirm the one shown. You can't continue until these are cleared.
+   - **Packs:** if you switch to the book's own ISBN, you may be offered **Convert** — for example 2 packs of 20 become 40 copies, and the pack's price is divided down to a per-copy price. Only convert if the quantity on the document really is packs.
+   - **Price:** only the publisher's list price (MSRP) is read — the PRICE column on Hachette lists. Discounts and net prices are ignored. If a document shows no list price, the line's price is left blank.
+   - **Not in catalog?** If the title was just added to Shopify, tap **Check Shopify**. If Shopify has it, it's added to the catalog and matched on the spot — the same as Register by ISBN in Catalog Gaps.
+3. **Confirm** — pick the supplier account, location and order date. The PO reference printed on the document is filled in as the external reference.
+
+Lines that still aren't in the catalog are left off the PO, and the confirm step tells you how many.
+
 ---
 
 ## Opening an order

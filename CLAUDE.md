@@ -12,3 +12,7 @@ Conventions for AI assistants (Claude Code and chat) working in this repo. Keep 
 ## Stack (orientation)
 - Vite + React 18 + TypeScript, React Router v7, Tailwind 3, lucide-react. Plain `fetch` + hooks; Supabase auth.
 - The preorder shipping-profiles screen is `frontend/src/components/preorder/ShippingProfiles.tsx`. It renders read-model data from the external `preorder-service` backend (deployed from *that* repo's `main`) under `/admin/preorders/shipping/profiles`; the dashboard does not compute preorder logic itself.
+
+## Prices (supply chain)
+- **KAL does not track cost.** The only price is the publisher's MSRP. Never read, store or display discount, net or "cost" figures, and show an unknown price as "—", never 0.
+- `purchase_order_lines.unit_cost` is a deprecated misnomer for MSRP, mid-rename to `unit_price`. Authoritative: `supply-chain-service/docs/PRICING_FIELDS.md`. Read it before touching any price field or label.

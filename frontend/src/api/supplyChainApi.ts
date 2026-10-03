@@ -178,9 +178,41 @@ export async function downloadReceiptPdf(receiptId: string): Promise<void> {
 // Order-image → draft PO lines (#56). Used by the PO builder's image-scan path.
 // Reuses the receiving vision parser server-side, then resolves each parsed
 // ISBN to a catalog product so matched lines arrive ready to add to a PO.
+//
+// Quantities: `quantity` is the printed SHIPPED quantity (or the document's only
+// quantity column) and is kept for back-compat with the PO builder scan path.
+// `quantity_ordered` is non-null only when the document prints a separate
+// ordered column (e.g. HBG packing lists: QUANTITY ORDERED vs QUANTITY SHIPPED).
+//
+// ISBN checking: `scanned_isbn` is what the document printed on the line;
+// `component_isbns` are ISBNs found on sub-rows beneath it (e.g. HBG
+// "BOM Component : <isbn> : ... : 20"), which the parser attaches to the parent
+// instead of emitting as lines. `isbn_source` says which one resolved.
+// Price: `unit_price` is the publisher MSRP per unit printed on the document
+// (HBG: the PRICE column). KAL does not track cost — see supply-chain-service
+// docs/PRICING_FIELDS.md. From the 2026-10 backend `unit_cost` is a deprecated
+// alias with the same value; older backends put whatever figure the parser read
+// (often a discounted net price) in `unit_cost`, so never read price from it.
+// All of these are optional so an older backend still type-checks.
+export interface OrderLineComponent { isbn: string; quantity_per_unit: number | null; occurrences: number }
+export type OrderLineFlag =
+  | 'no_isbn'                  // nothing ISBN-like was read
+  | 'isbn_checksum_invalid'    // printed ISBN fails the ISBN-13 check digit (likely misread)
+  | 'primary_isbn_unmatched'   // printed ISBN is not in the catalog
+  | 'component_isbns_present'  // sub-row ISBNs exist — the printed one may be a pack/set code
+  | 'component_isbn_used'      // resolved via a sub-row ISBN, not the printed one
 export interface ParsedOrderLine {
   isbn: string | null; title: string | null; supplier_sku: string | null
   quantity: number | null; unit_cost: number | null; confidence: number; needs_review: boolean
+  quantity_shipped?: number | null
+  quantity_ordered?: number | null
+  unit_price?: number | null
+  scanned_isbn?: string | null
+  scanned_title?: string | null
+  isbn_checksum_ok?: boolean | null
+  isbn_source?: 'document' | 'component' | null
+  component_isbns?: OrderLineComponent[]
+  flags?: OrderLineFlag[]
 }
 export interface MatchedOrderLine extends ParsedOrderLine {
   inventory_item_id: string; variant_id: string; vendor: string | null
