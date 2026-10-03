@@ -15,13 +15,15 @@ Last updated: 2026-09-28 (backend renamed + custom domain; frontend env pairs; s
 | Document | Status |
 |---|---|
 | `docs/DOCS_STATUS.md` (this file) | **Authoritative** for document status only. |
-| `CLAUDE.md` | **Current** for branch/deploy conventions (`main` is live and auto-deploys). |
+| `CLAUDE.md` | **Current** for branch/deploy conventions (`main` is live and auto-deploys) and the supply-chain price rule. |
 | `docs/branches-and-deploys.md` | **Current.** Same content as `CLAUDE.md`. |
 | `docs/Infrastructure.md` | **UNTRUSTED — no longer relevant. Do not use.** Known errors: it says the backend uses Supabase `evzradwmnzcuwzckgtmv` (it uses the `request-service` project, `xcendrvhgwifobauuiar`, which holds `request_notes` and the `reports` schema); it lists the retired `SHOPIFY_ACCESS_TOKEN` as required; it has no account of the request module being split across two backends. Kept only for history. |
 | `docs/SHOPIFY_API_VERSIONING.md` | **Partly stale.** Its version-bump procedure is reasonable, but it assumes the static-token auth model and does not know the proxy it flags is dead code. The org-wide version sweep lives in `preorder-service/docs/DOCS_STATUS.md` (Landmine 16). |
 | `docs/reports_walkthrough.md` | **Not yet re-verified.** |
 | `docs/policies/*`, `docs/services/*`, `docs/webhooks/*` | **Not yet re-verified.** |
 | root `README.md` (47 KB) | **Not yet re-verified — do not trust its env, deployment, or request-service sections.** It mixes request-service history into this repo and mentions the retired `development` branch. |
+| `frontend/src/supply-chain/purchase-orders/PODocumentImport.tsx` ("Import PO from document") | **Authoritative doc lives in `supply-chain-service/docs/PO_DOCUMENT_IMPORT.md`** (added 2026-10-03), which spans the parser, the endpoint and this modal. Staff help is in `frontend/public/docs/supply-chain-purchase-orders.md`. |
+| Supply-chain price fields (PO line "Cost" column, `unit_cost`, `unit_price`, receiving price check) | **Authoritative doc lives in `supply-chain-service/docs/PRICING_FIELDS.md`** (added 2026-10-03). Rule: KAL tracks no cost; MSRP only. The "Cost" → "Price" relabel and the frontend move to `unit_price` are still open there (§4). |
 
 ---
 
