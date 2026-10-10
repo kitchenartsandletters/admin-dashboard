@@ -17,6 +17,13 @@
 // Drop-ship POs (is_drop_ship=true) require a venue selection.
 // Ad hoc POs capture the source and an informal reference number.
 //
+// Line ordering:
+//   `lines` holds insertion order and is the submission order — handleCreate
+//   iterates it directly. The UI renders `displayLines` (newest first) so the
+//   line just added sits at the top where it can be checked without scrolling.
+//   Display and submission are deliberately decoupled; changing one must not
+//   change the other.
+//
 // Multi-location accounts:
 //   A supplier party can hold more than one account, each optionally tied to a
 //   location (location_id). Some publishers (PRH, MPS) issue a distinct account
@@ -452,6 +459,14 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
   const removeLine = (key: string) => setLines(prev => prev.filter(l => l._key !== key))
   const existingItemIds = new Set(lines.map(l => l.inventory_item_id))
 
+  // Display order only — newest line first, so the line just added sits at the
+  // top of the list and can be checked without scrolling to the bottom.
+  //
+  // `lines` itself keeps insertion order and is what handleCreate submits, so
+  // the order the supplier sees is unchanged. Reverse a copy, never `lines`
+  // directly: Array.prototype.reverse mutates in place and would corrupt state.
+  const displayLines = useMemo(() => [...lines].reverse(), [lines])
+
   const handleCreateB2bAccount = async () => {
     if (!supplierSelection || !b2bAccountNumber.trim()) return
     setCreatingB2bAccount(true)
@@ -515,6 +530,8 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
         is_test:                 isTest,
       })
       try {
+        // Submission order: `lines` in insertion order, deliberately not
+        // `displayLines`. The display reversal must not reach the supplier.
         for (const line of lines) {
           await createPOLine(po.id, {
             inventory_item_id: line.inventory_item_id,
@@ -868,7 +885,7 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                     </div>
                   ) : (
                     <>
-                      {lines.map(line => (
+                      {displayLines.map(line => (
                         <LineRow key={line._key} line={line}
                           onChange={patch => updateLine(line._key, patch)}
                           onRemove={() => removeLine(line._key)} />
@@ -916,7 +933,7 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                     <div className="px-4 py-3 text-sm text-gray-400 dark:text-gray-500 italic">No lines — PO will be saved as draft for line entry later.</div>
                   ) : (
                     <div className="divide-y dark:divide-gray-800">
-                      {lines.map(line => (
+                      {displayLines.map(line => (
                         <div key={line._key} className="px-4 py-2.5 flex items-center justify-between gap-4 text-sm">
                           <div className="min-w-0">
                             <p className="font-medium truncate">{line.title}</p>
