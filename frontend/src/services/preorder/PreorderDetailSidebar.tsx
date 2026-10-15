@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from "react"
 import { createPortal } from "react-dom"
 import { PreorderRow } from "../../types/preorderTypes"
 import { formatDate } from "../../utils/tableUtils"
+import { daysPastPub, isDelayedImportHold } from "../../utils/preorderFlags"
 
 interface PreorderDetailSidebarProps {
   row: PreorderRow | null
@@ -298,7 +299,14 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
                     ⚠ Early stock has arrived before pub date
                   </div>
                 )}
-                {row.due_for_release_review && (
+                {isDelayedImportHold(row) && (
+                  <div className="mt-3 px-3 py-2 bg-orange-50 dark:bg-orange-900/20 rounded text-xs text-orange-700 dark:text-orange-300 font-medium">
+                    ⏸ Held · awaiting stock. The pub date passed {daysPastPub(row.pub_date)} day{daysPastPub(row.pub_date) === 1 ? "" : "s"} ago,
+                    but stock hasn't arrived and presale orders are still open, so this title stays an active preorder on purpose.
+                    Keep it in the Preorder collection until stock is received.
+                  </div>
+                )}
+                {row.due_for_release_review && !isDelayedImportHold(row) && (
                   <div className="mt-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 rounded text-xs text-amber-700 dark:text-amber-300 font-medium">
                     ⚡ Due for release review within 7 days
                   </div>
