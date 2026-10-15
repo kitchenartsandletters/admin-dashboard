@@ -4,6 +4,8 @@ import {
   sortTitle, formatDate, SortConfig, SortIcon,
   nextSortDirection
 } from "../../utils/tableUtils"
+import { hasReceivedStock } from "../../utils/preorderFlags"
+import DelayedImportBadge from "../../components/preorder/DelayedImportBadge"
 
 interface PreorderTableProps {
   data: PreorderRow[]
@@ -50,9 +52,7 @@ function getConfidenceBadgeClass(confidence: string) {
 // record — even if demand oversold it into negative inventory (it then stays
 // active_preorder rather than becoming early_stock_arrival). Surfaces "stock is
 // in the building" and flags a shipping-profile detachment candidate.
-function hasReceivedStock(row: PreorderRow): boolean {
-  return row.classification === "active_preorder" && row.arrival_record_is_live === true
-}
+// Predicate lives in utils/preorderFlags alongside the delayed-import hold.
 
 function StockReceivedBadge({ row }: { row: PreorderRow }) {
   if (!hasReceivedStock(row)) return null
@@ -167,6 +167,7 @@ const PreorderTable: React.FC<PreorderTableProps> = ({
                     {formatClassificationLabel(row.classification)}
                   </span>
                   <StockReceivedBadge row={row} />
+                  <DelayedImportBadge row={row} />
                 </div>
                 {row.classification === "early_stock_arrival" && row.arrival_timing && (
                   <div className={`text-[10px] mt-1 font-medium ${
@@ -265,6 +266,7 @@ const PreorderTable: React.FC<PreorderTableProps> = ({
                         {formatClassificationLabel(row.classification)}
                       </span>
                       <StockReceivedBadge row={row} />
+                      <DelayedImportBadge row={row} />
                     </div>
                     {row.classification === "early_stock_arrival" && row.arrival_timing && (
                       <div className={`text-[9px] mt-0.5 font-medium ${

@@ -5,6 +5,8 @@ import {
   sortTitle, formatDate, stockStatusLabel, toISODate,
   SortConfig, SortIcon, nextSortDirection
 } from "../../utils/tableUtils"
+import DelayedImportBadge from "./DelayedImportBadge"
+import { isDelayedImportHold } from "../../utils/preorderFlags"
 
 interface ReleaseReviewTableProps {
   upcoming: ReleaseReviewRow[]
@@ -259,11 +261,15 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
                         <span className="font-semibold text-gray-900 dark:text-white text-sm line-clamp-2">{row.title}</span>
                         <div className="text-[10px] font-mono text-gray-400 mt-0.5">ISBN: {row.isbn ?? "—"}</div>
                       </div>
-                      <span className={`text-xs font-bold shrink-0 px-2 py-0.5 rounded-md bg-gray-50 dark:bg-gray-800/60 ${
-                        days !== null && days <= 1 ? "text-red-600 dark:text-red-400" : days !== null && days <= 3 ? "text-amber-600 dark:text-amber-400" : "text-gray-500 dark:text-gray-400"
-                      }`}>
-                        {days !== null ? (days === 0 ? "Today" : `${days}d out`) : "—"}
-                      </span>
+                      {isDelayedImportHold(row) ? (
+                        <DelayedImportBadge row={row} className="shrink-0" />
+                      ) : (
+                        <span className={`text-xs font-bold shrink-0 px-2 py-0.5 rounded-md bg-gray-50 dark:bg-gray-800/60 ${
+                          days !== null && days <= 1 ? "text-red-600 dark:text-red-400" : days !== null && days <= 3 ? "text-amber-600 dark:text-amber-400" : "text-gray-500 dark:text-gray-400"
+                        }`}>
+                          {days !== null ? (days === 0 ? "Today" : `${days}d out`) : "—"}
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center justify-between text-xs pt-2.5 border-t border-gray-100 dark:border-gray-800/80">
@@ -327,15 +333,19 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
                           {formatDate(row.pub_date)}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <span className={`text-xs font-bold ${
-                            days !== null && days <= 1
-                              ? "text-red-600 dark:text-red-400"
-                              : days !== null && days <= 3
-                              ? "text-amber-600 dark:text-amber-400"
-                              : "text-gray-500 dark:text-gray-400"
-                          }`}>
-                            {days !== null ? (days === 0 ? "Today" : `${days}d`) : "—"}
-                          </span>
+                          {isDelayedImportHold(row) ? (
+                            <DelayedImportBadge row={row} />
+                          ) : (
+                            <span className={`text-xs font-bold ${
+                              days !== null && days <= 1
+                                ? "text-red-600 dark:text-red-400"
+                                : days !== null && days <= 3
+                                ? "text-amber-600 dark:text-amber-400"
+                                : "text-gray-500 dark:text-gray-400"
+                            }`}>
+                              {days !== null ? (days === 0 ? "Today" : `${days}d`) : "—"}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <StockStatusPill inventory={row.inventory ?? 0} arrivalRecordIsLive={row.arrival_record_is_live} />
