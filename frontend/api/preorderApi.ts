@@ -45,9 +45,25 @@ type PreorderProductAPI = {
   last_updated: string | null
   first_positive_inventory_at: string | null
   lifecycle_closed: boolean
+  // Explicit preorder hold. hold_active is authoritative (evaluated in ET).
+  hold_until?: string | null
+  hold_reason?: string | null
+  hold_note?: string | null
+  hold_active?: boolean | null
 }
 
 type ReleaseQueueAPI = PreorderProductAPI
+
+// The adapters below build each row field by field, so any column not listed
+// is silently dropped. When a view gains a column the UI needs, add it here.
+function adaptHoldFields(row: PreorderProductAPI) {
+  return {
+    hold_until: row.hold_until ?? null,
+    hold_reason: row.hold_reason ?? null,
+    hold_note: row.hold_note ?? null,
+    hold_active: row.hold_active ?? null,
+  }
+}
 
 type PreorderMetricsAPI = {
   active_preorders: number
@@ -106,6 +122,7 @@ function adaptProductRow(row: PreorderProductAPI): PreorderRow {
     last_updated: row.last_updated,
     first_positive_inventory_at: row.first_positive_inventory_at ?? null,
     lifecycle_closed: false,
+    ...adaptHoldFields(row),
   }
 }
 
@@ -131,6 +148,7 @@ function adaptReleaseQueueRow(row: ReleaseQueueAPI): ReleaseReviewRow {
     override_status: (row.override_status ?? "none") as ReleaseReviewRow["override_status"],
     last_updated: row.last_updated,
     inventory: row.inventory ?? null,
+    ...adaptHoldFields(row),
   }
 }
 
@@ -224,6 +242,21 @@ export async function generateReportPreview(
     throw new Error(`Report preview failed (${res.status}): ${text}`)
   }
   return res.blob()
+}
+
+// Alert lists. Each reads the same view its count in vw_preorder_metrics counts
+// (vw_no_arrival_unresolved, vw_late_arrivals_unresolved), so a list can never
+// disagree with its pill. Never re-derive these filters client-side.
+export interface AlertTitleRow {
+  product_id: number
+  title: string | null
+  isbn: string | null
+  pub_date: string | null
+  arrival_timing: string | null
+}
+
+export async function fetchNoArrivalTitles(): Promise<AlertTitleRow[]> {
+  return fetchFromService<AlertTitleRow[]>("/admin/preorders/no-arrival-titles")
 }
 
 export async function fetchLateArrivals(): Promise<any[]> {
