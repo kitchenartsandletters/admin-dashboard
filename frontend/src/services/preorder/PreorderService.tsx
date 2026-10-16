@@ -16,6 +16,7 @@ import {
   fetchUpcomingReleases,
   fetchReportablePreorders,
   fetchLateArrivals,
+  fetchNoArrivalTitles,
 } from "../../../api/preorderApi"
 import { withHoldFields } from "../../utils/preorderFlags"
 
@@ -73,6 +74,13 @@ function PreorderService() {
   const [selectedRow, setSelectedRow] = useState<PreorderRow | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>("overview")
   const [loading, setLoading] = useState(true)
+  // Alert list membership, straight from the views behind the pill counts.
+  // undefined = still loading; null = failed (the list says so rather than guessing).
+  type AlertIds = Set<number> | null | undefined
+  const [alertIds, setAlertIds] = useState<{ no_arrival: AlertIds; late_arrival: AlertIds }>({
+    no_arrival: undefined,
+    late_arrival: undefined,
+  })
 
   const HISTORICAL_FILTERS = [
     { key: "all", label: "All Historical" },
@@ -102,7 +110,8 @@ function PreorderService() {
       setProducts(productsData)
       setReleaseQueue(queueData)
       setMetrics(metricsData)
-      // /upcoming lacks the hold columns; take them from /products.
+      // /upcoming now carries its own hold columns; this only fills them from
+      // /products if a response lacks them (e.g. an older backend).
       setUpcoming(withHoldFields(upcomingData, productsData))
       setReportable(reportableData)
     } catch (err) {
@@ -110,6 +119,17 @@ function PreorderService() {
     } finally {
       setLoading(false)
     }
+    loadAlertIds()
+  }
+
+  // Separate from the main load so a failing alert endpoint can't blank the page.
+  const loadAlertIds = async () => {
+    const [noArrival, late] = await Promise.allSettled([fetchNoArrivalTitles(), fetchLateArrivals()])
+    const ids = (r: PromiseSettledResult<Array<{ product_id: number }>>) =>
+      r.status === "fulfilled" ? new Set(r.value.map((row) => row.product_id)) : null
+    if (noArrival.status === "rejected") console.error("Failed to load no-arrival titles", noArrival.reason)
+    if (late.status === "rejected") console.error("Failed to load late arrivals", late.reason)
+    setAlertIds({ no_arrival: ids(noArrival), late_arrival: ids(late) })
   }
 
   useEffect(() => {
@@ -143,17 +163,20 @@ function PreorderService() {
       )
   }, [activeProducts, searchFilter, classFilter])
 
+  // Alert pills (No Record, Late Arrivals) list exactly the titles their
+  // endpoint returns: the same view the pill count reads. Display columns come
+  // from /products, matched by product_id. Other pills are plain views of
+  // arrival_timing with no alert count, so they filter client-side.
+  const isAlertFilter = historicalFilter === "no_arrival" || historicalFilter === "late_arrival"
+  const alertIdSet = isAlertFilter ? alertIds[historicalFilter as "no_arrival" | "late_arrival"] : undefined
+
   const filteredHistorical = useMemo(() => {
     const val = searchFilter.toLowerCase()
-    return historicalProducts
+    const pool = isAlertFilter ? products : historicalProducts
+    return pool
       .filter((row) => {
         if (historicalFilter === "all") return true
-
-        if (historicalFilter === "late_arrival") {
-          return row.arrival_timing === "late_arrival"
-            && row.arrival_record_is_live === true
-        }
-
+        if (isAlertFilter) return alertIdSet?.has(row.product_id) ?? false
         return row.arrival_timing === historicalFilter
       })
       .filter((row) =>
@@ -161,7 +184,7 @@ function PreorderService() {
         (row.isbn?.toLowerCase() || "").includes(val) ||
         String(row.product_id).includes(val)
       )
-  }, [historicalProducts, searchFilter, historicalFilter])
+  }, [products, historicalProducts, searchFilter, historicalFilter, isAlertFilter, alertIdSet])
 
   const CLASS_FILTERS = [
     { key: "all", label: "All Active" },
@@ -294,7 +317,16 @@ function PreorderService() {
           loading ? <TableSkeleton /> : <PreorderTable data={filteredActive} onRowClick={setSelectedRow} />
         )}
         {viewMode === "historical" && (
-          loading ? <TableSkeleton /> : <PreorderTable data={filteredHistorical} onRowClick={setSelectedRow} isHistorical />
+          loading || (isAlertFilter && alertIdSet === undefined) ? <TableSkeleton /> : (
+            <>
+              {isAlertFilter && alertIdSet === null && (
+                <p className="mb-2 text-xs text-red-600 dark:text-red-400">
+                  This list couldn't be loaded from preorder-service. Reload the page to try again.
+                </p>
+              )}
+              <PreorderTable data={filteredHistorical} onRowClick={setSelectedRow} isHistorical />
+            </>
+          )
         )}
         {viewMode === "release-review" && (
           <ReleaseReviewTable upcoming={upcoming} reportable={reportable} onReported={loadData} />
