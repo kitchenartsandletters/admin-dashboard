@@ -5,8 +5,7 @@ import {
   sortTitle, formatDate, stockStatusLabel, toISODate,
   SortConfig, SortIcon, nextSortDirection
 } from "../../utils/tableUtils"
-import DelayedImportBadge from "./DelayedImportBadge"
-import { isDelayedImportHold } from "../../utils/preorderFlags"
+import HoldBadge from "./HoldBadge"
 
 interface ReleaseReviewTableProps {
   upcoming: ReleaseReviewRow[]
@@ -87,6 +86,21 @@ function daysUntil(pubDate: string | null): number | null {
   if (!pubDate) return null
   const diff = new Date(pubDate).getTime() - new Date().setHours(0, 0, 0, 0)
   return Math.ceil(diff / (1000 * 60 * 60 * 24))
+}
+
+// Days Out label. A past pub date reads "2d past" rather than "-2d".
+function daysLabel(days: number | null, suffix = ""): string {
+  if (days === null) return "—"
+  if (days === 0) return "Today"
+  if (days < 0) return `${-days}d past`
+  return `${days}d${suffix}`
+}
+
+function daysClass(days: number | null): string {
+  if (days === null || days < 0) return "text-gray-500 dark:text-gray-400"
+  if (days <= 1) return "text-red-600 dark:text-red-400"
+  if (days <= 3) return "text-amber-600 dark:text-amber-400"
+  return "text-gray-500 dark:text-gray-400"
 }
 
 type UpcomingSortKey = "title" | "pub_date"
@@ -261,15 +275,12 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
                         <span className="font-semibold text-gray-900 dark:text-white text-sm line-clamp-2">{row.title}</span>
                         <div className="text-[10px] font-mono text-gray-400 mt-0.5">ISBN: {row.isbn ?? "—"}</div>
                       </div>
-                      {isDelayedImportHold(row) ? (
-                        <DelayedImportBadge row={row} className="shrink-0" />
-                      ) : (
-                        <span className={`text-xs font-bold shrink-0 px-2 py-0.5 rounded-md bg-gray-50 dark:bg-gray-800/60 ${
-                          days !== null && days <= 1 ? "text-red-600 dark:text-red-400" : days !== null && days <= 3 ? "text-amber-600 dark:text-amber-400" : "text-gray-500 dark:text-gray-400"
-                        }`}>
-                          {days !== null ? (days === 0 ? "Today" : `${days}d out`) : "—"}
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-md bg-gray-50 dark:bg-gray-800/60 ${daysClass(days)}`}>
+                          {daysLabel(days, " out")}
                         </span>
-                      )}
+                        <HoldBadge row={row} />
+                      </div>
                     </div>
 
                     <div className="flex items-center justify-between text-xs pt-2.5 border-t border-gray-100 dark:border-gray-800/80">
@@ -333,19 +344,12 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
                           {formatDate(row.pub_date)}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          {isDelayedImportHold(row) ? (
-                            <DelayedImportBadge row={row} />
-                          ) : (
-                            <span className={`text-xs font-bold ${
-                              days !== null && days <= 1
-                                ? "text-red-600 dark:text-red-400"
-                                : days !== null && days <= 3
-                                ? "text-amber-600 dark:text-amber-400"
-                                : "text-gray-500 dark:text-gray-400"
-                            }`}>
-                              {days !== null ? (days === 0 ? "Today" : `${days}d`) : "—"}
+                          <div className="flex flex-col items-center gap-1">
+                            <span className={`text-xs font-bold ${daysClass(days)}`}>
+                              {daysLabel(days)}
                             </span>
-                          )}
+                            <HoldBadge row={row} />
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <StockStatusPill inventory={row.inventory ?? 0} arrivalRecordIsLive={row.arrival_record_is_live} />
