@@ -47,6 +47,12 @@ export interface PreorderRow {
 
   first_positive_inventory_at: string | null
   lifecycle_closed: boolean
+
+  // Explicit preorder hold (vw_preorder_products). hold_active is authoritative.
+  hold_until?: string | null
+  hold_reason?: string | null
+  hold_note?: string | null
+  hold_active?: boolean | null
 }
 
 export interface ReleaseReviewRow {
@@ -82,6 +88,13 @@ export interface ReleaseReviewRow {
   override_status: "override" | "none"
 
   last_updated: string | null
+
+  // Explicit preorder hold. Not on vw_preorder_release_queue; merged in from
+  // /products by PreorderService (see withHoldFields).
+  hold_until?: string | null
+  hold_reason?: string | null
+  hold_note?: string | null
+  hold_active?: boolean | null
 }
 
 export interface PreorderSummaryMetrics {

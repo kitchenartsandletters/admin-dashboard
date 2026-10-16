@@ -17,6 +17,7 @@ import {
   fetchReportablePreorders,
   fetchLateArrivals,
 } from "../../../api/preorderApi"
+import { withHoldFields } from "../../utils/preorderFlags"
 
 type ViewMode = "overview" | "historical" | "release-review"
 
@@ -101,7 +102,8 @@ function PreorderService() {
       setProducts(productsData)
       setReleaseQueue(queueData)
       setMetrics(metricsData)
-      setUpcoming(upcomingData)
+      // /upcoming lacks the hold columns; take them from /products.
+      setUpcoming(withHoldFields(upcomingData, productsData))
       setReportable(reportableData)
     } catch (err) {
       console.error("Failed to load preorder data", err)

@@ -26,6 +26,11 @@ interface PreorderProduct {
   // into negative inventory while still classified active_preorder).
   arrival_record_is_live?: boolean;
   first_positive_inventory_at?: string | null;
+  // Explicit preorder hold (vw_preorder_products). hold_active is authoritative.
+  hold_until?: string | null;
+  hold_reason?: string | null;
+  hold_note?: string | null;
+  hold_active?: boolean | null;
 }
 
 interface CleanupState {
@@ -49,6 +54,7 @@ interface CleanupResult {
   action: string;
   steps: Record<string, { result: string; errors?: any[] | null }>;
   overall: string;
+  message?: string;
 }
 
 type SortKey = 'title' | 'pub_date' | 'classification' | 'inventory' | 'total_presale_qty';
@@ -300,7 +306,24 @@ const ReleaseManagement = () => {
         { method: 'POST', headers: apiHeaders() }
       );
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Cleanup failed');
+      if (res.status === 409) {
+        // The API refused: the title is under a live hold (e.g. set in another
+        // tab since this page loaded). Show why, and refresh so the button goes.
+        const detail = data?.detail;
+        setActionResults((prev) => ({
+          ...prev,
+          [productId]: {
+            product_id: productId, title: '', action, steps: {}, overall: 'held',
+            message: typeof detail === 'object' && detail?.message ? detail.message : 'This title is under a preorder hold.',
+          },
+        }));
+        await fetchProducts();
+        return;
+      }
+      if (!res.ok) {
+        const detail = data?.detail;
+        throw new Error(typeof detail === 'string' ? detail : detail?.message || 'Cleanup failed');
+      }
       setActionResults((prev) => ({ ...prev, [productId]: data }));
       await fetchCleanupState(productId);
     } catch (e: any) {
@@ -451,8 +474,11 @@ const ReleaseManagement = () => {
           </span>
         )}
         {result?.overall && (
-          <span className={`text-xs font-semibold ml-2 ${result.overall === 'success' ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
-            {result.overall === 'success' ? '✓ Done' : '⚠ Partial'}
+          <span
+            title={result.message}
+            className={`text-xs font-semibold ml-2 ${result.overall === 'success' ? 'text-green-600 dark:text-green-400' : result.overall === 'held' ? 'text-orange-600 dark:text-orange-400' : 'text-amber-600 dark:text-amber-400'}`}
+          >
+            {result.overall === 'success' ? '✓ Done' : result.overall === 'held' ? '⏸ Held, not cleaned' : result.overall === 'error' ? '⚠ Failed' : '⚠ Partial'}
           </span>
         )}
       </div>
@@ -549,8 +575,11 @@ const ReleaseManagement = () => {
                       </div>
                       <div className="flex items-center gap-2">
                         {result?.overall && (
-                          <span className={`text-xs font-semibold ${result.overall === 'success' ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                            {result.overall === 'success' ? '✓ Done' : '⚠ Partial'}
+                          <span
+                            title={result.message}
+                            className={`text-xs font-semibold ${result.overall === 'success' ? 'text-green-600 dark:text-green-400' : result.overall === 'held' ? 'text-orange-600 dark:text-orange-400' : 'text-amber-600 dark:text-amber-400'}`}
+                          >
+                            {result.overall === 'success' ? '✓ Done' : result.overall === 'held' ? '⏸ Held, not cleaned' : result.overall === 'error' ? '⚠ Failed' : '⚠ Partial'}
                           </span>
                         )}
                         <button
