@@ -166,6 +166,19 @@ function descBadge(status: string) {
   }
 }
 
+// Tooltip text for a 409 from the cleanup routes. The detail object carries
+// `message` (why it was refused) and `resolution` (what to do about it).
+// Shows both, the actionable half after a blank line.
+function holdRefusalText(detail: unknown, productId: number): string {
+  if (!detail || typeof detail !== 'object') return 'This title is under a preorder hold.';
+  const d = detail as { message?: unknown; resolution?: unknown };
+  const message = typeof d.message === 'string' ? d.message : 'This title is under a preorder hold.';
+  if (typeof d.resolution !== 'string' || !d.resolution.trim()) return message;
+  // The backend sends the path with a literal {product_id} placeholder.
+  const resolution = d.resolution.replace(/\{product_id\}/g, String(productId));
+  return `${message}\n\n${resolution}`;
+}
+
 // ──────────────────────────────────────────────
 // localStorage helpers
 // ──────────────────────────────────────────────
@@ -309,12 +322,11 @@ const ReleaseManagement = () => {
       if (res.status === 409) {
         // The API refused: the title is under a live hold (e.g. set in another
         // tab since this page loaded). Show why, and refresh so the button goes.
-        const detail = data?.detail;
         setActionResults((prev) => ({
           ...prev,
           [productId]: {
             product_id: productId, title: '', action, steps: {}, overall: 'held',
-            message: typeof detail === 'object' && detail?.message ? detail.message : 'This title is under a preorder hold.',
+            message: holdRefusalText(data?.detail, productId),
           },
         }));
         await fetchProducts();
