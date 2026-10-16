@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import ConfirmModal from '../ConfirmModal';
-import DelayedImportBadge from './DelayedImportBadge';
-import { hasReceivedStock, isDelayedImportHold } from '../../utils/preorderFlags';
+import HoldBadge from './HoldBadge';
+import { hasReceivedStock, isHeld, activeHold, holdLabel } from '../../utils/preorderFlags';
 
 // ──────────────────────────────────────────────
 // Types
@@ -112,7 +112,7 @@ function isWithinDays(pubDate: string | null, days: number): boolean {
 // Surfaced on active preorders because such a title is fulfillable now and is a
 // candidate for early shipping-profile detachment — a fact the classification
 // alone (active_preorder) does not convey.
-// Predicate lives in utils/preorderFlags alongside the delayed-import hold.
+// Predicate lives in utils/preorderFlags alongside the preorder-hold helpers.
 
 function classificationBadge(classification: string) {
   switch (classification) {
@@ -340,7 +340,8 @@ const ReleaseManagement = () => {
           if (!cs) return false;
           if (!cs.description_needs_cleaning && !cs.in_preorder_collection) return false;
           if (!isPastPubDate(p.pub_date)) return false;
-          if (isDelayedImportHold(p)) return false;
+          // A held title stays in the collection on purpose; not cleanup work.
+          if (isHeld(p)) return false;
         }
         if (search) {
           const term = search.toLowerCase();
@@ -410,11 +411,11 @@ const ReleaseManagement = () => {
     const cs = cleanupStates[product.product_id];
     const isLoading = actionLoading[product.product_id];
     const result = actionResults[product.product_id];
-    const held = isDelayedImportHold(product);
-    // A held title is past its pub date but deliberately still an active
-    // preorder. Full Cleanup would pull it out of the Preorder collection and
-    // end the hold, so treat it as not yet due.
-    const pastPub = isPastPubDate(product.pub_date) && !held;
+    const hold = activeHold(product);
+    // Full Cleanup removes the title from the Preorder collection, which ends
+    // the preorder incentive. Only an explicit, unexpired hold withholds it;
+    // a past-dated title without one is due for cleanup.
+    const pastPub = isPastPubDate(product.pub_date) && !hold;
 
     const baseBtnCls = isMobile 
       ? "w-full text-center px-4 py-2.5 text-xs font-semibold rounded-lg shadow-sm" 
@@ -441,7 +442,7 @@ const ReleaseManagement = () => {
         )}
         {cs && !pastPub && (
           <span className={`text-xs text-gray-400 dark:text-gray-500 italic ${isMobile ? 'text-center w-full block bg-gray-50 dark:bg-gray-800/40 py-2 rounded-lg' : ''}`}>
-            {held ? 'Held · awaiting stock' : 'Not yet due'}
+            {hold ? holdLabel(hold) : 'Not yet due'}
           </span>
         )}
         {cs && pastPub && !cs.description_needs_cleaning && !cs.in_preorder_collection && (
@@ -485,7 +486,7 @@ const ReleaseManagement = () => {
                     <span className="font-semibold sm:font-medium text-gray-900 dark:text-gray-100 line-clamp-2 sm:truncate">{p.title}</span>
                     <span className={`shrink-0 px-2 py-0.5 rounded text-[10px] sm:text-xs font-semibold sm:font-medium whitespace-nowrap mt-0.5 sm:mt-0 ${badge.cls}`}>{badge.label}</span>
                     <span className="shrink-0 mt-0.5 sm:mt-0"><StockReceivedBadge product={p} /></span>
-                    <span className="shrink-0 mt-0.5 sm:mt-0"><DelayedImportBadge row={p} /></span>
+                    <span className="shrink-0 mt-0.5 sm:mt-0"><HoldBadge row={p} /></span>
                   </div>
                   <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 dark:border-gray-700/60">
                     <span className="text-xs font-mono sm:font-sans text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDate(p.pub_date)}</span>
@@ -511,6 +512,7 @@ const ReleaseManagement = () => {
       {(() => {
         const historicalNeedsAttention = products.filter((p) => {
           if (p.classification !== 'historical_preorder') return false;
+          if (isHeld(p)) return false;
           const cs = cleanupStates[p.product_id];
           if (!cs) return false;
           return cs.description_needs_cleaning || cs.in_preorder_collection;
@@ -603,7 +605,7 @@ const ReleaseManagement = () => {
                 <div className="flex flex-col items-end gap-1 shrink-0">
                   <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide whitespace-nowrap uppercase ${badge.cls}`}>{badge.label}</span>
                   <StockReceivedBadge product={product} />
-                  <DelayedImportBadge row={product} />
+                  <HoldBadge row={product} />
                 </div>
               </div>
 
@@ -674,7 +676,7 @@ const ReleaseManagement = () => {
                     <div className="flex items-center gap-1.5">
                       <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${badge.cls}`}>{badge.label}</span>
                       <StockReceivedBadge product={product} />
-                      <DelayedImportBadge row={product} />
+                      <HoldBadge row={product} />
                     </div>
                   </td>
                   <td className="px-4 py-3">{renderCleanupCell(product.product_id, 'description_status')}</td>

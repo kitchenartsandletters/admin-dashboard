@@ -3,11 +3,7 @@
 // Display-only flags layered on top of the backend classification.
 // The dashboard never re-derives preorder state: `classification` from
 // preorder-service is the authority. These helpers only add context that the
-// classification alone does not convey, the same way the stock-received flag
-// does.
-//
-// The two flags are mutually exclusive by construction: stock received needs a
-// live arrival record, the delayed-import hold needs its absence.
+// classification alone does not convey.
 
 interface FlagFields {
   classification: string
@@ -26,15 +22,6 @@ export function todayET(): string {
   }).format(new Date())
 }
 
-/** Whole days between pub_date and today (ET). Positive once the date has passed. */
-export function daysPastPub(pubDate: string | null): number | null {
-  if (!pubDate) return null
-  const pub = Date.parse(pubDate.substring(0, 10) + "T00:00:00Z")
-  const today = Date.parse(todayET() + "T00:00:00Z")
-  if (Number.isNaN(pub)) return null
-  return Math.round((today - pub) / 86_400_000)
-}
-
 /**
  * Stock received: an active preorder with a live inventory_arrival record.
  * Fulfillable now even if demand oversold it into negative inventory;
@@ -44,17 +31,71 @@ export function hasReceivedStock(row: FlagFields): boolean {
   return row.classification === "active_preorder" && row.arrival_record_is_live === true
 }
 
+// ── Preorder holds ─────────────────────────────────────────────────────────────────────
+//
+// A hold is an explicit record a person sets deliberately, with an end date
+// (preorder.preorder_hold). It is never inferred from pub date or stock: once
+// a pub date passes without stock, the title is historical with unresolved
+// commitments, not held.
+//
+// A held title stays in the Preorder collection on purpose. Collection
+// membership drives the rewards incentive, so that membership (and the
+// preorder copy in the description) is what is being held. That is why a
+// held title must never be offered Full Cleanup.
+//
+//   event          — a signing or similar; the incentive runs past pub date
+//   awaiting_stock — stock genuinely in transit; keep preorder presentation
+
+export type HoldReason = "event" | "awaiting_stock"
+
+/** PROVISIONAL shape, pending the backend's final field names. */
+export interface PreorderHold {
+  hold_until: string // YYYY-MM-DD, last held day (inclusive)
+  reason: HoldReason
+}
+
 /**
- * Delayed-import hold: still an active preorder after its pub date because
- * stock never arrived and presale commitments are open. The backend keeps it
- * active on purpose. This is not stale data.
+ * The one place the dashboard reads a hold from a row.
  *
- * Pub day itself is excluded: a title is legitimately active on its pub date
- * (the engine's active check is inclusive), so the hold starts the day after.
+ * Returns null until preorder-service exposes the hold on its responses, so
+ * every hold-dependent behaviour is currently off: no label, and Full Cleanup
+ * and the Needs Cleanup filter behave as they did before holds existed.
+ * When the backend lands, map its field here and nowhere else.
  */
-export function isDelayedImportHold(row: FlagFields): boolean {
-  if (row.classification !== "active_preorder") return false
-  if (row.arrival_record_is_live === true) return false
-  const days = daysPastPub(row.pub_date)
-  return days !== null && days > 0
+export function getHold(_row: unknown): PreorderHold | null {
+  return null
+}
+
+/** True while today (ET) is on or before hold_until. Pure, so it is testable. */
+export function isHoldInForce(hold: PreorderHold | null, today: string = todayET()): boolean {
+  if (!hold || !hold.hold_until) return false
+  return hold.hold_until.substring(0, 10) >= today
+}
+
+/** The row's hold if it is still in force today (ET), otherwise null. */
+export function activeHold(row: unknown): PreorderHold | null {
+  const hold = getHold(row)
+  return isHoldInForce(hold) ? hold : null
+}
+
+/** True only while an explicit, unexpired hold exists. */
+export function isHeld(row: unknown): boolean {
+  return activeHold(row) !== null
+}
+
+const HOLD_REASON_LABEL: Record<HoldReason, string> = {
+  event: "event",
+  awaiting_stock: "awaiting stock",
+}
+
+/** "Oct 20" from YYYY-MM-DD, without timezone drift. */
+function shortDate(isoDate: string): string {
+  const [y, m, d] = isoDate.substring(0, 10).split("-").map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+}
+
+/** e.g. "Held until Oct 20 · event". */
+export function holdLabel(hold: PreorderHold): string {
+  const reason = HOLD_REASON_LABEL[hold.reason] ?? String(hold.reason).replace(/_/g, " ")
+  return `Held until ${shortDate(hold.hold_until)} · ${reason}`
 }
