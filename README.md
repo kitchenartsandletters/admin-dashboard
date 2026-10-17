@@ -2,6 +2,18 @@
 
 This project formerly enabled customers to express interest in out-of-stock products, and gives admins a secure dashboard to view and manage those interest requests. It has since expanded to a full Admin Dashboard UI with what we call the 'Request Service' now serving a modular component of the dashboard.
 
+## 🌿 Branches & deploys
+
+**`main` is the live branch.** The frontend and backend both deploy automatically from
+`main` on Railway; the branch Railway builds is set in the Railway dashboard, not in this
+repo. Open every PR against `main`.
+
+The old **`development` branch is retired**: it drifted dozens of commits behind `main` and
+is no longer deployed. Do not branch from it or target it. The authoritative copy of this
+convention lives in `CLAUDE.md` and `docs/branches-and-deploys.md`.
+
+---
+
 ## 🗂️ Service Modules
 
 The Admin Dashboard is designed to support modular services. Each service is rendered via a dedicated route and contributes distinct functionality to the overall dashboard. Current modules:
@@ -1273,7 +1285,7 @@ This README reflects the **final, production‑locked state of Phase 1** of the 
 3. Phase 1 behavior is the baseline for all future development and production validation.
 
 **Git state**
-- Phase 1 is considered complete and locked as of the latest commit on the `development` branch.
+- Phase 1 was completed and locked on `main` (the live branch). _(Historical: this originally referenced the now-retired `development` branch.)_
 - All future work must preserve Phase 1 invariants.
 
 _Last updated: December 29, 2025 - Phase 1 fully complete and locked_
