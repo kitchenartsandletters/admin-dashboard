@@ -33,10 +33,9 @@ export interface PreorderRow {
   // Reporting flags
   already_reported: boolean
 
-  // Override and tag state
+  // Tag and collection state
   preorder_tag_present: boolean | null
   preorder_collection_present: boolean | null
-  override_status: "override" | "none"
 
   // Release queue flags (from vw_preorder_release_queue)
   due_for_release_review: boolean
@@ -85,12 +84,11 @@ export interface ReleaseReviewRow {
 
   // Anomaly
   anomaly_type: string | null
-  override_status: "override" | "none"
 
   last_updated: string | null
 
-  // Explicit preorder hold. Not on vw_preorder_release_queue; merged in from
-  // /products by PreorderService (see withHoldFields).
+  // Explicit preorder hold (vw_preorder_release_queue). PreorderService also
+  // fills these from /products if a response lacks them (see withHoldFields).
   hold_until?: string | null
   hold_reason?: string | null
   hold_note?: string | null
