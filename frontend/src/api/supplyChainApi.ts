@@ -26,13 +26,120 @@ const SC_TOKEN    = import.meta.env.VITE_SC_ADMIN_TOKEN as string
 if (!SC_BASE_URL) console.error('[supplyChainApi] VITE_SC_BASE_URL is not set')
 const headers = { 'Content-Type': 'application/json', 'X-Admin-Token': SC_TOKEN }
 
-async function sc<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${SC_BASE_URL}${path}`, { ...options, headers: { ...headers, ...options.headers } })
-  if (!res.ok) {
-    let detail = res.statusText
-    try { const body = await res.json(); detail = body.detail ?? body.message ?? detail } catch {}
-    throw new Error(`[${res.status}] ${detail}`)
+// ---------------------------------------------------------------------------
+// Actor attribution
+//
+// X-Admin-Token is a single shared service token, so the backend cannot
+// authenticate who made a request. The dashboard does know: AuthProvider holds
+// a Supabase session with an email and a role. We forward those so writes can
+// be attributed in purchase_order_line_changes.
+//
+// The backend stores these as asserted_actor_email / asserted_actor_role and
+// marks both CLIENT-ASSERTED, NOT AUTHENTICATED. Treat them the same way here:
+// they are a useful record of who was signed in, not proof of identity.
+//
+// Both headers are optional. Until setScActor is called they are simply absent
+// and the backend records the write as unattributed, exactly as before. The
+// change log's `source` column reads api:update_po_line either way, so the
+// boundary between unattributed and attributed writes stays visible.
+// ---------------------------------------------------------------------------
+let _actor: { email?: string | null; role?: string | null } = {}
+
+export function setScActor(actor: { email?: string | null; role?: string | null } | null): void {
+  _actor = actor ?? {}
+}
+
+function actorHeaders(): Record<string, string> {
+  const h: Record<string, string> = {}
+  if (_actor.email) h['X-Actor-Email'] = _actor.email
+  if (_actor.role)  h['X-Actor-Role']  = _actor.role
+  return h
+}
+
+// ---------------------------------------------------------------------------
+// Errors
+//
+// FastAPI's `detail` is not always a string. It can be:
+//   - a string                      most routes
+//   - an object                     the PO line floor guard's 409, which carries
+//                                   { message, minimum_quantity_ordered }
+//   - an array of {loc, msg, type}  request validation errors
+//
+// The previous code interpolated `detail` straight into a template literal, so
+// anything but a string surfaced to staff as "[409] [object Object]". The floor
+// guard went live on 2026-11-02, which made that reachable from the PO detail
+// sidebar whenever someone lowers an ordered quantity too far.
+//
+// ScApiError keeps the readable message in `message` and preserves the parsed
+// body, so callers can read structured fields — e.g. minimum_quantity_ordered —
+// to build a better message than the generic one.
+// ---------------------------------------------------------------------------
+export class ScApiError extends Error {
+  readonly status: number
+  /** Raw `detail` as returned: string, object, array, or null. */
+  readonly detail: unknown
+  /** `detail` when it is a plain object, else null. Where structured fields live. */
+  readonly data: Record<string, unknown> | null
+
+  constructor(status: number, message: string, detail: unknown, data: Record<string, unknown> | null) {
+    super(`[${status}] ${message}`)
+    this.name = 'ScApiError'
+    this.status = status
+    this.detail = detail
+    this.data = data
+    // Keep instanceof working when the bundle targets ES5.
+    Object.setPrototypeOf(this, ScApiError.prototype)
   }
+}
+
+/** Pull a human-readable string out of whatever shape `detail` arrived in. */
+function detailMessage(detail: unknown, fallback: string): string {
+  if (typeof detail === 'string' && detail.trim()) return detail.trim()
+
+  // Request validation errors: [{loc, msg, type}, …]
+  if (Array.isArray(detail)) {
+    const msgs = detail
+      .map(d => (d && typeof d === 'object' && 'msg' in d ? String((d as { msg: unknown }).msg) : null))
+      .filter((m): m is string => !!m && m.trim().length > 0)
+    if (msgs.length) return msgs.join('; ')
+  }
+
+  if (detail && typeof detail === 'object') {
+    const obj = detail as Record<string, unknown>
+    for (const key of ['message', 'detail', 'error']) {
+      const v = obj[key]
+      if (typeof v === 'string' && v.trim()) return v.trim()
+    }
+  }
+
+  return fallback
+}
+
+/** Build an ScApiError from a failed Response, reading the body at most once. */
+async function scError(res: Response, fallback?: string): Promise<ScApiError> {
+  let body: unknown = null
+  try { body = await res.json() } catch { /* empty or non-JSON body */ }
+
+  const envelope = body && typeof body === 'object' ? (body as Record<string, unknown>) : null
+  const detail = envelope ? (envelope.detail ?? envelope.message ?? null) : null
+  const data = detail && typeof detail === 'object' && !Array.isArray(detail)
+    ? (detail as Record<string, unknown>)
+    : null
+
+  return new ScApiError(
+    res.status,
+    detailMessage(detail, fallback ?? res.statusText ?? 'Request failed'),
+    detail,
+    data,
+  )
+}
+
+async function sc<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${SC_BASE_URL}${path}`, {
+    ...options,
+    headers: { ...headers, ...actorHeaders(), ...options.headers },
+  })
+  if (!res.ok) throw await scError(res)
   if (res.status === 204) return undefined as T
   return res.json()
 }
@@ -47,11 +154,11 @@ function qs(params: Record<string, string | number | boolean | undefined | null>
 }
 
 async function _downloadBlob(path: string, filename: string): Promise<void> {
-  const res = await fetch(`${SC_BASE_URL}${path}`, { method: 'GET', headers: { 'X-Admin-Token': SC_TOKEN } })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail ?? `[${res.status}] Failed to generate PDF`)
-  }
+  const res = await fetch(`${SC_BASE_URL}${path}`, {
+    method: 'GET',
+    headers: { 'X-Admin-Token': SC_TOKEN, ...actorHeaders() },
+  })
+  if (!res.ok) throw await scError(res, 'Failed to generate PDF')
   const blob = await res.blob()
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -63,11 +170,12 @@ async function _downloadBlob(path: string, filename: string): Promise<void> {
 async function _multipartPost<T>(path: string, file: File): Promise<T> {
   const form = new FormData()
   form.append('file', file)
-  const res = await fetch(`${SC_BASE_URL}${path}`, { method: 'POST', headers: { 'X-Admin-Token': SC_TOKEN }, body: form })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail ?? `[${res.status}] Request failed`)
-  }
+  const res = await fetch(`${SC_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'X-Admin-Token': SC_TOKEN, ...actorHeaders() },
+    body: form,
+  })
+  if (!res.ok) throw await scError(res)
   return res.json()
 }
 
@@ -161,10 +269,122 @@ export async function addPOLine(poId: string, body: Omit<PurchaseOrderLine, 'id'
 export async function createPOLine(poId: string, body: { inventory_item_id: string; variant_id: string; quantity_ordered: number; unit_cost?: number; notes?: string }): Promise<PurchaseOrderLine> {
   return sc(`/api/purchase-orders/${poId}/lines`, { method: 'POST', body: JSON.stringify({ ...body, purchase_order_id: poId }) })
 }
+
+/**
+ * Update a PO line.
+ *
+ * Since 2026-11-02 the backend routes quantity_ordered changes through the
+ * update_po_line_audited RPC, which enforces a floor (PO_LINE_AUDIT.md §2):
+ *
+ *   quantity_ordered >= received - replaced + damaged + cancelled
+ *
+ * A change below the floor is refused with a 409 whose detail is an object
+ * carrying `message` and `minimum_quantity_ordered`. Catch ScApiError and read
+ * `err.data.minimum_quantity_ordered` to tell staff the lowest value allowed
+ * rather than only that it failed.
+ *
+ * A line already below its floor may still be edited, but only in a direction
+ * that shrinks the shortfall — in practice, upward.
+ *
+ * notes, status, unit_cost and quantity_backordered are not floor-checked.
+ */
 export async function updatePOLine(lineId: string, body: Partial<{ unit_cost: number; quantity_ordered: number; quantity_backordered: number; quantity_cancelled: number; status: string; notes: string }>): Promise<void> {
   return sc(`/api/purchase-orders/lines/${lineId}`, { method: 'PATCH', body: JSON.stringify(body) })
 }
 export async function removePOLine(lineId: string): Promise<void> { return sc(`/api/purchase-orders/lines/${lineId}`, { method: 'DELETE' }) }
+
+/**
+ * One recorded change to a PO line, from purchase_order_line_changes
+ * (PO_LINE_AUDIT.md §4). The endpoint returns a bare array already ordered
+ * newest-first by `seq` — do not re-sort by changed_at. `seq` is the strict
+ * write order; timestamps can tie inside a single transaction.
+ *
+ * old_value / new_value carry only the changed columns, except on insert and
+ * delete where they hold the full row.
+ *
+ * The line id is not echoed back: it is the one in the URL.
+ */
+export interface POLineChange {
+  /** Strict write order. Sort key. */
+  seq: number
+  change_type: string
+  /** Column names this change touched. */
+  fields_changed: string[] | null
+  old_value: Record<string, unknown> | null
+  new_value: Record<string, unknown> | null
+  reason: string | null
+  /** CLIENT-ASSERTED, NOT AUTHENTICATED — who the dashboard said was signed in. */
+  asserted_actor_email: string | null
+  /** CLIENT-ASSERTED, NOT AUTHENTICATED. */
+  asserted_actor_role: string | null
+  /** Write path, e.g. api:update_po_line. Present whether or not actor headers arrived. */
+  source: string | null
+  db_role: string | null
+  changed_at: string
+}
+export async function fetchPOLineChanges(lineId: string, limit = 50): Promise<POLineChange[]> {
+  return sc(`/api/purchase-orders/lines/${lineId}/changes${qs({ limit })}`)
+}
+
+/**
+ * A quantity-entry warning, or what the operator did about it
+ * (PO_LINE_AUDIT.md §3).
+ *
+ * Always log `warning_shown` as well as the outcome. Without it there is no
+ * denominator and the override rate cannot be computed — which is the whole
+ * point of the log, per PO_QUANTITY_ENTRY.md §4.
+ *
+ * `client_event_id` makes the write idempotent, so retries cannot double-count.
+ * `flow_id` ties a shown warning to its outcome before a PO id exists.
+ *
+ * The backend rejects unknown fields, so anything extra belongs in `context` —
+ * the entered quantity included.
+ */
+export type POEntryEventType = 'warning_shown' | 'warning_overridden' | 'warning_heeded'
+
+export interface POEntryEvent {
+  /** uuid, unique per event. Retry-safe. */
+  client_event_id: string
+  event_type: POEntryEventType
+  /** snake_case rule id, e.g. single_line_qty_one. */
+  warning_code: string
+  /** ISO 8601 with offset, from the client clock. */
+  occurred_at: string
+  /** uuid linking a shown warning to its outcome. */
+  flow_id?: string
+  purchase_order_id?: string
+  purchase_order_line_id?: string
+  inventory_item_id?: string
+  /** Defaults to po_builder server-side. */
+  surface?: string
+  /** Free-form, under 8 KB. Put quantity_ordered here. */
+  context?: Record<string, unknown>
+}
+
+export interface POEntryEventResult { recorded: number; duplicates: number }
+
+const PO_ENTRY_EVENT_BATCH_MAX = 50
+
+/**
+ * Record one or more entry events. The endpoint takes a batch wrapper and
+ * caps each call at 50, so longer runs are split and the counts summed.
+ */
+export async function recordPOEntryEvents(events: POEntryEvent[]): Promise<POEntryEventResult> {
+  const total: POEntryEventResult = { recorded: 0, duplicates: 0 }
+  if (events.length === 0) return total
+
+  for (let i = 0; i < events.length; i += PO_ENTRY_EVENT_BATCH_MAX) {
+    const batch = events.slice(i, i + PO_ENTRY_EVENT_BATCH_MAX)
+    const res = await sc<POEntryEventResult>('/api/purchase-orders/entry-events', {
+      method: 'POST',
+      body: JSON.stringify({ events: batch }),
+    })
+    total.recorded   += res?.recorded   ?? 0
+    total.duplicates += res?.duplicates ?? 0
+  }
+  return total
+}
+
 export interface POLookupResult extends PurchaseOrder { match_type: 'exact' | 'fuzzy' }
 export async function lookupPurchaseOrders(opts: { poNumber?: string; supplierName?: string }): Promise<POLookupResult[]> {
   return sc(`/api/purchase-orders/lookup${qs({ po_number: opts.poNumber, supplier_name: opts.supplierName })}`)
