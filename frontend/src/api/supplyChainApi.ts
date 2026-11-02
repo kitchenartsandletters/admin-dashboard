@@ -39,7 +39,9 @@ const headers = { 'Content-Type': 'application/json', 'X-Admin-Token': SC_TOKEN 
 // they are a useful record of who was signed in, not proof of identity.
 //
 // Both headers are optional. Until setScActor is called they are simply absent
-// and the backend records the write as unattributed, exactly as before.
+// and the backend records the write as unattributed, exactly as before. The
+// change log's `source` column reads api:update_po_line either way, so the
+// boundary between unattributed and attributed writes stays visible.
 // ---------------------------------------------------------------------------
 let _actor: { email?: string | null; role?: string | null } = {}
 
@@ -272,27 +274,42 @@ export async function createPOLine(poId: string, body: { inventory_item_id: stri
  * Update a PO line.
  *
  * Since 2026-11-02 the backend routes quantity_ordered changes through the
- * update_po_line_audited RPC, which enforces a floor:
+ * update_po_line_audited RPC, which enforces a floor (PO_LINE_AUDIT.md §2):
  *
- *   quantity_ordered >= received + damaged + cancelled - replaced
+ *   quantity_ordered >= received - replaced + damaged + cancelled
  *
  * A change below the floor is refused with a 409 whose detail is an object
  * carrying `message` and `minimum_quantity_ordered`. Catch ScApiError and read
  * `err.data.minimum_quantity_ordered` to tell staff the lowest value allowed
  * rather than only that it failed.
  *
- * Lines already below their floor are the exception: those may only be raised.
+ * A line already below its floor may still be edited, but only in a direction
+ * that shrinks the shortfall — in practice, upward.
+ *
+ * notes, status, unit_cost and quantity_backordered are not floor-checked.
  */
 export async function updatePOLine(lineId: string, body: Partial<{ unit_cost: number; quantity_ordered: number; quantity_backordered: number; quantity_cancelled: number; status: string; notes: string }>): Promise<void> {
   return sc(`/api/purchase-orders/lines/${lineId}`, { method: 'PATCH', body: JSON.stringify(body) })
 }
 export async function removePOLine(lineId: string): Promise<void> { return sc(`/api/purchase-orders/lines/${lineId}`, { method: 'DELETE' }) }
 
-/** One recorded change to a PO line, from purchase_order_line_changes. */
+/**
+ * One recorded change to a PO line, from purchase_order_line_changes
+ * (PO_LINE_AUDIT.md §4). The endpoint returns a bare array already ordered
+ * newest-first by `seq` — do not re-sort by changed_at. `seq` is the strict
+ * write order; timestamps can tie inside a single transaction.
+ *
+ * old_value / new_value carry only the changed columns, except on insert and
+ * delete where they hold the full row.
+ *
+ * The line id is not echoed back: it is the one in the URL.
+ */
 export interface POLineChange {
-  id: string
-  purchase_order_line_id: string
+  /** Strict write order. Sort key. */
+  seq: number
   change_type: string
+  /** Column names this change touched. */
+  fields_changed: string[] | null
   old_value: Record<string, unknown> | null
   new_value: Record<string, unknown> | null
   reason: string | null
@@ -300,35 +317,72 @@ export interface POLineChange {
   asserted_actor_email: string | null
   /** CLIENT-ASSERTED, NOT AUTHENTICATED. */
   asserted_actor_role: string | null
+  /** Write path, e.g. api:update_po_line. Present whether or not actor headers arrived. */
+  source: string | null
   db_role: string | null
   changed_at: string
 }
-export async function fetchPOLineChanges(lineId: string): Promise<POLineChange[]> {
-  return sc(`/api/purchase-orders/lines/${lineId}/changes`)
+export async function fetchPOLineChanges(lineId: string, limit = 50): Promise<POLineChange[]> {
+  return sc(`/api/purchase-orders/lines/${lineId}/changes${qs({ limit })}`)
 }
 
 /**
- * Record a quantity-entry warning and what the operator did about it.
+ * A quantity-entry warning, or what the operator did about it
+ * (PO_LINE_AUDIT.md §3).
  *
- * Logged so the override rate can be measured from our own data — see
- * supply-chain-service docs/PO_QUANTITY_ENTRY.md. Log `warning_shown` as well
- * as the outcome; without it there is no denominator.
+ * Always log `warning_shown` as well as the outcome. Without it there is no
+ * denominator and the override rate cannot be computed — which is the whole
+ * point of the log, per PO_QUANTITY_ENTRY.md §4.
  *
- * `client_event_id` makes the call idempotent, so a retry cannot double-count.
+ * `client_event_id` makes the write idempotent, so retries cannot double-count.
  * `flow_id` ties a shown warning to its outcome before a PO id exists.
+ *
+ * The backend rejects unknown fields, so anything extra belongs in `context` —
+ * the entered quantity included.
  */
 export type POEntryEventType = 'warning_shown' | 'warning_overridden' | 'warning_heeded'
-export async function recordPOEntryEvent(body: {
+
+export interface POEntryEvent {
+  /** uuid, unique per event. Retry-safe. */
   client_event_id: string
-  flow_id: string
   event_type: POEntryEventType
-  purchase_order_id?: string | null
-  inventory_item_id?: string | null
-  rule?: string | null
-  quantity_ordered?: number | null
-  context?: Record<string, unknown> | null
-}): Promise<void> {
-  return sc('/api/purchase-orders/entry-events', { method: 'POST', body: JSON.stringify(body) })
+  /** snake_case rule id, e.g. single_line_qty_one. */
+  warning_code: string
+  /** ISO 8601 with offset, from the client clock. */
+  occurred_at: string
+  /** uuid linking a shown warning to its outcome. */
+  flow_id?: string
+  purchase_order_id?: string
+  purchase_order_line_id?: string
+  inventory_item_id?: string
+  /** Defaults to po_builder server-side. */
+  surface?: string
+  /** Free-form, under 8 KB. Put quantity_ordered here. */
+  context?: Record<string, unknown>
+}
+
+export interface POEntryEventResult { recorded: number; duplicates: number }
+
+const PO_ENTRY_EVENT_BATCH_MAX = 50
+
+/**
+ * Record one or more entry events. The endpoint takes a batch wrapper and
+ * caps each call at 50, so longer runs are split and the counts summed.
+ */
+export async function recordPOEntryEvents(events: POEntryEvent[]): Promise<POEntryEventResult> {
+  const total: POEntryEventResult = { recorded: 0, duplicates: 0 }
+  if (events.length === 0) return total
+
+  for (let i = 0; i < events.length; i += PO_ENTRY_EVENT_BATCH_MAX) {
+    const batch = events.slice(i, i + PO_ENTRY_EVENT_BATCH_MAX)
+    const res = await sc<POEntryEventResult>('/api/purchase-orders/entry-events', {
+      method: 'POST',
+      body: JSON.stringify({ events: batch }),
+    })
+    total.recorded   += res?.recorded   ?? 0
+    total.duplicates += res?.duplicates ?? 0
+  }
+  return total
 }
 
 export interface POLookupResult extends PurchaseOrder { match_type: 'exact' | 'fuzzy' }
