@@ -16,3 +16,8 @@ Conventions for AI assistants (Claude Code and chat) working in this repo. Keep 
 ## Prices (supply chain)
 - **KAL does not track cost.** The only price is the publisher's MSRP. Never read, store or display discount, net or "cost" figures, and show an unknown price as "—", never 0.
 - `purchase_order_lines.unit_cost` is a deprecated misnomer for MSRP, mid-rename to `unit_price`. Authoritative: `supply-chain-service/docs/PRICING_FIELDS.md`. Read it before touching any price field or label.
+
+## Supplier parties (supply chain)
+- **Before touching `supplier_parties`, `parent_id` or `is_returnable` — including the party editor UI — read `supply-chain-service/docs/ORDERING_VS_RETURNS.md`.**
+- Who we order from and where returns go are different questions; neither implies the other. `parent_id` currently carries both, so an ordering edit can silently break returns.
+- Do not change Chesapeake & Hudson's `is_returnable` or `roles` until that doc's §5 is answered; doing it alone strands its titles.
