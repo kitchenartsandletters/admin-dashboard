@@ -49,9 +49,29 @@
 //      PATCH /lines/{id} the draft editor uses. Lets staff fix a wrong qty on a
 //      line added to an already-submitted PO without deleting it (delete stays
 //      draft-only per the backend). Received/out_of_print lines stay read-only.
+//
+// Task 6: the non-draft quantity editor is now the PO builder's LineEntryModal
+//      (empty-safe text field, select-all on focus, large − / +), opened by the
+//      rcvd/ord number or the pencil beside it. The pencil fades in on hover
+//      where there is a mouse and is always shown on touch, like the builder's
+//      LineRow. Quantity only: no delete on non-draft lines.
+//      - The modal's minimum is the PO line floor (PO_LINE_AUDIT.md §2):
+//        received - replaced + damaged + cancelled, or, for a line already
+//        below it, one more than today's ordered quantity (the backend accepts
+//        any edit that shrinks a shortfall). The old inline input used
+//        quantity_received, which let staff type values the backend refuses.
+//      - On a 409 the modal stays open and its minimum becomes the server's
+//        minimum_quantity_ordered. The 409's message is not shown: it folds
+//        replacements in ("incl. 2 replacements") and reads oddly to staff.
+//      - Other failures are shown in the modal. The old editor had no catch,
+//        so a refused save failed silently.
+//      - An optional reason is sent as `reason` and lands on the change row.
+//      - Escape inside the modal closes the modal only. The sidebar's own
+//        capture-phase Escape handler defers to any open ModalShell.
 
 import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Pencil } from 'lucide-react'
 import {
   PurchaseOrder, PurchaseOrderLine, PurchaseOrderDetail,
   Receipt, ReceiptLine,
@@ -71,9 +91,12 @@ import {
   downloadReceiptPdf,
   resolveDamage,
   updateSupplyStatus,
+  ScApiError,
 } from '../../api/supplyChainApi'
 import type { VariantSearchResult, SupplyStatus } from '../../api/supplyChainApi'
 import { useLocations } from '../hooks/useLocations'
+import LineEntryModal from './LineEntryModal'
+import { isModalOpen } from '../../components/ModalShell'
 
 interface Props {
   detail: PurchaseOrderDetail | null
@@ -160,6 +183,37 @@ function filterLines(lines: PurchaseOrderLine[], query: string): PurchaseOrderLi
     (l.isbn         ?? '').toLowerCase().includes(q) ||
     (l.supplier_sku ?? '').toLowerCase().includes(q)
   )
+}
+
+// ---------------------------------------------------------------------------
+// Quantity floor (PO_LINE_AUDIT.md §2)
+//
+// The backend refuses quantity_ordered below
+//   received - replaced + damaged + cancelled
+// unless the edit shrinks a shortfall the line already has. So the lowest
+// value it accepts is the floor, or — for a line already below its floor —
+// one more than the current ordered quantity.
+//
+// quantity_replaced is not on PurchaseOrderLine and may be absent from the
+// payload. Without it the floor cannot be known (received counts replacement
+// copies), so the client minimum falls back to 1 and the server's 409 supplies
+// the real one. Overstating the minimum would block edits the backend allows.
+// ---------------------------------------------------------------------------
+
+function clientMinimumOrdered(line: PurchaseOrderLine): number {
+  const replaced = (line as { quantity_replaced?: unknown }).quantity_replaced
+  if (typeof replaced !== 'number') return 1
+  const floor = line.quantity_received - replaced
+    + (line.quantity_damaged ?? 0) + (line.quantity_cancelled ?? 0)
+  const min = floor <= line.quantity_ordered ? floor : line.quantity_ordered + 1
+  return Math.max(1, min)
+}
+
+/** minimum_quantity_ordered from a floor-guard 409, or null for any other error. */
+function floorMinimumFromError(e: unknown): number | null {
+  if (!(e instanceof ScApiError) || e.status !== 409) return null
+  const v = e.data?.minimum_quantity_ordered
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
 }
 
 // ---------------------------------------------------------------------------
@@ -281,12 +335,17 @@ function LineItemRow({ line, isDraft, poEditable, onQtyChange, onDelete, onDamag
   // line quantity edits (PATCH /lines/{id}). Governs the qty pencil on non-draft
   // lines; delete stays draft-only because the backend blocks it otherwise.
   poEditable: boolean
-  onQtyChange: (id: string, qty: number) => Promise<void>
+  onQtyChange: (id: string, qty: number, reason?: string) => Promise<void>
   onDelete: (id: string) => Promise<void>
   onDamageResolved?: (lineId: string, resolution: DamageResolution) => void
   onSupplyStatusChanged?: (lineId: string, status: SupplyStatus | null, note: string | null) => void
 }) {
   const [editQty, setEditQty]           = useState<number | null>(null)
+  // Non-draft quantity modal (Task 6)
+  const [qtyModalOpen, setQtyModalOpen] = useState(false)
+  const [qtyBusy, setQtyBusy]           = useState(false)
+  const [qtyError, setQtyError]         = useState<string | null>(null)
+  const [serverMin, setServerMin]       = useState<number | null>(null)
   const [saving, setSaving]             = useState(false)
   const [deleting, setDeleting]         = useState(false)
   const [resolvingDamage, setResolvingDamage] = useState(false)
@@ -303,6 +362,21 @@ function LineItemRow({ line, isDraft, poEditable, onQtyChange, onDelete, onDamag
     setSaving(true)
     try { await onQtyChange(line.id, editQty); setEditQty(null) }
     finally { setSaving(false) }
+  }
+  const openQtyModal = () => {
+    setQtyError(null); setServerMin(null); setQtyModalOpen(true)
+  }
+  const handleQtyModalSave = async (qty: number, _notes: string, reason: string) => {
+    if (qty === line.quantity_ordered) { setQtyModalOpen(false); return }
+    setQtyBusy(true); setQtyError(null)
+    try {
+      await onQtyChange(line.id, qty, reason || undefined)
+      setQtyModalOpen(false)
+    } catch (e) {
+      const min = floorMinimumFromError(e)
+      if (min !== null) setServerMin(min)
+      else setQtyError(e instanceof Error ? e.message : 'Save failed')
+    } finally { setQtyBusy(false) }
   }
   const handleDelete = async () => {
     setDeleting(true); try { await onDelete(line.id) } finally { setDeleting(false) }
@@ -369,7 +443,7 @@ function LineItemRow({ line, isDraft, poEditable, onQtyChange, onDelete, onDamag
   }
 
   return (
-    <div className={`py-2 border-b dark:border-gray-800 last:border-0 ${deleting ? 'opacity-40' : ''}`}>
+    <div className={`group py-2 border-b dark:border-gray-800 last:border-0 ${deleting ? 'opacity-40' : ''}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="text-[var(--text-body)] font-medium text-gray-900 dark:text-gray-100 truncate leading-snug">
@@ -419,22 +493,13 @@ function LineItemRow({ line, isDraft, poEditable, onQtyChange, onDelete, onDamag
               {line.status === 'received' && !isFullyDamaged && (
                 <span className="text-green-500 text-xs">✓</span>
               )}
-              {editQty !== null ? (
-                <div className="flex items-center gap-1">
-                  <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 tabular-nums">{line.quantity_received}/</span>
-                  <input type="number" min={Math.max(1, line.quantity_received)} value={editQty}
-                    onChange={e => setEditQty(Math.max(1, parseInt(e.target.value) || 1))}
-                    onKeyDown={e => { if (e.key === 'Enter') handleQtySave(); if (e.key === 'Escape') setEditQty(null) }}
-                    className="w-12 px-1 py-0.5 border rounded text-xs text-center dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-1 focus:ring-blue-500 outline-none"
-                    autoFocus />
-                  <button type="button" onClick={handleQtySave} disabled={saving}
-                    className="text-[var(--text-label)] text-blue-500 hover:underline disabled:opacity-50">{saving ? '…' : '✓'}</button>
-                  <button type="button" onClick={() => setEditQty(null)}
-                    className="text-[var(--text-label)] text-gray-400 hover:text-gray-600">✕</button>
-                </div>
-              ) : canEditQty ? (
-                <button type="button" onClick={() => setEditQty(line.quantity_ordered)} title="Click to edit ordered qty"
-                  className="text-xs font-semibold text-gray-700 dark:text-gray-300 hover:text-blue-500 tabular-nums">
+              {canEditQty ? (
+                <button type="button" onClick={openQtyModal} title="Edit ordered quantity"
+                  aria-label={`Edit ordered quantity, ${line.quantity_received} of ${line.quantity_ordered} received`}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-gray-700 dark:text-gray-300 hover:text-blue-500 dark:hover:text-blue-400 tabular-nums">
+                  <Pencil aria-hidden="true" className="w-3 h-3 text-gray-400 dark:text-gray-500 transition-opacity
+                    [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100
+                    [@media(hover:hover)]:group-focus-within:opacity-100" />
                   {line.quantity_received}/{line.quantity_ordered}
                 </button>
               ) : (
@@ -543,6 +608,26 @@ function LineItemRow({ line, isDraft, poEditable, onQtyChange, onDelete, onDamag
             </button>
           </div>
         </div>
+      )}
+
+      {/* Ordered-quantity editor (Task 6). Quantity only; no notes, no delete. */}
+      {qtyModalOpen && (
+        <LineEntryModal
+          mode="edit"
+          heading="Edit ordered quantity"
+          title={line.title ?? line.inventory_item_id.split('/').pop() ?? ''}
+          isbn={line.isbn ?? line.supplier_sku ?? ''}
+          context={`${line.quantity_received} received · ${line.quantity_ordered} ordered`}
+          initialQty={line.quantity_ordered}
+          minimum={Math.max(clientMinimumOrdered(line), serverMin ?? 1)}
+          minimumHint="Copies already received, damaged or cancelled count toward the minimum."
+          allowNotes={false}
+          askReason
+          busy={qtyBusy}
+          error={qtyError}
+          onSave={handleQtyModalSave}
+          onClose={() => setQtyModalOpen(false)}
+        />
       )}
     </div>
   )
@@ -780,7 +865,7 @@ function OrderDetailsPanel({ order, onRefresh }: { order: PurchaseOrder; onRefre
 function LinesPanel({ order, lines, onLineAdded, onQtyChange, onDelete, onDamageResolved, onSupplyStatusChanged }: {
   order: PurchaseOrder; lines: PurchaseOrderLine[]
   onLineAdded: (l: PurchaseOrderLine) => void
-  onQtyChange: (id: string, qty: number) => Promise<void>
+  onQtyChange: (id: string, qty: number, reason?: string) => Promise<void>
   onDelete: (id: string) => Promise<void>
   onDamageResolved?: (lineId: string, resolution: DamageResolution) => void
   onSupplyStatusChanged?: (lineId: string, status: SupplyStatus | null, note: string | null) => void
@@ -969,7 +1054,9 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
   }, [detail])
 
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && isOpen) onClose() }
+    // Capture phase, so this hears Escape before any ModalShell does. While a
+    // modal is open (the quantity editor), the key is the modal's to handle.
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && isOpen && !isModalOpen()) onClose() }
     window.addEventListener('keydown', h, true)
     return () => window.removeEventListener('keydown', h, true)
   }, [isOpen, onClose])
@@ -981,8 +1068,8 @@ const PODetailSidebar: React.FC<Props> = ({ detail, onClose, onReceive, onRefres
   const canReceive = ['submitted', 'confirmed', 'partial'].includes(order.status)
 
   const handleLineAdded    = (newLine: PurchaseOrderLine) => setLocalLines(prev => [...prev, newLine])
-  const handleQtyChange    = async (lineId: string, qty: number) => {
-    await updatePOLine(lineId, { quantity_ordered: qty })
+  const handleQtyChange    = async (lineId: string, qty: number, reason?: string) => {
+    await updatePOLine(lineId, reason ? { quantity_ordered: qty, reason } : { quantity_ordered: qty })
     setLocalLines(prev => prev.map(l => l.id === lineId ? { ...l, quantity_ordered: qty } : l))
   }
   const handleDeleteLine   = async (lineId: string) => {

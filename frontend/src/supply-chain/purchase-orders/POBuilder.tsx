@@ -64,7 +64,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Minus, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
 import { useLocations } from '../hooks/useLocations'
 import {
   createPurchaseOrder,
@@ -86,6 +86,7 @@ import { AdHocSource, PurchaseOrder } from '../purchase-orders/purchaseOrderType
 import SupplierAccountPicker, { resolveAccountForLocation } from '../suppliers/SupplierAccountPicker'
 import OrderImageScan, { type ScannedLine } from './OrderImageScan'
 import ModalShell from '../../components/ModalShell'
+import LineEntryModal from './LineEntryModal'
 import { useComboboxNav, useRevealOnTouch } from '../../components/comboboxNav'
 
 // ---------------------------------------------------------------------------
@@ -256,130 +257,6 @@ function VariantSearchRow({
         </div>
       )}
     </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Line entry / edit modal
-//
-// Opens over the builder (ModalShell nests it a layer up automatically).
-// Quantity is a text field, not type=number: native spinners can't be styled
-// or enlarged, and the − / + buttons replace them. Digits only.
-// ---------------------------------------------------------------------------
-
-function LineEntryModal({
-  mode,
-  title,
-  isbn,
-  initialQty,
-  initialNotes,
-  onSave,
-  onClose,
-}: {
-  mode: 'add' | 'edit'
-  title: string
-  isbn: string
-  initialQty?: number
-  initialNotes?: string
-  onSave: (qty: number, notes: string) => void
-  onClose: () => void
-}) {
-  const [qtyText, setQtyText] = useState(initialQty != null ? String(initialQty) : '')
-  const [notes, setNotes] = useState(initialNotes ?? '')
-  const [notesOpen, setNotesOpen] = useState(!!initialNotes)
-  const qtyRef = useRef<HTMLInputElement>(null)
-
-  const qty = /^\d+$/.test(qtyText) ? parseInt(qtyText, 10) : NaN
-  const valid = Number.isInteger(qty) && qty >= 1
-
-  // Select on the next frame: selecting inside the focus event itself is
-  // undone by the click that focused the field on some mobile browsers.
-  const selectAll = (el: HTMLInputElement) => { requestAnimationFrame(() => el.select()) }
-  const bump = (d: number) => setQtyText(String(Math.max(1, (valid ? qty : 0) + d)))
-  const save = () => { if (valid) onSave(qty, notes.trim()) }
-  // − / + must not take focus from the field: the arrow keys keep working
-  // after a click, and on a phone the keyboard stays up between taps.
-  const keepFocus = (e: React.MouseEvent) => e.preventDefault()
-
-  const stepBtn = `h-12 w-12 shrink-0 flex items-center justify-center rounded-md border
-    border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200
-    hover:bg-gray-100 dark:hover:bg-gray-800 active:scale-95 disabled:opacity-30 transition`
-
-  return (
-    <ModalShell
-      title={mode === 'add' ? 'Add line' : 'Edit line'}
-      size="sm"
-      onClose={onClose}
-      initialFocusRef={qtyRef}
-      footer={({ requestClose }) => (
-        <div className="flex items-center justify-end gap-2">
-          <button type="button" onClick={requestClose}
-            className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-            Cancel
-          </button>
-          <button type="button" onClick={save} disabled={!valid}
-            className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors active:scale-[0.98]">
-            {mode === 'add' ? 'Add line' : 'Save'}
-          </button>
-        </div>
-      )}
-    >
-      <div className="space-y-4">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{title}</p>
-          <p className="text-xs text-gray-400 font-mono">{isbn}</p>
-        </div>
-
-        <div>
-          <Label required>Quantity</Label>
-          <div className="flex items-center gap-3">
-            <button type="button" aria-label="Decrease quantity" onClick={() => bump(-1)}
-              onMouseDown={keepFocus} disabled={!valid || qty <= 1} className={stepBtn}>
-              <Minus className="w-5 h-5" />
-            </button>
-            <input
-              ref={qtyRef}
-              inputMode="numeric"
-              pattern="[0-9]*"
-              autoComplete="off"
-              enterKeyHint="done"
-              aria-label="Quantity"
-              placeholder="Qty"
-              value={qtyText}
-              onChange={e => setQtyText(e.target.value.replace(/\D/g, '').slice(0, 5))}
-              onFocus={e => selectAll(e.currentTarget)}
-              onKeyDown={e => {
-                if (e.key === 'Enter')     { e.preventDefault(); save() }
-                if (e.key === 'ArrowUp')   { e.preventDefault(); bump(1) }
-                if (e.key === 'ArrowDown') { e.preventDefault(); if (valid && qty > 1) bump(-1) }
-              }}
-              className="h-12 flex-1 min-w-0 px-3 text-center text-2xl font-semibold tabular-nums border rounded-md
-                         bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600
-                         focus:ring-2 focus:ring-blue-500 outline-none placeholder:text-base placeholder:font-normal placeholder:text-gray-300"
-            />
-            <button type="button" aria-label="Increase quantity" onClick={() => bump(1)}
-              onMouseDown={keepFocus} className={stepBtn}>
-              <Plus className="w-5 h-5" />
-            </button>
-          </div>
-          {qtyText !== '' && !valid && (
-            <p className="text-[11px] text-red-600 dark:text-red-400 mt-1">Enter a whole number, 1 or more.</p>
-          )}
-        </div>
-
-        {notesOpen ? (
-          <div>
-            <Label>Notes</Label>
-            <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
-          </div>
-        ) : (
-          <button type="button" onClick={() => setNotesOpen(true)}
-            className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
-            + Add a note
-          </button>
-        )}
-      </div>
-    </ModalShell>
   )
 }
 
