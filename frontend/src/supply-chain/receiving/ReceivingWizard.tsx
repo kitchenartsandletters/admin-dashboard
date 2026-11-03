@@ -31,10 +31,17 @@
 // and the Review & confirm / Confirm buttons — is no longer clipped. Closing is
 // blocked while inventory is being applied.
 //
+// Quantity fields (QtyField): Qty received, Total arrived and Qty damaged use
+// the PO builder's entry pattern instead of type=number. Focus selects the
+// value so typing replaces it, and large − / + replace the native spinners,
+// which are too small to hit on a phone. Clamping and validation are
+// unchanged; only the input changed.
+//
 // Other phases unchanged from previous commits (#11 notes seeding, #12 confirm, #14 PDF).
 
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
+import { Minus, Plus } from 'lucide-react'
 import {
   WizardLine, ReceiveResult, DamageDisposal, DamageResolution,
   stockContextFromLine, formatStockCount, formatMoney,
@@ -269,6 +276,105 @@ function LineStockPriceContext({ line }: { line: WizardLine }) {
 }
 
 // ---------------------------------------------------------------------------
+// Quantity field — the PO builder's entry pattern (purchase-orders/LineEntryModal).
+//
+// A text field with inputMode="numeric", not type=number: native spinners
+// can't be enlarged and are too small to hit on a phone, so large − / +
+// replace them. Focus selects the whole value, so typing replaces it rather
+// than prepending to it (a "0" becoming "40" when 4 was meant). − / + keep
+// focus in the field (mousedown preventDefault): the keyboard stays up
+// between taps and the arrow keys keep working.
+//
+// The parent owns the number. Clearing the field reports 0, exactly as the old
+// parseInt(…) || 0 did, but leaves the field visibly empty until blur, so a
+// receiver can clear and retype without a 0 reappearing under the cursor.
+// Typed values reach the parent unclamped, so its own rules (and validate())
+// apply as before; − / + stop at min / max.
+// ---------------------------------------------------------------------------
+
+function QtyField({
+  value,
+  onChange,
+  min = 0,
+  max,
+  label,
+  tone = 'default',
+  highlight = false,
+}: {
+  value: number
+  onChange: (n: number) => void
+  min?: number
+  max?: number
+  /** Accessible name. The visible label sits above the field. */
+  label: string
+  tone?: 'default' | 'amber'
+  /** Amber border, e.g. a scanned line with nothing received yet. */
+  highlight?: boolean
+}) {
+  const [text, setText] = useState(String(value))
+
+  // The field always shows what the parent accepted: outside changes (slip
+  // scan, Receive all) and the parent's own clamping (Total arrived can't pass
+  // the remaining quantity, and typing 50 there leaves the value where it
+  // was) both resync it. The one tolerated difference is an empty field
+  // standing for 0, so a receiver can clear the field and retype.
+  useEffect(() => {
+    const shown = text === '' ? 0 : parseInt(text, 10)
+    if (shown !== value) setText(String(value))
+  }, [value, text])
+
+  const set = (n: number) => { setText(String(n)); onChange(n) }
+  const canDec = value > min
+  const canInc = max === undefined || value < max
+  const keepFocus = (e: React.MouseEvent) => e.preventDefault()
+
+  const stepBtn = `h-11 w-11 shrink-0 flex items-center justify-center rounded-md border
+    border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200
+    hover:bg-gray-100 dark:hover:bg-gray-800 active:scale-95 disabled:opacity-30 transition`
+  const fieldTone = tone === 'amber'
+    ? 'border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-900/10 focus:ring-amber-400'
+    : highlight
+    ? 'border-amber-300 dark:border-amber-600 bg-white dark:bg-gray-800 focus:ring-blue-500'
+    : 'dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-blue-500'
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <button type="button" aria-label={`Decrease ${label.toLowerCase()}`}
+        onClick={() => set(Math.max(min, value - 1))} onMouseDown={keepFocus}
+        disabled={!canDec} className={stepBtn}>
+        <Minus className="w-5 h-5" />
+      </button>
+      <input
+        inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="off"
+        enterKeyHint="done"
+        aria-label={label}
+        value={text}
+        onChange={e => {
+          const t = e.target.value.replace(/\D/g, '').slice(0, 5)
+          setText(t)
+          onChange(t === '' ? 0 : parseInt(t, 10))
+        }}
+        onFocus={e => { const el = e.currentTarget; requestAnimationFrame(() => el.select()) }}
+        onBlur={() => { if (text === '') setText(String(value)) }}
+        onKeyDown={e => {
+          if (e.key === 'ArrowUp')   { e.preventDefault(); if (canInc) set(value + 1) }
+          if (e.key === 'ArrowDown') { e.preventDefault(); if (canDec) set(value - 1) }
+        }}
+        className={`h-11 flex-1 min-w-0 px-2 text-center text-lg font-semibold font-mono tabular-nums
+          border rounded-md dark:text-white focus:ring-2 outline-none ${fieldTone}`}
+      />
+      <button type="button" aria-label={`Increase ${label.toLowerCase()}`}
+        onClick={() => set(max === undefined ? value + 1 : Math.min(max, value + 1))} onMouseDown={keepFocus}
+        disabled={!canInc} className={stepBtn}>
+        <Plus className="w-5 h-5" />
+      </button>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Structured damage section (#29)
 //
 // Staff workflow:
@@ -316,31 +422,24 @@ function DamageSection({
         Damage details
       </p>
 
-      {/* Qty arrived + qty damaged — derive quantity_received automatically */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* Qty arrived + qty damaged — derive quantity_received automatically.
+          Stacked on phones: two − / + fields side by side leave no room for digits. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold mb-1">
             Total arrived
             <span className="ml-1 normal-case font-normal text-gray-400">(incl. damaged)</span>
           </label>
-          <input
-            type="number" min={0} max={remaining}
-            value={qtyArrived}
-            onChange={e => handleArrivedChange(parseInt(e.target.value) || 0)}
-            className="w-full px-3 py-1.5 border dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none font-mono"
-          />
+          <QtyField label="Total arrived" value={qtyArrived} min={0} max={remaining}
+            onChange={handleArrivedChange} />
           <p className="text-[10px] text-gray-400 mt-1">max {remaining}</p>
         </div>
         <div>
           <label className="block text-[10px] uppercase tracking-wider text-amber-500 dark:text-amber-400 font-bold mb-1">
             Qty damaged
           </label>
-          <input
-            type="number" min={0} max={qtyArrived}
-            value={line.quantity_damaged}
-            onChange={e => handleDamagedChange(parseInt(e.target.value) || 0)}
-            className="w-full px-3 py-1.5 border border-amber-300 dark:border-amber-700 rounded text-sm bg-amber-50/50 dark:bg-amber-900/10 dark:text-white focus:ring-2 focus:ring-amber-400 outline-none font-mono"
-          />
+          <QtyField label="Qty damaged" tone="amber" value={line.quantity_damaged} min={0} max={qtyArrived}
+            onChange={handleDamagedChange} />
           {line.quantity_damaged > 0 && (
             <p className="text-[10px] text-green-600 dark:text-green-400 mt-1 font-mono">
               → {line.quantity_received} restocked to Shopify
@@ -521,23 +620,18 @@ function LineRow({
                 </span>
               )}
             </label>
-            <input
-              type="number" min={0} max={remaining}
-              value={line.quantity_received}
-              onChange={e => onQtyChange(line.purchase_order_line_id, Math.max(0, parseInt(e.target.value) || 0))}
-              className={`w-full px-3 py-1.5 border rounded text-sm bg-white dark:bg-gray-800 dark:text-white
-                focus:ring-2 focus:ring-blue-500 outline-none font-mono
-                ${fromScan && line.quantity_received === 0 && !hasDamage
-                  ? 'border-amber-300 dark:border-amber-600'
-                  : 'dark:border-gray-600'}`}
-            />
+            {/* + stops at what is left after any damaged copies already counted. */}
+            <QtyField label="Qty received" value={line.quantity_received}
+              min={0} max={Math.max(0, remaining - line.quantity_damaged)}
+              onChange={n => onQtyChange(line.purchase_order_line_id, Math.max(0, n))}
+              highlight={fromScan && line.quantity_received === 0 && !hasDamage} />
           </div>
           <button
             type="button"
             onClick={handleOpenDamage}
-            className="px-2.5 py-1.5 rounded border border-gray-200 dark:border-gray-700 text-xs font-medium
+            className="h-11 px-2.5 rounded border border-gray-200 dark:border-gray-700 text-xs font-medium
                        text-gray-400 dark:text-gray-500 hover:border-amber-300 dark:hover:border-amber-700
-                       hover:text-amber-600 dark:hover:text-amber-400 transition-colors mb-0.5">
+                       hover:text-amber-600 dark:hover:text-amber-400 transition-colors shrink-0">
             + Damage
           </button>
         </div>

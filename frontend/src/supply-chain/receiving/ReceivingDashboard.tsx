@@ -86,7 +86,13 @@ interface POReceivingGroup {
 // when receipts outgrow it — that needs paging on the endpoint first. Until
 // then, if a response ever comes back at exactly the ceiling the UI says so
 // instead of pretending the list is complete.
-const HISTORY_LIMIT = 120
+//
+// It sat at 120 from the 2026-10-05 hotfix, which kept /history's .in_() URLs
+// under the size behind the intermittent 500s on this screen.
+// supply-chain-service#109 (deployed 2026-11-02) chunks every .in_() in
+// /history by encoded size, so the cap is no longer load-bearing and this is
+// back at the server maximum.
+const HISTORY_LIMIT = 200
 
 // Page sizes offered for the main table.
 const PAGE_SIZES = [10, 20, 50] as const
@@ -386,23 +392,22 @@ export default function ReceivingDashboard() {
   */
   useEffect(() => {
     let cancelled = false
-    // 25, not 100. PostgREST puts .in_() lists in the QUERY STRING, and
-    // /api/purchase-orders fans out to supplier_products keyed on
-    // inventory_item_id. Those are gid://shopify/InventoryItem/… values that
-    // percent-encode to ~49 chars each; 100 POs carry ~356 distinct items,
-    // which is ~17KB of URL. Cloudflare in front of Supabase rejects that with
-    // an HTML 400, postgrest fails to parse the HTML as JSON, and the endpoint
-    // 500s. The browser then reports it as a CORS error, because Starlette's
-    // error middleware sits outside CORSMiddleware and a 500 carries no
-    // Access-Control-Allow-Origin header.
+    // 100, up from 25. The 25 was a 2026-10-05 client-side cap on a
+    // server-side problem: PostgREST puts .in_() lists in the QUERY STRING,
+    // and /api/purchase-orders fans out to supplier_products keyed on
+    // inventory_item_id — gid://shopify/InventoryItem/… values that
+    // percent-encode to ~49 chars each. 100 POs carried ~356 distinct items,
+    // ~17KB of URL; Cloudflare in front of Supabase rejected that with an HTML
+    // 400, the endpoint 500'd, and the browser reported a CORS error (a 500
+    // from Starlette's error middleware carries no Access-Control-Allow-Origin).
     //
-    // The only previous caller asked for 50 WITH a status filter, so it got
-    // ~15 POs back and never approached the limit.
+    // supply-chain-service#97 (8a27c1a) chunks po_routes' .in_() lists by
+    // encoded size, so page size no longer sets URL size.
     //
-    // This is a client-side cap on a server-side problem. The real fix is
-    // chunking inside po_routes._select_in_chunks and the unchunked .in_() at
-    // receiving_routes.py:724. Until that ships, keep this small.
-    const PAGE = 25
+    // 100, not 200: 100 is the limit fetchPurchaseOrders sends by default, so
+    // the endpoint is known to accept it. Its upper bound has not been checked.
+    // About two calls today.
+    const PAGE = 100
     const MAX_PAGES = 20   // a stop, so a misbehaving endpoint cannot loop forever
 
     ;(async () => {

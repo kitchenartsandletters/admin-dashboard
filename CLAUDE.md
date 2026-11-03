@@ -21,3 +21,12 @@ Conventions for AI assistants (Claude Code and chat) working in this repo. Keep 
 - **Before touching `supplier_parties`, `parent_id` or `is_returnable` — including the party editor UI — read `supply-chain-service/docs/ORDERING_VS_RETURNS.md`.**
 - Who we order from and where returns go are different questions; neither implies the other. `parent_id` currently carries both, so an ordering edit can silently break returns.
 - Do not change Chesapeake & Hudson's `is_returnable` or `roles` until that doc's §5 is answered; doing it alone strands its titles.
+
+## Modals
+- **New modals use `components/ModalShell.tsx`; never cap a panel with `vh`** — it clips the footer on phones. Layers come from `lib/zIndex.ts`.
+- A slide-over with its own Escape handler must check `isModalOpen()` before closing, or Escape in a modal it opened closes both.
+- Which modals are migrated, which are unconfirmed, and what is still open: `docs/MODAL_SHELL.md`.
+
+## PO line quantities (supply chain)
+- Edits go through `PATCH /api/purchase-orders/lines/{id}`, which enforces a floor and returns a 409 with `minimum_quantity_ordered`. Clamp on that number, not the message. No line deletes on submitted POs.
+- Where quantities are edited, the floor, attribution headers, and a pending smoke test: `docs/PO_LINE_EDITING.md`.
