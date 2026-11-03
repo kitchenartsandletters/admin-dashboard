@@ -1170,7 +1170,7 @@ export default function ReceivingWizard({ poId: poIdProp, onDone }: ReceivingWiz
         </button>
       </div>
 
-      {/* ── IDLE ───────────────────────────────────────────────── */}
+      {/* ── IDLE ─────────────────────────────────────────────────── */}
       {phase === 'idle' && (
         <div className="space-y-4">
           {loading && <p className="text-sm text-gray-500 dark:text-gray-400 animate-pulse">Loading PO…</p>}
@@ -1186,7 +1186,7 @@ export default function ReceivingWizard({ poId: poIdProp, onDone }: ReceivingWiz
         </div>
       )}
 
-      {/* ── REVIEW ─────────────────────────────────────────────── */}
+      {/* ── REVIEW ───────────────────────────────────────────────── */}
       {phase === 'review' && poDetail && (
         <div className="space-y-5">
           <div className="rounded-md border dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-0.5">
@@ -1297,7 +1297,7 @@ export default function ReceivingWizard({ poId: poIdProp, onDone }: ReceivingWiz
         </div>
       )}
 
-      {/* ── CONFIRM ────────────────────────────────────────────── */}
+      {/* ── CONFIRM ──────────────────────────────────────────────── */}
       {phase === 'confirm' && poDetail && (
         <ConfirmSummary
           lines={lines} completedLines={completedLines}
@@ -1309,7 +1309,7 @@ export default function ReceivingWizard({ poId: poIdProp, onDone }: ReceivingWiz
         />
       )}
 
-      {/* ── CONFIRMING ─────────────────────────────────────────── */}
+      {/* ── CONFIRMING ───────────────────────────────────────────── */}
       {phase === 'confirming' && (
         <div className="flex flex-col items-center justify-center py-16 space-y-3 text-gray-500 dark:text-gray-400">
           <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -1318,7 +1318,7 @@ export default function ReceivingWizard({ poId: poIdProp, onDone }: ReceivingWiz
         </div>
       )}
 
-      {/* ── RESULT ─────────────────────────────────────────────── */}
+      {/* ── RESULT ───────────────────────────────────────────────── */}
       {phase === 'result' && result && (
         <div className="space-y-5">
           <div className={`rounded-md border px-4 py-4 ${
