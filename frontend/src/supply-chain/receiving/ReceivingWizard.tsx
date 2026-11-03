@@ -26,6 +26,11 @@
 //   they are read-only and never sent back. They WARN and never block — a
 //   receiver with a box in hand must always be able to finish receiving.
 //
+// Frame: ModalShell (components/ModalShell.tsx). The panel is capped against svh,
+// not vh, so on a phone with the address bar showing the bottom of the panel —
+// and the Review & confirm / Confirm buttons — is no longer clipped. Closing is
+// blocked while inventory is being applied.
+//
 // Other phases unchanged from previous commits (#11 notes seeding, #12 confirm, #14 PDF).
 
 import { useState, useEffect, useRef } from 'react'
@@ -44,7 +49,7 @@ import {
 import { useLocations } from '../hooks/useLocations'
 import { formatDate } from '../../utils/tableUtils'
 import RightSidebar from '../../components/RightSidebar'
-import { createPortal } from 'react-dom'
+import ModalShell from '../../components/ModalShell'
 
 type Phase = 'idle' | 'review' | 'confirm' | 'confirming' | 'result'
 type ScanState = 'idle' | 'scanning' | 'done' | 'error'
@@ -1030,28 +1035,19 @@ export default function ReceivingWizard({ poId: poIdProp, onDone }: ReceivingWiz
     (phase === 'review' || phase === 'confirm') &&
     lines.some(l => l.quantity_received > 0 || l.quantity_damaged > 0)
 
-  const [isVisible, setIsVisible] = useState(false)
-  useEffect(() => { setIsVisible(true) }, [])
-
   /* The single exit. Route mount navigates, modal mount calls onDone.
-     The 300ms matches the fade so the panel isn't yanked away mid-transition. */
-  function handleReset() {
-    setIsVisible(false)
-    setTimeout(() => { onDone ? onDone() : navigate('/receiving') }, 300)
+     ModalShell calls it after its fade, so the panel isn't yanked away. */
+  function exit() {
+    onDone ? onDone() : navigate('/receiving')
   }
 
-  /* Escape confirms when there is entered work, unlike POBuilder which
-     discards silently. Backdrop click does nothing at all — see B3. */
-  useEffect(() => {
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      e.stopPropagation()
-      if (isDirty && !window.confirm('Discard this receipt? Entered quantities will be lost.')) return
-      handleReset()
-    }
-    window.addEventListener('keydown', onEsc, true)
-    return () => window.removeEventListener('keydown', onEsc, true)
-  })
+  /* Every way out — x, Escape, the result screen's button — passes through
+     this. It asks before discarding entered work, unlike POBuilder which
+     discards silently. The backdrop does nothing at all (ModalShell's default),
+     so a stray tap cannot discard a half-entered receipt — see B3. */
+  function confirmDiscard(): boolean {
+    return !isDirty || window.confirm('Discard this receipt? Entered quantities will be lost.')
+  }
 
   const order  = poDetail?.order as any
   const isTest = !!order?.is_test
@@ -1059,22 +1055,15 @@ export default function ReceivingWizard({ poId: poIdProp, onDone }: ReceivingWiz
   // and disables "Clear all" when there is nothing to clear.
   const enteredCount = lines.filter(l => l.quantity_received > 0 || l.quantity_damaged > 0).length
 
-  return createPortal(
-    <>
-      {/* No onClick. A stray click must not discard a half-entered receipt.
-          Cancel and Escape are the only ways out. */}
-      <div
-        className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`}
-      />
-      <div className={`fixed inset-0 z-50 flex items-start justify-center pt-6 px-4 pb-6 transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`}>
-        <div className="w-full max-w-2xl bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 shadow-2xl flex flex-col max-h-[92vh]">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-800 shrink-0">
-            <h2 className="text-sm font-semibold">Receive purchase order</h2>
-            <button onClick={handleReset} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
-              Cancel
-            </button>
-          </div>
-          <div className="overflow-y-auto px-5 py-4">
+  return (
+    <ModalShell
+      title="Receive purchase order"
+      size="lg"
+      onClose={exit}
+      onBeforeClose={confirmDiscard}
+      dismissible={phase !== 'confirming'}
+    >
+      {({ requestClose }) => (
             <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -1280,7 +1269,7 @@ export default function ReceivingWizard({ poId: poIdProp, onDone }: ReceivingWiz
             <ReceiptPdfButton receiptId={result.receipt_id} />
           )}
 
-          <button onClick={handleReset}
+          <button onClick={requestClose}
             className="w-full border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 font-medium py-2.5 rounded-md text-sm transition-colors">
             Receive another order
           </button>
@@ -1295,10 +1284,7 @@ export default function ReceivingWizard({ poId: poIdProp, onDone }: ReceivingWiz
         />
       )}
             </div>
-          </div>
-        </div>
-      </div>
-    </>,
-    document.body,
+      )}
+    </ModalShell>
   )
 }
