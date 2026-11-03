@@ -56,6 +56,11 @@
 //
 // Frame: ModalShell. A backdrop tap does nothing (it used to discard the whole
 // PO); closing with lines entered asks first.
+//
+// Search lists (titles, B2B customers; suppliers in SupplierAccountPicker):
+// Up/Down + Enter pick from the keyboard, Escape closes the list before the
+// modal, and on touch screens the field scrolls up when results appear so the
+// on-screen keyboard doesn't hide them (components/comboboxNav.ts).
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -81,6 +86,7 @@ import { AdHocSource, PurchaseOrder } from '../purchase-orders/purchaseOrderType
 import SupplierAccountPicker, { resolveAccountForLocation } from '../suppliers/SupplierAccountPicker'
 import OrderImageScan, { type ScannedLine } from './OrderImageScan'
 import ModalShell from '../../components/ModalShell'
+import { useComboboxNav, useRevealOnTouch } from '../../components/comboboxNav'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -186,6 +192,15 @@ function VariantSearchRow({
     return () => clearTimeout(t)
   }, [query, partyId])
 
+  const nav = useComboboxNav({
+    items: results,
+    open: results.length > 0,
+    onPick: v => handleSelect(v),
+    onClose: () => setResults([]),
+    isDisabled: v => existingItemIds.has(v.inventory_item_id),
+  })
+  useRevealOnTouch(ref, results.length > 0)
+
   const handleSelect = (v: VariantSearchResult) => {
     onPick({
       inventory_item_id: v.inventory_item_id,
@@ -202,25 +217,31 @@ function VariantSearchRow({
       <Input
         value={query}
         onChange={e => setQuery(e.target.value)}
+        onKeyDown={nav.onKeyDown}
+        enterKeyHint="search"
         placeholder="Search by ISBN or title to add a line…"
       />
       {searching && (
         <div className="absolute right-3 top-2.5 text-xs text-gray-400">Searching…</div>
       )}
       {results.length > 0 && (
-        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-md shadow-xl overflow-hidden max-h-64 overflow-y-auto">
-          {results.map(v => {
+        <div ref={nav.listRef} role="listbox"
+          className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-md shadow-xl overflow-hidden max-h-64 overflow-y-auto">
+          {results.map((v, i) => {
             const already = existingItemIds.has(v.inventory_item_id)
             return (
               <button
                 key={v.inventory_item_id}
                 type="button"
                 disabled={already}
+                {...nav.optionProps(i)}
                 onMouseDown={() => !already && handleSelect(v)}
                 className={`w-full text-left px-3 py-2.5 border-b dark:border-gray-800 last:border-0 text-sm
                   ${already
                     ? 'opacity-40 cursor-not-allowed bg-gray-50 dark:bg-gray-800/50'
-                    : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                    : i === nav.active
+                    ? 'bg-blue-50 dark:bg-blue-900/30'
+                    : ''
                   }`}
               >
                 <span className="font-medium text-gray-900 dark:text-gray-100 block truncate">
@@ -276,6 +297,9 @@ function LineEntryModal({
   const selectAll = (el: HTMLInputElement) => { requestAnimationFrame(() => el.select()) }
   const bump = (d: number) => setQtyText(String(Math.max(1, (valid ? qty : 0) + d)))
   const save = () => { if (valid) onSave(qty, notes.trim()) }
+  // − / + must not take focus from the field: the arrow keys keep working
+  // after a click, and on a phone the keyboard stays up between taps.
+  const keepFocus = (e: React.MouseEvent) => e.preventDefault()
 
   const stepBtn = `h-12 w-12 shrink-0 flex items-center justify-center rounded-md border
     border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200
@@ -310,7 +334,7 @@ function LineEntryModal({
           <Label required>Quantity</Label>
           <div className="flex items-center gap-3">
             <button type="button" aria-label="Decrease quantity" onClick={() => bump(-1)}
-              disabled={!valid || qty <= 1} className={stepBtn}>
+              onMouseDown={keepFocus} disabled={!valid || qty <= 1} className={stepBtn}>
               <Minus className="w-5 h-5" />
             </button>
             <input
@@ -318,6 +342,7 @@ function LineEntryModal({
               inputMode="numeric"
               pattern="[0-9]*"
               autoComplete="off"
+              enterKeyHint="done"
               aria-label="Quantity"
               placeholder="Qty"
               value={qtyText}
@@ -332,7 +357,8 @@ function LineEntryModal({
                          bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600
                          focus:ring-2 focus:ring-blue-500 outline-none placeholder:text-base placeholder:font-normal placeholder:text-gray-300"
             />
-            <button type="button" aria-label="Increase quantity" onClick={() => bump(1)} className={stepBtn}>
+            <button type="button" aria-label="Increase quantity" onClick={() => bump(1)}
+              onMouseDown={keepFocus} className={stepBtn}>
               <Plus className="w-5 h-5" />
             </button>
           </div>
@@ -502,6 +528,15 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
   const [newCustomerName, setNewCustomerName] = useState('')
   const [newCustomerAddress, setNewCustomerAddress] = useState('')
   const [savingCustomer, setSavingCustomer] = useState(false)
+  const customerSearchRef = useRef<HTMLDivElement>(null)
+  const pickCustomer = (c: B2bCustomer) => { setB2bCustomer(c); setCustomerSearch(''); setCustomerResults([]) }
+  const customerNav = useComboboxNav({
+    items: customerResults,
+    open: customerResults.length > 0,
+    onPick: pickCustomer,
+    onClose: () => setCustomerResults([]),
+  })
+  useRevealOnTouch(customerSearchRef, customerResults.length > 0)
 
   const effectiveAccount = useMemo(
     () => supplierSelection
@@ -988,15 +1023,19 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                             </div>
                           </div>
                         ) : (
-                          <div className="relative">
+                          <div ref={customerSearchRef} className="relative">
                             <Input value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
+                              onKeyDown={customerNav.onKeyDown} enterKeyHint="search"
                               placeholder="Search B2B customers…" />
                             {customerResults.length > 0 && (
-                              <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-md shadow-xl overflow-hidden max-h-56 overflow-y-auto">
-                                {customerResults.map(c => (
+                              <div ref={customerNav.listRef} role="listbox"
+                                className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-md shadow-xl overflow-hidden max-h-56 overflow-y-auto">
+                                {customerResults.map((c, i) => (
                                   <button key={c.id} type="button"
-                                    onMouseDown={() => { setB2bCustomer(c); setCustomerSearch(''); setCustomerResults([]) }}
-                                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 border-b dark:border-gray-800 last:border-0">
+                                    {...customerNav.optionProps(i)}
+                                    onMouseDown={() => pickCustomer(c)}
+                                    className={`w-full text-left px-3 py-2 text-sm border-b dark:border-gray-800 last:border-0
+                                      ${i === customerNav.active ? 'bg-blue-50 dark:bg-blue-900/30' : ''}`}>
                                     <span className="font-medium text-gray-900 dark:text-gray-100 block truncate">{c.business_name}</span>
                                     {c.ship_to_address && <span className="text-[11px] text-gray-400 truncate block">{c.ship_to_address}</span>}
                                   </button>
