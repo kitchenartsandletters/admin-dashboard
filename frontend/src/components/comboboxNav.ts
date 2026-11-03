@@ -2,10 +2,17 @@
 // Keyboard navigation and mobile visibility for search-as-you-type result lists.
 //
 // useComboboxNav — Up/Down moves a highlight through the results, skipping
-// disabled ones; Enter picks the highlighted result; Escape closes the list.
-// The first pickable result is highlighted as soon as results arrive, so typing
-// an ISBN and pressing Enter takes the top match. Mouse hover moves the same
-// highlight, so keyboard and mouse never disagree about what Enter will pick.
+// disabled ones, and stops at the first and last result (no wrap-around);
+// Enter picks the highlighted result; Escape closes the list. The first
+// pickable result is highlighted as soon as results arrive, so typing an ISBN
+// and pressing Enter takes the top match.
+//
+// Mouse movement moves the same highlight, so keyboard and mouse never disagree
+// about what Enter will pick — but only REAL movement. When an arrow key
+// scrolls the list, a different row slides under a resting pointer and Chrome
+// reports that as the mouse entering it; reacting to that snapped the highlight
+// back to whatever row sat under the cursor. So hover is tracked on mousemove,
+// and ignored unless the pointer's screen position actually changed.
 //
 // Escape calls preventDefault, and ModalShell ignores an already-handled
 // Escape, so the first press closes the list and only a second press closes
@@ -38,6 +45,7 @@ export function useComboboxNav<T>({
 }) {
   const [active, setActive] = useState(-1)
   const listRef = useRef<HTMLDivElement>(null)
+  const lastPointer = useRef<{ x: number; y: number } | null>(null)
 
   // Highlight the first pickable result whenever the result set changes.
   useEffect(() => {
@@ -53,11 +61,9 @@ export function useComboboxNav<T>({
     el?.scrollIntoView?.({ block: 'nearest' })
   }, [active])
 
+  // Step to the next pickable result in `dir`; stay put at either end.
   const move = (dir: 1 | -1) => {
-    const n = items.length
-    let i = active
-    for (let k = 0; k < n; k++) {
-      i = (i + dir + n) % n
+    for (let i = active + dir; i >= 0 && i < items.length; i += dir) {
       if (!isDisabled(items[i])) { setActive(i); return }
     }
   }
@@ -87,7 +93,12 @@ export function useComboboxNav<T>({
     'data-option-index': i,
     role: 'option' as const,
     'aria-selected': i === active,
-    onMouseEnter: () => { if (!isDisabled(items[i])) setActive(i) },
+    onMouseMove: (e: { clientX: number; clientY: number }) => {
+      const last = lastPointer.current
+      if (last && last.x === e.clientX && last.y === e.clientY) return  // scrolled, not moved
+      lastPointer.current = { x: e.clientX, y: e.clientY }
+      if (!isDisabled(items[i]) && i !== active) setActive(i)
+    },
   })
 
   return { active, onKeyDown, listRef, optionProps }
