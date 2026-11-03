@@ -30,3 +30,4 @@ Conventions for AI assistants (Claude Code and chat) working in this repo. Keep 
 ## PO line quantities (supply chain)
 - Edits go through `PATCH /api/purchase-orders/lines/{id}`, which enforces a floor and returns a 409 with `minimum_quantity_ordered`. Clamp on that number, not the message. No line deletes on submitted POs.
 - Where quantities are edited, the floor, attribution headers, and a pending smoke test: `docs/PO_LINE_EDITING.md`.
+- Questions waiting on the backend chat, and their answers: `docs/BACKEND_ASKS.md`.
