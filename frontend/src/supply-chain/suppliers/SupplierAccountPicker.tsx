@@ -16,12 +16,17 @@
 //      derived externally by resolveAccountForLocation so callers can
 //      recompute it when the destination location changes
 //
+// Keyboard: Up/Down + Enter pick a result, Escape closes the list. On touch
+// screens the field scrolls up when results appear so the on-screen keyboard
+// doesn't hide them (components/comboboxNav.ts).
+//
 // resolveAccountForLocation is exported separately so POBuilder and
 // ReceivingEntryFlow can both derive the effective account consistently.
 
 import { useEffect, useRef, useState } from 'react'
 import { fetchSuppliers, fetchSupplierDetail } from '../../api/supplyChainApi'
 import { SupplierAccount, SupplierParty } from './supplierTypes'
+import { useComboboxNav, useRevealOnTouch } from '../../components/comboboxNav'
 
 // ---------------------------------------------------------------------------
 // Account resolution
@@ -163,6 +168,16 @@ export default function SupplierAccountPicker({
     }
   }
 
+  const listOpen = open && results.length > 0 && !value
+  const nav = useComboboxNav({
+    items: results,
+    open: listOpen,
+    onPick: party => { selectParty(party) },
+    onClose: () => setOpen(false),
+    onOpen: () => { if (!value) setOpen(true) },
+  })
+  useRevealOnTouch(ref, listOpen)
+
   const handleClear = () => {
     onChange(null)
     setSearch('')
@@ -180,6 +195,8 @@ export default function SupplierAccountPicker({
           setOpen(true)
         }}
         onFocus={() => { if (!value) setOpen(true) }}
+        onKeyDown={nav.onKeyDown}
+        enterKeyHint="search"
         placeholder={placeholder}
         disabled={loadingAccounts}
         autoFocus={autoFocus}
@@ -226,14 +243,17 @@ export default function SupplierAccountPicker({
       )}
 
       {/* Dropdown results */}
-      {open && results.length > 0 && !value && (
-        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-md shadow-xl overflow-hidden">
-          {results.map(party => (
+      {listOpen && (
+        <div ref={nav.listRef} role="listbox"
+          className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-900 border dark:border-gray-700 rounded-md shadow-xl overflow-hidden">
+          {results.map((party, i) => (
             <button
               key={party.id}
               type="button"
+              {...nav.optionProps(i)}
               onMouseDown={() => selectParty(party)}
-              className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 border-b dark:border-gray-800 last:border-0"
+              className={`w-full text-left px-3 py-2.5 text-sm border-b dark:border-gray-800 last:border-0
+                ${i === nav.active ? 'bg-blue-50 dark:bg-blue-900/30' : ''}`}
             >
               <span className="font-medium text-gray-900 dark:text-gray-100">{party.name}</span>
               {party.roles?.length > 0 && (
