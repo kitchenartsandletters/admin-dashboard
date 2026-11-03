@@ -7,6 +7,7 @@ import BlacklistManager from './components/BlackListManager';
 import DamagedBooksWizard from './components/DamagedBooksWizard';
 import { AuthProvider } from './auth/AuthProvider';
 import { StaffProvider, StaffGate, StaffChip } from './auth/StaffProvider';
+import ScActorSync from './auth/ScActorSync';
 import { useDailyLogout } from './auth/useDailyLogout';
 import ProtectedRoute from './auth/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
@@ -74,6 +75,7 @@ const App = () => {
   return (
     <AuthProvider>
       <StaffProvider>
+      <ScActorSync />
       <Router>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
