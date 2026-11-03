@@ -14,6 +14,10 @@
 // resizes mid-scroll and the modal jumps. svh is stable; at worst there is a
 // little spare space below the panel when chrome is hidden.
 //
+// Base text colour is set on the panel. Without it, any text with no colour
+// class of its own inherited the page's dark default and vanished against the
+// dark-mode panel.
+//
 // Safe-area insets are included so this stays correct if index.html ever adds
 // viewport-fit=cover. Without it (today) env() resolves to 0 and costs nothing.
 //
@@ -219,6 +223,7 @@ export default function ModalShell({
           aria-labelledby={titleId}
           tabIndex={-1}
           className={`w-full ${SIZE_CLASS[size]} flex flex-col outline-none
+            text-gray-900 dark:text-gray-100
             bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 shadow-2xl
             max-h-[calc(100svh-1.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))]
             sm:max-h-[calc(100svh-4rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))]`}
