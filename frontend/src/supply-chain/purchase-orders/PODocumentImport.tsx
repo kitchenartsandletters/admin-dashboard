@@ -36,6 +36,11 @@
 // what was imported (ordered vs shipped, ISBN corrections, pack expansion) are
 // written to the PO line's notes so the PO keeps its own audit trail.
 //
+// Frame: ModalShell (components/ModalShell.tsx). It keeps the footer on screen on
+// phones (svh, not vh), stacks above sidebars, and does not close on a backdrop
+// tap — a stray tap used to discard every parsed and corrected line. Closing is
+// blocked while the PO is being created.
+//
 // See docs/PO_DOCUMENT_IMPORT.md for the change log and open items.
 
 import { useState, useRef, useCallback, useEffect } from 'react'
@@ -54,6 +59,7 @@ import {
 import { useLocations } from '../hooks/useLocations'
 import SupplierAccountPicker, { resolveAccountForLocation } from '../suppliers/SupplierAccountPicker'
 import type { SupplierParty, SupplierAccount } from '../suppliers/supplierTypes'
+import ModalShell from '../../components/ModalShell'
 
 type WizardStep = 'upload' | 'review' | 'confirm' | 'creating' | 'done'
 type PageStatus = 'queued' | 'parsing' | 'done' | 'error'
@@ -285,10 +291,6 @@ interface Props {
 }
 
 export default function PODocumentImport({ onClose, onCreated }: Props) {
-  const [isVisible, setIsVisible] = useState(false)
-  useEffect(() => { setTimeout(() => setIsVisible(true), 10) }, [])
-  const handleClose = () => { setIsVisible(false); setTimeout(onClose, 300) }
-
   const [step, setStep]   = useState<WizardStep>('upload')
   const [error, setError] = useState<string | null>(null)
 
@@ -514,7 +516,7 @@ export default function PODocumentImport({ onClose, onCreated }: Props) {
       unit_price: l.unit_price == null ? null : Math.round((l.unit_price / n) * 100) / 100 }
   })
 
-  // ── Computed ──────────────────────────────────────────────────────────────
+  // ── Computed ─────────────────────────────────────────────────────────────────
 
   const matchedLines   = lines.filter(l => l.status === 'matched')
   const unmatchedCount = lines.filter(l => l.status === 'unmatched').length
@@ -545,7 +547,7 @@ export default function PODocumentImport({ onClose, onCreated }: Props) {
     : null
   const confirmValid = !!effectiveAccount && !!locationId && !!orderedAt && includedCount > 0
 
-  // ── Create ────────────────────────────────────────────────────────────────
+  // ── Create ────────────────────────────────────────────────────────────────────
 
   const handleCreate = async () => {
     if (!effectiveAccount || !locationId || !orderedAt || includedCount === 0) return
@@ -592,7 +594,7 @@ export default function PODocumentImport({ onClose, onCreated }: Props) {
     }
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
 
   const stepLabels: Record<WizardStep, string> = {
     upload: 'Upload document', review: 'Review lines',
@@ -601,44 +603,72 @@ export default function PODocumentImport({ onClose, onCreated }: Props) {
   const stepOrder: WizardStep[] = ['upload', 'review', 'confirm']
   const stepIndex = stepOrder.indexOf(step)
 
-  return (
-    <>
-      <div className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`}
-        onClick={handleClose} />
-      <div className={`fixed inset-0 z-50 flex items-start justify-center pt-6 px-4 pb-6 transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`}>
-        <div className="w-full max-w-3xl bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 shadow-2xl flex flex-col max-h-[92vh]">
-
-          {/* Header */}
-          <div className="flex items-center justify-between px-5 py-4 border-b dark:border-gray-800 shrink-0">
-            <div>
-              <h2 className="font-bold text-gray-900 dark:text-white text-lg">Import PO from document</h2>
-              <p className="text-xs text-gray-400 mt-0.5">{stepLabels[step]}</p>
+  const stepBar = stepOrder.includes(step) ? (
+    <div className="flex items-center gap-2 px-4 sm:px-5 py-3 border-b dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/30">
+      {(['Upload', 'Review', 'Confirm'] as const).map((label, i) => {
+        const done = i < stepIndex; const active = i === stepIndex
+        return (
+          <div key={label} className="contents">
+            {i > 0 && <div className={`flex-1 h-px ${done ? 'bg-blue-400' : 'bg-gray-200 dark:bg-gray-700'}`} />}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                active ? 'bg-blue-600 text-white' : done ? 'bg-blue-200 text-blue-700 dark:bg-blue-900 dark:text-blue-300' : 'bg-gray-200 dark:bg-gray-700 text-gray-400'
+              }`}>{done ? '✓' : i + 1}</div>
+              <span className={`text-xs font-medium hidden sm:block ${active ? 'text-blue-600 dark:text-blue-400' : done ? 'text-blue-400' : 'text-gray-400'}`}>{label}</span>
             </div>
-            <button onClick={handleClose} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">Cancel</button>
           </div>
+        )
+      })}
+    </div>
+  ) : undefined
 
-          {/* Step bar */}
-          {stepOrder.includes(step) && (
-            <div className="flex items-center gap-2 px-5 py-3 border-b dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/30 shrink-0">
-              {(['Upload', 'Review', 'Confirm'] as const).map((label, i) => {
-                const done = i < stepIndex; const active = i === stepIndex
-                return (
-                  <div key={label} className="contents">
-                    {i > 0 && <div className={`flex-1 h-px ${done ? 'bg-blue-400' : 'bg-gray-200 dark:bg-gray-700'}`} />}
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                        active ? 'bg-blue-600 text-white' : done ? 'bg-blue-200 text-blue-700 dark:bg-blue-900 dark:text-blue-300' : 'bg-gray-200 dark:bg-gray-700 text-gray-400'
-                      }`}>{done ? '✓' : i + 1}</div>
-                      <span className={`text-xs font-medium hidden sm:block ${active ? 'text-blue-600 dark:text-blue-400' : done ? 'text-blue-400' : 'text-gray-400'}`}>{label}</span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+  const footer = (step === 'upload' || step === 'review' || step === 'confirm')
+    ? ({ requestClose }: { requestClose: () => void }) => (
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => {
+            if (step === 'confirm') setStep('review')
+            else if (step === 'review') setStep('upload')
+            else requestClose()
+          }}
+          className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+          {step === 'upload' ? 'Cancel' : '← Back'}
+        </button>
 
-          {/* Body */}
-          <div className="flex-1 overflow-y-auto px-5 py-5">
+        {step === 'upload' && (
+          <button onClick={processQueue} disabled={queue.length === 0 || parsing}
+            className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors active:scale-[0.98]">
+            Read {queue.length > 1 ? `${queue.length} pages` : 'document'} →
+          </button>
+        )}
+        {step === 'review' && (
+          <button onClick={() => setStep('confirm')} disabled={!reviewValid}
+            className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors active:scale-[0.98]">
+            Confirm details →
+          </button>
+        )}
+        {step === 'confirm' && (
+          <button onClick={handleCreate} disabled={!confirmValid}
+            className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors active:scale-[0.98]">
+            Import {includedCount} line{includedCount !== 1 ? 's' : ''} →
+          </button>
+        )}
+      </div>
+    )
+    : undefined
+
+  return (
+    <ModalShell
+      title="Import PO from document"
+      subtitle={stepLabels[step]}
+      subheader={stepBar}
+      size="lg"
+      onClose={onClose}
+      dismissible={step !== 'creating'}
+      footer={footer}
+    >
+      {({ requestClose }) => (
+        <>
 
             {/* ── Upload ──────────────────────────────────────────────── */}
             {step === 'upload' && (
@@ -1076,11 +1106,11 @@ export default function PODocumentImport({ onClose, onCreated }: Props) {
                   {informalRef && <p className="text-xs font-mono text-gray-400 mt-2">ref: {informalRef}</p>}
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => { if (createdPoId) onCreated(createdPoId); handleClose() }}
+                  <button onClick={() => { if (createdPoId) onCreated(createdPoId); requestClose() }}
                     className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors">
                     Open PO →
                   </button>
-                  <button onClick={handleClose}
+                  <button onClick={requestClose}
                     className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                     Close
                   </button>
@@ -1093,46 +1123,11 @@ export default function PODocumentImport({ onClose, onCreated }: Props) {
                 {error}
               </div>
             )}
-          </div>
-
-          {/* Footer */}
-          {(step === 'upload' || step === 'review' || step === 'confirm') && (
-            <div className="px-5 py-4 border-t dark:border-gray-800 flex items-center justify-between shrink-0 bg-gray-50/50 dark:bg-gray-900/30">
-              <button
-                onClick={() => {
-                  if (step === 'confirm') setStep('review')
-                  else if (step === 'review') setStep('upload')
-                  else handleClose()
-                }}
-                className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                {step === 'upload' ? 'Cancel' : '← Back'}
-              </button>
-
-              {step === 'upload' && (
-                <button onClick={processQueue} disabled={queue.length === 0 || parsing}
-                  className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors active:scale-[0.98]">
-                  Read {queue.length > 1 ? `${queue.length} pages` : 'document'} →
-                </button>
-              )}
-              {step === 'review' && (
-                <button onClick={() => setStep('confirm')} disabled={!reviewValid}
-                  className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors active:scale-[0.98]">
-                  Confirm details →
-                </button>
-              )}
-              {step === 'confirm' && (
-                <button onClick={handleCreate} disabled={!confirmValid}
-                  className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors active:scale-[0.98]">
-                  Import {includedCount} line{includedCount !== 1 ? 's' : ''} →
-                </button>
-              )}
-            </div>
-          )}
 
           <input ref={inputRef} type="file" accept="image/*,application/pdf" capture="environment"
             onChange={e => { const f = e.target.files?.[0]; if (f) addPage(f) }} className="hidden" />
-        </div>
-      </div>
-    </>
+        </>
+      )}
+    </ModalShell>
   )
 }

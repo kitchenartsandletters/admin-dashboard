@@ -76,6 +76,10 @@ function unlockBody() {
 export interface ModalShellProps {
   /** Header title. Also labels the dialog for screen readers. */
   title: ReactNode
+  /** Small line under the title, e.g. the current wizard step. */
+  subtitle?: ReactNode
+  /** Pinned strip between header and body, e.g. a step bar. Supplies its own padding. */
+  subheader?: ReactNode
   /** Called after the fade-out, once the user has dismissed the modal. */
   onClose: () => void
   /** Body content. Scrolls when taller than the space available. */
@@ -97,6 +101,8 @@ export interface ModalShellProps {
 
 export default function ModalShell({
   title,
+  subtitle,
+  subheader,
   onClose,
   children,
   footer,
@@ -202,9 +208,14 @@ export default function ModalShell({
         >
           {/* Header */}
           <div className="flex items-center gap-3 px-4 sm:px-5 py-3 sm:py-4 border-b dark:border-gray-800 shrink-0">
-            <h2 id={titleId} className="flex-1 min-w-0 truncate font-bold text-gray-900 dark:text-white text-lg">
-              {title}
-            </h2>
+            <div className="flex-1 min-w-0">
+              <h2 id={titleId} className="truncate font-bold text-gray-900 dark:text-white text-lg">
+                {title}
+              </h2>
+              {subtitle != null && (
+                <p className="truncate text-xs text-gray-400 dark:text-gray-500 mt-0.5">{subtitle}</p>
+              )}
+            </div>
             {headerExtra}
             <button
               type="button"
@@ -218,6 +229,8 @@ export default function ModalShell({
               </svg>
             </button>
           </div>
+
+          {subheader != null && <div className="shrink-0">{subheader}</div>}
 
           {/* Body — min-h-0 lets it shrink and scroll inside the flex column. */}
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4">
