@@ -24,6 +24,27 @@
 //   Display and submission are deliberately decoupled; changing one must not
 //   change the other.
 //
+// Quantity entry (supply-chain-service docs/PO_QUANTITY_ENTRY.md §4):
+//   Picking a title from search opens LineEntryModal over the builder. Its
+//   quantity starts EMPTY and is required — there is no default 1 to ride
+//   through unnoticed, and nothing for a typed digit to prepend to (the "14"
+//   meant as "4" bug). Focus and tab select the whole field so entry replaces.
+//   Editing a line reuses the same modal. Scanned lines arrive with the
+//   quantity the document printed and skip the modal.
+//
+// Single-line quantity-1 warning (warning_code single_line_qty_one):
+//   A PO isn't single-line until the operator stops adding lines, so this is
+//   evaluated on the Review step, never at line entry. It warns and never
+//   blocks. Every appearance is logged (warning_shown) so there is a
+//   denominator; the outcome is warning_heeded if a later edit means it no
+//   longer applies, or warning_overridden if the PO is saved in that shape.
+//   One flow_id per appearance ties the two together.
+//
+// Price: there is no unit-cost input. unit_cost is a deprecated name for MSRP
+//   (supply-chain-service docs/PRICING_FIELDS.md); scanned lines still carry
+//   the document's MSRP in it and handleCreate still sends it. Totals built
+//   from it are list value, never cost.
+//
 // Multi-location accounts:
 //   A supplier party can hold more than one account, each optionally tied to a
 //   location (location_id). Some publishers (PRH, MPS) issue a distinct account
@@ -32,9 +53,13 @@
 //   the *effective* account from the chosen destination location — preferring a
 //   location_id match, then the primary, then the first active account. The
 //   effective account is recomputed whenever the destination location changes.
+//
+// Frame: ModalShell. A backdrop tap does nothing (it used to discard the whole
+// PO); closing with lines entered asks first.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Minus, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useLocations } from '../hooks/useLocations'
 import {
   createPurchaseOrder,
@@ -45,6 +70,8 @@ import {
   fetchPurchaseOrders,
   discardPurchaseOrder,
   cancelPurchaseOrder,
+  recordPOEntryEvents,
+  type POEntryEvent,
 } from '../../api/supplyChainApi'
 import { createSupplierAccount, fetchB2bCustomers, createB2bCustomer } from '../../api/supplyChainApi'
 import { SupplierParty, SupplierAccount } from '../suppliers/supplierTypes'
@@ -53,6 +80,7 @@ import type { SupplierDetail } from '../suppliers/supplierTypes'
 import { AdHocSource, PurchaseOrder } from '../purchase-orders/purchaseOrderTypes'
 import SupplierAccountPicker, { resolveAccountForLocation } from '../suppliers/SupplierAccountPicker'
 import OrderImageScan, { type ScannedLine } from './OrderImageScan'
+import ModalShell from '../../components/ModalShell'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,9 +93,12 @@ interface LineItem {
   title: string
   isbn: string
   quantity_ordered: number
-  unit_cost: string
+  unit_cost: string   // MSRP (legacy name) — set by the scanner only; no input
   notes: string
 }
+
+// A title picked from search, before its quantity has been entered.
+type PickedItem = Omit<LineItem, '_key' | 'quantity_ordered' | 'unit_cost' | 'notes'>
 
 interface VariantSearchResult {
   inventory_item_id: string
@@ -76,6 +107,8 @@ interface VariantSearchResult {
   isbn: string
   vendor: string
 }
+
+const QTY_ONE_WARNING = 'single_line_qty_one'
 
 // ---------------------------------------------------------------------------
 // Shared field primitives
@@ -114,11 +147,11 @@ const Textarea = (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
 // ---------------------------------------------------------------------------
 
 function VariantSearchRow({
-  onAdd,
+  onPick,
   existingItemIds,
   partyId,
 }: {
-  onAdd: (item: Omit<LineItem, '_key' | 'quantity_ordered' | 'unit_cost' | 'notes'>) => void
+  onPick: (item: PickedItem) => void
   existingItemIds: Set<string>
   // Scope the catalog search to the PO's supplier so wrong-supplier titles
   // don't appear. The server-side guardrail is authoritative; this is UX.
@@ -154,7 +187,7 @@ function VariantSearchRow({
   }, [query, partyId])
 
   const handleSelect = (v: VariantSearchResult) => {
-    onAdd({
+    onPick({
       inventory_item_id: v.inventory_item_id,
       variant_id: v.variant_id,
       title: v.title,
@@ -206,62 +239,164 @@ function VariantSearchRow({
 }
 
 // ---------------------------------------------------------------------------
-// Individual line item row
+// Line entry / edit modal
+//
+// Opens over the builder (ModalShell nests it a layer up automatically).
+// Quantity is a text field, not type=number: native spinners can't be styled
+// or enlarged, and the − / + buttons replace them. Digits only.
+// ---------------------------------------------------------------------------
+
+function LineEntryModal({
+  mode,
+  title,
+  isbn,
+  initialQty,
+  initialNotes,
+  onSave,
+  onClose,
+}: {
+  mode: 'add' | 'edit'
+  title: string
+  isbn: string
+  initialQty?: number
+  initialNotes?: string
+  onSave: (qty: number, notes: string) => void
+  onClose: () => void
+}) {
+  const [qtyText, setQtyText] = useState(initialQty != null ? String(initialQty) : '')
+  const [notes, setNotes] = useState(initialNotes ?? '')
+  const [notesOpen, setNotesOpen] = useState(!!initialNotes)
+  const qtyRef = useRef<HTMLInputElement>(null)
+
+  const qty = /^\d+$/.test(qtyText) ? parseInt(qtyText, 10) : NaN
+  const valid = Number.isInteger(qty) && qty >= 1
+
+  // Select on the next frame: selecting inside the focus event itself is
+  // undone by the click that focused the field on some mobile browsers.
+  const selectAll = (el: HTMLInputElement) => { requestAnimationFrame(() => el.select()) }
+  const bump = (d: number) => setQtyText(String(Math.max(1, (valid ? qty : 0) + d)))
+  const save = () => { if (valid) onSave(qty, notes.trim()) }
+
+  const stepBtn = `h-12 w-12 shrink-0 flex items-center justify-center rounded-md border
+    border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200
+    hover:bg-gray-100 dark:hover:bg-gray-800 active:scale-95 disabled:opacity-30 transition`
+
+  return (
+    <ModalShell
+      title={mode === 'add' ? 'Add line' : 'Edit line'}
+      size="sm"
+      onClose={onClose}
+      initialFocusRef={qtyRef}
+      footer={({ requestClose }) => (
+        <div className="flex items-center justify-end gap-2">
+          <button type="button" onClick={requestClose}
+            className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+            Cancel
+          </button>
+          <button type="button" onClick={save} disabled={!valid}
+            className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors active:scale-[0.98]">
+            {mode === 'add' ? 'Add line' : 'Save'}
+          </button>
+        </div>
+      )}
+    >
+      <div className="space-y-4">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{title}</p>
+          <p className="text-xs text-gray-400 font-mono">{isbn}</p>
+        </div>
+
+        <div>
+          <Label required>Quantity</Label>
+          <div className="flex items-center gap-3">
+            <button type="button" aria-label="Decrease quantity" onClick={() => bump(-1)}
+              disabled={!valid || qty <= 1} className={stepBtn}>
+              <Minus className="w-5 h-5" />
+            </button>
+            <input
+              ref={qtyRef}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="off"
+              aria-label="Quantity"
+              placeholder="Qty"
+              value={qtyText}
+              onChange={e => setQtyText(e.target.value.replace(/\D/g, '').slice(0, 5))}
+              onFocus={e => selectAll(e.currentTarget)}
+              onKeyDown={e => {
+                if (e.key === 'Enter')     { e.preventDefault(); save() }
+                if (e.key === 'ArrowUp')   { e.preventDefault(); bump(1) }
+                if (e.key === 'ArrowDown') { e.preventDefault(); if (valid && qty > 1) bump(-1) }
+              }}
+              className="h-12 flex-1 min-w-0 px-3 text-center text-2xl font-semibold tabular-nums border rounded-md
+                         bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600
+                         focus:ring-2 focus:ring-blue-500 outline-none placeholder:text-base placeholder:font-normal placeholder:text-gray-300"
+            />
+            <button type="button" aria-label="Increase quantity" onClick={() => bump(1)} className={stepBtn}>
+              <Plus className="w-5 h-5" />
+            </button>
+          </div>
+          {qtyText !== '' && !valid && (
+            <p className="text-[11px] text-red-600 dark:text-red-400 mt-1">Enter a whole number, 1 or more.</p>
+          )}
+        </div>
+
+        {notesOpen ? (
+          <div>
+            <Label>Notes</Label>
+            <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
+          </div>
+        ) : (
+          <button type="button" onClick={() => setNotesOpen(true)}
+            className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+            + Add a note
+          </button>
+        )}
+      </div>
+    </ModalShell>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Individual line item row — abbreviated; edit happens in LineEntryModal.
+//
+// Edit / remove icons fade in on hover where there is a mouse. On touch
+// screens (no hover) they are always shown — keyed on the pointer, not the
+// screen width, so a tablet doesn't hide them.
 // ---------------------------------------------------------------------------
 
 function LineRow({
   line,
-  onChange,
+  onEdit,
   onRemove,
 }: {
   line: LineItem
-  onChange: (patch: Partial<LineItem>) => void
+  onEdit: () => void
   onRemove: () => void
 }) {
+  const iconBtn = 'p-1.5 rounded text-gray-400 dark:text-gray-500 transition-colors'
   return (
-    <div className="border dark:border-gray-700 rounded-md p-3 space-y-2 bg-gray-50/50 dark:bg-gray-800/30">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{line.title}</p>
-          <p className="text-xs text-gray-400 font-mono">{line.isbn}</p>
-        </div>
-        <button
-          type="button"
-          onClick={onRemove}
-          className="text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400 text-lg leading-none shrink-0 mt-0.5"
-        >
-          ×
+    <div className="group flex items-center gap-3 border dark:border-gray-700 rounded-md px-3 py-2 bg-gray-50/50 dark:bg-gray-800/30
+                    hover:border-blue-300 dark:hover:border-blue-700 transition-colors">
+      <button type="button" onClick={onEdit} title="Edit quantity or notes" className="flex-1 min-w-0 text-left">
+        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{line.title}</p>
+        <p className="text-xs text-gray-400 font-mono">{line.isbn}</p>
+        {line.notes && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 italic truncate mt-0.5">{line.notes}</p>
+        )}
+      </button>
+      <span className="shrink-0 text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">× {line.quantity_ordered}</span>
+      <div className="flex items-center gap-0.5 shrink-0 transition-opacity
+                      [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100
+                      [@media(hover:hover)]:group-focus-within:opacity-100">
+        <button type="button" onClick={onEdit} aria-label={`Edit ${line.title}`}
+          className={`${iconBtn} hover:text-blue-600 hover:bg-blue-50 dark:hover:text-blue-400 dark:hover:bg-blue-900/30`}>
+          <Pencil className="w-4 h-4" />
         </button>
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        <div>
-          <Label required>Qty</Label>
-          <Input
-            type="number"
-            min={1}
-            value={line.quantity_ordered}
-            onChange={e => onChange({ quantity_ordered: Math.max(1, parseInt(e.target.value) || 1) })}
-          />
-        </div>
-        <div>
-          <Label>Unit cost ($)</Label>
-          <Input
-            type="number"
-            min={0}
-            step={0.01}
-            value={line.unit_cost}
-            onChange={e => onChange({ unit_cost: e.target.value })}
-            placeholder="0.00"
-          />
-        </div>
-        <div>
-          <Label>Notes</Label>
-          <Input
-            value={line.notes}
-            onChange={e => onChange({ notes: e.target.value })}
-            placeholder="Optional"
-          />
-        </div>
+        <button type="button" onClick={onRemove} aria-label={`Remove ${line.title}`}
+          className={`${iconBtn} hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/30`}>
+          <Trash2 className="w-4 h-4" />
+        </button>
       </div>
     </div>
   )
@@ -274,7 +409,7 @@ function LineRow({
 function StepBar({ step }: { step: 1 | 2 | 3 }) {
   const steps = ['Header', 'Lines', 'Review']
   return (
-    <div className="flex items-center gap-2 px-5 py-3 border-b dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/30">
+    <div className="flex items-center gap-2 px-4 sm:px-5 py-3 border-b dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/30">
       {steps.map((label, i) => {
         const n = i + 1
         const active = n === step
@@ -314,12 +449,10 @@ interface Props {
 }
 
 export default function POBuilder({ onClose, onCreated, initialSupplier }: Props) {
-  const [isVisible, setIsVisible] = useState(false)
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [scanOpen, setScanOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const contentRef = useRef<HTMLDivElement>(null)
 
   const { locations, locationName } = useLocations()
 
@@ -383,7 +516,12 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
 
   const [lines, setLines] = useState<LineItem[]>([])
 
-  useEffect(() => { setTimeout(() => setIsVisible(true), 10) }, [])
+  // The line-entry modal: adding a just-picked title, or editing a line.
+  const [lineModal, setLineModal] = useState<
+    | { mode: 'add'; item: PickedItem }
+    | { mode: 'edit'; key: string }
+    | null
+  >(null)
 
   useEffect(() => {
     if (locations.length > 0 && !destinationLocationId) {
@@ -391,14 +529,6 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
       setDestinationLocationId(hq.id)
     }
   }, [locations])
-
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); handleClose() }
-    }
-    window.addEventListener('keydown', handleEsc, true)
-    return () => window.removeEventListener('keydown', handleEsc, true)
-  }, [])
 
   useEffect(() => {
     if (!supplierSelection || !effectiveAccount) { setDraftPOs([]); return }
@@ -422,14 +552,20 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
     return () => clearTimeout(t)
   }, [customerSearch, isB2b])
 
-  const handleClose = () => { setIsVisible(false); setTimeout(onClose, 300) }
+  /* Every way out of the builder (x, Escape) passes through this. Entered
+     lines are the work worth protecting; the header alone is quick to redo. */
+  const confirmDiscard = () =>
+    lines.length === 0 || window.confirm('Discard this purchase order? The lines you added will be lost.')
 
   const step1Valid = !!supplierSelection && !!effectiveAccount && !!destinationLocationId &&
     (!isDropShip || dropShipAddress.trim().length > 0) &&
     (!isB2b || (partyHasB2bAccount && !!b2bCustomer))
 
-  const addLine = (item: Omit<LineItem, '_key' | 'quantity_ordered' | 'unit_cost' | 'notes'>) => {
-    setLines(prev => [...prev, { ...item, _key: crypto.randomUUID(), quantity_ordered: 1, unit_cost: '', notes: '' }])
+  // A title picked from search opens the line modal; the line is added only
+  // once a quantity has been entered there.
+  const openAddLine = (item: PickedItem) => setLineModal({ mode: 'add', item })
+  const addLine = (item: PickedItem, quantity: number, notes: string) => {
+    setLines(prev => [...prev, { ...item, _key: crypto.randomUUID(), quantity_ordered: quantity, unit_cost: '', notes }])
   }
   // Add lines produced by the image scanner (#56). Each scanned line already
   // carries qty and cost, so we push directly rather than through addLine.
@@ -466,6 +602,46 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
   // the order the supplier sees is unchanged. Reverse a copy, never `lines`
   // directly: Array.prototype.reverse mutates in place and would corrupt state.
   const displayLines = useMemo(() => [...lines].reverse(), [lines])
+
+  // ── Single-line quantity-1 warning ──────────────────────────────────────
+  const qtyOneLine = lines.length === 1 && lines[0].quantity_ordered === 1 ? lines[0] : null
+  const [qtyOneFlow, setQtyOneFlow] = useState<string | null>(null)
+
+  // Fire-and-forget: a logging failure must never get in the way of the PO.
+  const logQtyOne = (
+    event_type: POEntryEvent['event_type'],
+    flow_id: string,
+    extra: Partial<POEntryEvent> = {},
+  ) => {
+    recordPOEntryEvents([{
+      client_event_id: crypto.randomUUID(),
+      event_type,
+      warning_code: QTY_ONE_WARNING,
+      surface: 'po_builder',
+      flow_id,
+      occurred_at: new Date().toISOString(),
+      ...extra,
+    }]).catch(e => console.warn('PO entry event not recorded:', e))
+  }
+
+  useEffect(() => {
+    if (qtyOneFlow && !qtyOneLine) {
+      // Shown earlier, and an edit since means it no longer applies.
+      logQtyOne('warning_heeded', qtyOneFlow, {
+        context: { line_count: lines.length, quantity_ordered: lines.length === 1 ? lines[0].quantity_ordered : null },
+      })
+      setQtyOneFlow(null)
+    } else if (!qtyOneFlow && qtyOneLine && step === 3) {
+      const flow = crypto.randomUUID()
+      setQtyOneFlow(flow)
+      logQtyOne('warning_shown', flow, {
+        inventory_item_id: qtyOneLine.inventory_item_id,
+        context: { line_count: 1, quantity_ordered: 1 },
+      })
+    }
+    // Re-evaluated whenever the step or the warning's condition changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, !!qtyOneLine])
 
   const handleCreateB2bAccount = async () => {
     if (!supplierSelection || !b2bAccountNumber.trim()) return
@@ -554,12 +730,21 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
         }
         throw lineErr
       }
+      if (qtyOneFlow && qtyOneLine) {
+        logQtyOne('warning_overridden', qtyOneFlow, {
+          purchase_order_id: po.id,
+          inventory_item_id: qtyOneLine.inventory_item_id,
+          context: { line_count: 1, quantity_ordered: 1, submitted: andSubmit },
+        })
+      }
       if (andSubmit) {
         await submitPurchaseOrder(po.id)
         downloadPOPdf(po.id, po.po_number).catch(e => console.warn('PDF download failed:', e))
       }
       onCreated(po.id)
-      handleClose()
+      // Straight to onClose, not requestClose: the PO is saved, so there is
+      // nothing left to confirm discarding.
+      onClose()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create purchase order')
     } finally {
@@ -569,26 +754,56 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
 
   const totalLines = lines.length
   const totalQty   = lines.reduce((s, l) => s + l.quantity_ordered, 0)
-  const totalCost  = lines.reduce((s, l) => s + (parseFloat(l.unit_cost) || 0) * l.quantity_ordered, 0)
+  // MSRP × quantity — list value, not cost. Only scanned lines carry a price.
+  const totalList  = lines.reduce((s, l) => s + (parseFloat(l.unit_cost) || 0) * l.quantity_ordered, 0)
+
+  const editingLine = lineModal?.mode === 'edit' ? lines.find(l => l._key === lineModal.key) : undefined
 
   return (
-    <>
-      <div
-        className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`}
-        onClick={handleClose}
-      />
-      <div className={`fixed inset-0 z-50 flex items-start justify-center pt-6 px-4 pb-6 transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`}>
-        <div className="w-full max-w-2xl bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 shadow-2xl flex flex-col max-h-[92vh]">
-
-          <div className="flex items-center justify-between px-5 py-4 border-b dark:border-gray-800 shrink-0">
-            <h2 className="font-bold text-gray-900 dark:text-white text-lg">New Purchase Order</h2>
-            <button onClick={handleClose} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">Cancel</button>
+    <ModalShell
+      title="New Purchase Order"
+      size="lg"
+      onClose={onClose}
+      onBeforeClose={confirmDiscard}
+      dismissible={!busy}
+      subheader={<StepBar step={step} />}
+      footer={
+        <div className="flex items-center justify-between">
+          <button type="button"
+            onClick={() => setStep(s => Math.max(1, s - 1) as 1 | 2 | 3)}
+            disabled={step === 1 || busy}
+            className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-30 transition-colors">
+            Back
+          </button>
+          <div className="flex gap-2">
+            {step < 3 && (
+              <button type="button"
+                onClick={() => setStep(s => Math.min(3, s + 1) as 1 | 2 | 3)}
+                disabled={(step === 1 && !step1Valid) || busy}
+                className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors active:scale-[0.98]">
+                Next
+              </button>
+            )}
+            {step === 3 && (
+              <>
+                <button type="button" onClick={() => handleCreate(false)} disabled={busy}
+                  className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors">
+                  {busy ? 'Saving…' : 'Save as draft'}
+                </button>
+                <button type="button" onClick={() => handleCreate(true)} disabled={busy}
+                  className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors active:scale-[0.98]">
+                  {busy ? 'Submitting…' : 'Save, submit + download PDF'}
+                </button>
+              </>
+            )}
           </div>
-
-          <StepBar step={step} />
+        </div>
+      }
+    >
+      <div className="space-y-5">
 
           {showDraftPrompt && draftPOs.length > 0 && step === 1 && supplierSelection && (
-            <div className="mx-5 mb-4 px-4 py-3 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+            <div className="px-4 py-3 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
               <p className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-2">
                 {draftPOs.length} open draft PO{draftPOs.length !== 1 ? 's' : ''} for {supplierSelection.party.name}
               </p>
@@ -622,8 +837,6 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
               </div>
             </div>
           )}
-
-          <div ref={contentRef} className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
 
             {step === 1 && (
               <div className="space-y-5">
@@ -841,43 +1054,42 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
             )}
 
             {step === 2 && (
-              <div className="flex flex-col h-full -mx-5 -my-5">
-                <div className="px-5 pt-5 pb-3 border-b dark:border-gray-800 bg-white dark:bg-gray-950 shrink-0">
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                    Add line items by searching ISBN or title, or scan an order form / invoice / screenshot. You can also save the PO as draft now and add lines later.
-                  </p>
+              <div className="space-y-3">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Add line items by searching ISBN or title, or scan an order form / invoice / screenshot. You can also save the PO as draft now and add lines later.
+                </p>
 
-                  {/* Image scan path (#56) — collapsible so it doesn't crowd manual search */}
-                  <div className="mb-3">
-                    {!scanOpen ? (
-                      <button type="button" onClick={() => setScanOpen(true)}
-                        className="w-full px-3 py-2 rounded-md border border-dashed border-blue-300 dark:border-blue-700 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
-                        📷 Scan an order form, invoice, or screenshot
-                      </button>
-                    ) : (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Scan to add lines</p>
-                          <button type="button" onClick={() => setScanOpen(false)}
-                            className="text-xs text-gray-400 hover:underline">Close scanner</button>
-                        </div>
-                        <OrderImageScan
-                          selectedSupplierName={supplierSelection?.party.name ?? null}
-                          existingIsbns={new Set(lines.map(l => l.isbn).filter(Boolean))}
-                          onLinesAccepted={addScannedLines}
-                        />
+                {/* Image scan path (#56) — collapsible so it doesn't crowd manual search */}
+                <div>
+                  {!scanOpen ? (
+                    <button type="button" onClick={() => setScanOpen(true)}
+                      className="w-full px-3 py-2 rounded-md border border-dashed border-blue-300 dark:border-blue-700 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
+                      📷 Scan an order form, invoice, or screenshot
+                    </button>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Scan to add lines</p>
+                        <button type="button" onClick={() => setScanOpen(false)}
+                          className="text-xs text-gray-400 hover:underline">Close scanner</button>
                       </div>
-                    )}
-                  </div>
-
-                  <VariantSearchRow onAdd={addLine} existingItemIds={existingItemIds} partyId={supplierSelection?.party.id ?? null} />
-                  {effectiveAccount?.is_wholesaler && (
-                    <p className="mt-2 text-[11px] text-blue-600 dark:text-blue-400">
-                      {supplierSelection?.party.name} is a convenience vendor — the full catalog is searchable here, not just its own titles.
-                    </p>
+                      <OrderImageScan
+                        selectedSupplierName={supplierSelection?.party.name ?? null}
+                        existingIsbns={new Set(lines.map(l => l.isbn).filter(Boolean))}
+                        onLinesAccepted={addScannedLines}
+                      />
+                    </div>
                   )}
                 </div>
-                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+
+                <VariantSearchRow onPick={openAddLine} existingItemIds={existingItemIds} partyId={supplierSelection?.party.id ?? null} />
+                {effectiveAccount?.is_wholesaler && (
+                  <p className="text-[11px] text-blue-600 dark:text-blue-400">
+                    {supplierSelection?.party.name} is a convenience vendor — the full catalog is searchable here, not just its own titles.
+                  </p>
+                )}
+
+                <div className="space-y-2 pt-1">
                   {lines.length === 0 ? (
                     <div className="text-center py-8 text-sm text-gray-400 dark:text-gray-500 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg">
                       No lines added yet.<br />
@@ -887,15 +1099,13 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                     <>
                       {displayLines.map(line => (
                         <LineRow key={line._key} line={line}
-                          onChange={patch => updateLine(line._key, patch)}
+                          onEdit={() => setLineModal({ mode: 'edit', key: line._key })}
                           onRemove={() => removeLine(line._key)} />
                       ))}
-                      {lines.length > 0 && (
-                        <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500 px-1 pt-1">
-                          <span>{totalLines} line{totalLines !== 1 ? 's' : ''} · {totalQty} units</span>
-                          {totalCost > 0 && <span>Est. cost: ${totalCost.toFixed(2)}</span>}
-                        </div>
-                      )}
+                      <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500 px-1 pt-1">
+                        <span>{totalLines} line{totalLines !== 1 ? 's' : ''} · {totalQty} units</span>
+                        {totalList > 0 && <span>List value: ${totalList.toFixed(2)}</span>}
+                      </div>
                     </>
                   )}
                 </div>
@@ -904,6 +1114,23 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
 
             {step === 3 && (
               <div className="space-y-4">
+                {qtyOneLine && (
+                  <div className="px-4 py-3 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 space-y-2">
+                    <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">One title at quantity 1</p>
+                    <p className="text-xs text-amber-700 dark:text-amber-300">
+                      This PO has a single line ordered at 1 copy. That is sometimes right — but a quantity
+                      left at 1 by mistake looks exactly the same. Check it before saving.
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <button type="button" onClick={() => setLineModal({ mode: 'edit', key: qtyOneLine._key })}
+                        className="px-3 py-1.5 rounded border border-amber-400 dark:border-amber-600 text-xs font-semibold text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40">
+                        Change quantity
+                      </button>
+                      <span className="text-[11px] text-amber-600 dark:text-amber-400">Saving keeps quantity 1.</span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
                   <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Order header</h4>
@@ -926,7 +1153,7 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                   <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700 flex items-center justify-between">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Line items</h4>
                     <span className="text-xs text-gray-400">
-                      {totalLines} line{totalLines !== 1 ? 's' : ''} · {totalQty} units{totalCost > 0 ? ` · $${totalCost.toFixed(2)}` : ''}
+                      {totalLines} line{totalLines !== 1 ? 's' : ''} · {totalQty} units{totalList > 0 ? ` · $${totalList.toFixed(2)} list` : ''}
                     </span>
                   </div>
                   {lines.length === 0 ? (
@@ -938,10 +1165,11 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                           <div className="min-w-0">
                             <p className="font-medium truncate">{line.title}</p>
                             <p className="text-xs text-gray-400 font-mono">{line.isbn}</p>
+                            {line.notes && <p className="text-xs text-gray-500 dark:text-gray-400 italic truncate">{line.notes}</p>}
                           </div>
                           <div className="text-right shrink-0 text-xs text-gray-500">
                             <p>Qty: <span className="font-semibold text-gray-900 dark:text-gray-100">{line.quantity_ordered}</span></p>
-                            {line.unit_cost && <p>${parseFloat(line.unit_cost).toFixed(2)} ea</p>}
+                            {line.unit_cost && <p>List ${parseFloat(line.unit_cost).toFixed(2)}</p>}
                           </div>
                         </div>
                       ))}
@@ -960,40 +1188,30 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                 )}
               </div>
             )}
-          </div>
 
-          <div className="px-5 py-4 border-t dark:border-gray-800 flex items-center justify-between shrink-0 bg-gray-50/50 dark:bg-gray-900/30">
-            <button type="button"
-              onClick={() => setStep(s => Math.max(1, s - 1) as 1 | 2 | 3)}
-              disabled={step === 1 || busy}
-              className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-30 transition-colors">
-              Back
-            </button>
-            <div className="flex gap-2">
-              {step < 3 && (
-                <button type="button"
-                  onClick={() => setStep(s => Math.min(3, s + 1) as 1 | 2 | 3)}
-                  disabled={(step === 1 && !step1Valid) || busy}
-                  className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors active:scale-[0.98]">
-                  Next
-                </button>
-              )}
-              {step === 3 && (
-                <>
-                  <button type="button" onClick={() => handleCreate(false)} disabled={busy}
-                    className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors">
-                    {busy ? 'Saving…' : 'Save as draft'}
-                  </button>
-                  <button type="button" onClick={() => handleCreate(true)} disabled={busy}
-                    className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors active:scale-[0.98]">
-                    {busy ? 'Submitting…' : 'Save, submit + download PDF'}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
+        {/* Line entry / edit — rendered inside the builder's ModalShell so it
+            stacks one layer above it and Escape closes it first. */}
+        {lineModal?.mode === 'add' && (
+          <LineEntryModal
+            mode="add"
+            title={lineModal.item.title}
+            isbn={lineModal.item.isbn}
+            onSave={(qty, notes) => { addLine(lineModal.item, qty, notes); setLineModal(null) }}
+            onClose={() => setLineModal(null)}
+          />
+        )}
+        {lineModal?.mode === 'edit' && editingLine && (
+          <LineEntryModal
+            mode="edit"
+            title={editingLine.title}
+            isbn={editingLine.isbn}
+            initialQty={editingLine.quantity_ordered}
+            initialNotes={editingLine.notes}
+            onSave={(qty, notes) => { updateLine(editingLine._key, { quantity_ordered: qty, notes }); setLineModal(null) }}
+            onClose={() => setLineModal(null)}
+          />
+        )}
       </div>
-    </>
+    </ModalShell>
   )
 }
