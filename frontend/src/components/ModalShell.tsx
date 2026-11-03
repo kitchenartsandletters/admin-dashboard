@@ -25,7 +25,13 @@
 //
 // Closing. x, Escape, backdrop click and any `requestClose` from the render
 // prop fade out, then call onClose. When `dismissible` is false (e.g. while
-// saving) all of those are ignored. A parent may also simply unmount it.
+// saving) all of those are ignored. `onBeforeClose` can veto any of them, e.g.
+// to confirm discarding entered work. A parent may also simply unmount it.
+//
+// Escape that something else already handled (e.preventDefault(), as
+// RightSidebar does in the capture phase) is ignored, so one press closes one
+// layer. Overlays opened from inside a modal read `useModalLevel()` to stack
+// above it.
 
 import {
   createContext,
@@ -54,6 +60,11 @@ export type ModalSize = keyof typeof SIZE_CLASS
 
 // Nesting level of the nearest enclosing ModalShell; -1 outside any modal.
 const ModalLevelContext = createContext(-1)
+
+/** Nesting level of the enclosing ModalShell, or -1 when not inside one. */
+export function useModalLevel(): number {
+  return useContext(ModalLevelContext)
+}
 
 // Open modals in mount order. Escape is handled only by the last one.
 const openStack: string[] = []
@@ -93,6 +104,8 @@ export interface ModalShellProps {
   dismissible?: boolean
   /** Backdrop click closes. Off for forms where a stray tap would lose work. */
   closeOnBackdrop?: boolean
+  /** Return false to keep the modal open, e.g. after a declined discard prompt. */
+  onBeforeClose?: () => boolean
   /** Element to focus on open. Defaults to the panel itself. */
   initialFocusRef?: RefObject<HTMLElement | null>
   /** Override the automatic nesting level. Rarely needed. */
@@ -110,6 +123,7 @@ export default function ModalShell({
   size = 'md',
   dismissible = true,
   closeOnBackdrop = false,
+  onBeforeClose,
   initialFocusRef,
   level,
 }: ModalShellProps) {
@@ -128,9 +142,12 @@ export default function ModalShell({
   onCloseRef.current = onClose
   const dismissibleRef = useRef(dismissible)
   dismissibleRef.current = dismissible
+  const onBeforeCloseRef = useRef(onBeforeClose)
+  onBeforeCloseRef.current = onBeforeClose
 
   const requestClose = useCallback(() => {
     if (!dismissibleRef.current || closingRef.current) return
+    if (onBeforeCloseRef.current && !onBeforeCloseRef.current()) return
     closingRef.current = true
     setVisible(false)
     window.setTimeout(() => onCloseRef.current(), FADE_MS)
@@ -162,7 +179,7 @@ export default function ModalShell({
   // Escape: topmost modal only.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
+      if (e.key !== 'Escape' || e.defaultPrevented) return
       if (openStack[openStack.length - 1] !== id) return
       e.stopPropagation()
       requestClose()
