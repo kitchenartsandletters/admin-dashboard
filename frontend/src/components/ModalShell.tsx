@@ -36,6 +36,10 @@
 // RightSidebar does in the capture phase) is ignored, so one press closes one
 // layer. Overlays opened from inside a modal read `useModalLevel()` to stack
 // above it.
+//
+// Non-modal surfaces that close on Escape themselves (PODetailSidebar listens
+// in the capture phase, so it hears the key before any modal does) check
+// `isModalOpen()` first and leave the key to the modal.
 
 import {
   createContext,
@@ -72,6 +76,11 @@ export function useModalLevel(): number {
 
 // Open modals in mount order. Escape is handled only by the last one.
 const openStack: string[] = []
+
+/** True while any ModalShell is mounted, including during its fade-out. */
+export function isModalOpen(): boolean {
+  return openStack.length > 0
+}
 
 // Body scroll lock, reference-counted across nested modals.
 let lockCount = 0
