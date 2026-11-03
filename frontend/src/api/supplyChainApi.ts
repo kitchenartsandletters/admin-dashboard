@@ -42,17 +42,44 @@ const headers = { 'Content-Type': 'application/json', 'X-Admin-Token': SC_TOKEN 
 // and the backend records the write as unattributed, exactly as before. The
 // change log's `source` column reads api:update_po_line either way, so the
 // boundary between unattributed and attributed writes stays visible.
+//
+// Staff on shared terminals (migration 064, PO_LINE_AUDIT.md §1). On a role
+// 'user' session such as letters@ the email names the shared login, not the
+// person at the keyboard; that person is the StaffProvider's PIN-picked
+// staff member. X-Actor-Staff-Id / X-Actor-Staff-Name carry them, stored as
+// asserted_staff_id / asserted_staff_name. The email and role headers keep
+// meaning "the Supabase session" and are never overloaded with the staff name.
+//
+//   - The name is sent encodeURIComponent'd. Header values must be Latin-1, so
+//     fetch() throws outright on a name like "Zoë"; the server decodes it.
+//   - The id is sent only when it looks like a UUID. The backend 422s a
+//     malformed one, and the id comes from localStorage, so a stale or odd
+//     value there must cost the attribution, never the edit. The name is still
+//     sent on its own.
 // ---------------------------------------------------------------------------
-let _actor: { email?: string | null; role?: string | null } = {}
+interface ScActor {
+  email?: string | null
+  role?: string | null
+  staffId?: string | null
+  staffName?: string | null
+}
 
-export function setScActor(actor: { email?: string | null; role?: string | null } | null): void {
+let _actor: ScActor = {}
+
+export function setScActor(actor: ScActor | null): void {
   _actor = actor ?? {}
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function actorHeaders(): Record<string, string> {
   const h: Record<string, string> = {}
   if (_actor.email) h['X-Actor-Email'] = _actor.email
   if (_actor.role)  h['X-Actor-Role']  = _actor.role
+  const staffId   = _actor.staffId?.trim()
+  const staffName = _actor.staffName?.trim()
+  if (staffId && UUID_RE.test(staffId)) h['X-Actor-Staff-Id'] = staffId
+  if (staffName) h['X-Actor-Staff-Name'] = encodeURIComponent(staffName)
   return h
 }
 
@@ -287,8 +314,12 @@ export async function createPOLine(poId: string, body: { inventory_item_id: stri
  * that shrinks the shortfall — in practice, upward.
  *
  * notes, status, unit_cost and quantity_backordered are not floor-checked.
+ *
+ * `reason` is optional free text (up to 2000 chars), recorded on the change row
+ * in purchase_order_line_changes. It is not a column on the line. The body is
+ * bound exactly: the backend silently drops fields it does not know.
  */
-export async function updatePOLine(lineId: string, body: Partial<{ unit_cost: number; quantity_ordered: number; quantity_backordered: number; quantity_cancelled: number; status: string; notes: string }>): Promise<void> {
+export async function updatePOLine(lineId: string, body: Partial<{ unit_cost: number; quantity_ordered: number; quantity_backordered: number; quantity_cancelled: number; status: string; notes: string; reason: string }>): Promise<void> {
   return sc(`/api/purchase-orders/lines/${lineId}`, { method: 'PATCH', body: JSON.stringify(body) })
 }
 export async function removePOLine(lineId: string): Promise<void> { return sc(`/api/purchase-orders/lines/${lineId}`, { method: 'DELETE' }) }
@@ -317,6 +348,10 @@ export interface POLineChange {
   asserted_actor_email: string | null
   /** CLIENT-ASSERTED, NOT AUTHENTICATED. */
   asserted_actor_role: string | null
+  /** CLIENT-ASSERTED, NOT AUTHENTICATED — the PIN-picked staff member on a shared terminal (migration 064). */
+  asserted_staff_id?: string | null
+  /** CLIENT-ASSERTED, NOT AUTHENTICATED. Decoded display name. */
+  asserted_staff_name?: string | null
   /** Write path, e.g. api:update_po_line. Present whether or not actor headers arrived. */
   source: string | null
   db_role: string | null
