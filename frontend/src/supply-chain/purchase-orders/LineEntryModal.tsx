@@ -93,15 +93,23 @@ export default function LineEntryModal({
   const [reason, setReason] = useState('')
   const [reasonOpen, setReasonOpen] = useState(false)
   const qtyRef = useRef<HTMLInputElement>(null)
+  // When the field was last focused; see onMouseUp.
+  const focusedAt = useRef(0)
 
   const min = Math.max(1, Math.floor(minimum))
   const qty = /^\d+$/.test(qtyText) ? parseInt(qtyText, 10) : NaN
   const whole = Number.isInteger(qty)
   const valid = whole && qty >= min
 
-  // Select on the next frame: selecting inside the focus event itself is
-  // undone by the click that focused the field on some mobile browsers.
-  const selectAll = (el: HTMLInputElement) => { requestAnimationFrame(() => el.select()) }
+  // Select now and again next frame: some mobile browsers undo a selection
+  // made inside the focus event. On desktop, the mouseup ending the click that
+  // focused the field would collapse the selection to a caret, so that one
+  // mouseup is cancelled (onMouseUp below).
+  const selectAll = (el: HTMLInputElement) => {
+    focusedAt.current = performance.now()
+    el.select()
+    requestAnimationFrame(() => el.select())
+  }
   const bump = (d: number) => setQtyText(String(Math.max(min, (whole ? qty : 0) + d)))
   const save = () => {
     if (valid && !busy) void onSave(qty, allowNotes ? notes.trim() : '', askReason ? reason.trim() : '')
@@ -164,6 +172,10 @@ export default function LineEntryModal({
               disabled={busy}
               onChange={e => setQtyText(e.target.value.replace(/\D/g, '').slice(0, 5))}
               onFocus={e => selectAll(e.currentTarget)}
+              onMouseUp={e => {
+                if (performance.now() - focusedAt.current < 600) { e.preventDefault(); focusedAt.current = 0 }
+              }}
+              onBlur={() => { focusedAt.current = 0 }}
               onKeyDown={e => {
                 if (e.key === 'Enter')     { e.preventDefault(); save() }
                 if (e.key === 'ArrowUp')   { e.preventDefault(); bump(1) }

@@ -37,6 +37,14 @@
 // which are too small to hit on a phone. Clamping and validation are
 // unchanged; only the input changed.
 //
+// Phones (≤ 639px wide): the review phase goes one line at a time instead of
+// one long list. A start step (PO, slip scan, Receive all), then each line with
+// "All N arrived" / "None arrived" buttons that advance on their own, then
+// notes, then the unchanged confirm phase. Numbered dots in the pinned header
+// show each line's state and jump to it; Back / Next are pinned at the bottom.
+// Wider screens keep the list. Same state either way, so rotating a phone
+// mid-receipt loses nothing.
+//
 // Other phases unchanged from previous commits (#11 notes seeding, #12 confirm, #14 PDF).
 
 import { useState, useEffect, useRef } from 'react'
@@ -312,6 +320,10 @@ function QtyField({
   highlight?: boolean
 }) {
   const [text, setText] = useState(String(value))
+  // When the field was last focused. The mouseup that ends the click which
+  // focused it is cancelled (see onMouseUp), or desktop Chrome collapses the
+  // selection back to a caret.
+  const focusedAt = useRef(0)
 
   // The field always shows what the parent accepted: outside changes (slip
   // scan, Receive all) and the parent's own clamping (Total arrived can't pass
@@ -356,13 +368,29 @@ function QtyField({
           setText(t)
           onChange(t === '' ? 0 : parseInt(t, 10))
         }}
-        onFocus={e => { const el = e.currentTarget; requestAnimationFrame(() => el.select()) }}
-        onBlur={() => { if (text === '') setText(String(value)) }}
+        // Select now (mouse, keyboard) and again next frame (some mobile
+        // browsers undo a selection made inside the focus event). On desktop
+        // the click that focused the field ends with a mouseup that would
+        // collapse the selection to a caret; cancelling that one mouseup keeps
+        // it. Later clicks inside the field place the caret as usual.
+        onFocus={e => {
+          const el = e.currentTarget
+          focusedAt.current = performance.now()
+          el.select()
+          requestAnimationFrame(() => el.select())
+        }}
+        onMouseUp={e => {
+          if (performance.now() - focusedAt.current < 600) { e.preventDefault(); focusedAt.current = 0 }
+        }}
+        onBlur={() => { focusedAt.current = 0; if (text === '') setText(String(value)) }}
         onKeyDown={e => {
           if (e.key === 'ArrowUp')   { e.preventDefault(); if (canInc) set(value + 1) }
           if (e.key === 'ArrowDown') { e.preventDefault(); if (canDec) set(value - 1) }
         }}
-        className={`h-11 flex-1 min-w-0 px-2 text-center text-lg font-semibold font-mono tabular-nums
+        // w-0 + flex-1: the field takes the room left by the − / + buttons.
+        // Without w-0 its intrinsic width set a floor, which pushed
+        // "+ Damage" out of the card on phones.
+        className={`h-11 w-0 flex-1 min-w-0 px-2 text-center text-lg font-semibold font-mono tabular-nums
           border rounded-md dark:text-white focus:ring-2 outline-none ${fieldTone}`}
       />
       <button type="button" aria-label={`Increase ${label.toLowerCase()}`}
@@ -611,7 +639,7 @@ function LineRow({
       {/* Qty received (undamaged) — shown when damage section is not open */}
       {!showDamage && (
         <div className="flex items-end gap-3">
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <label className="block text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold mb-1">
               Qty received
               {hasDamage && (
@@ -921,6 +949,54 @@ function ReceiptPdfButton({ receiptId }: { receiptId: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Phone stepper helpers
+// ---------------------------------------------------------------------------
+
+/** True on phone-width screens. Follows rotation and window resizes. */
+const PHONE_QUERY = '(max-width: 639px)'
+function useIsPhone(): boolean {
+  const [isPhone, setIsPhone] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.(PHONE_QUERY).matches,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia?.(PHONE_QUERY)
+    if (!mq) return
+    const update = () => setIsPhone(mq.matches)
+    update()
+    mq.addEventListener?.('change', update)
+    return () => mq.removeEventListener?.('change', update)
+  }, [])
+  return isPhone
+}
+
+type LineTone = 'todo' | 'none' | 'partial' | 'full' | 'damaged' | 'over'
+
+/** A line's state as its stepper dot shows it. */
+function lineTone(l: WizardLine, seen: boolean): LineTone {
+  const remaining = l.quantity_ordered - l.quantity_previously_received
+  const total     = l.quantity_received + l.quantity_damaged
+  if (total > remaining)       return 'over'
+  if (l.quantity_damaged > 0)  return 'damaged'
+  if (total > 0 && total >= remaining) return 'full'
+  if (total > 0)               return 'partial'
+  return seen ? 'none' : 'todo'
+}
+
+const TONE_CLASS: Record<LineTone, string> = {
+  todo:    'border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500',
+  none:    'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400',
+  partial: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  full:    'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+  damaged: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  over:    'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+}
+
+const TONE_LABEL: Record<LineTone, string> = {
+  todo: 'not looked at', none: 'none arrived', partial: 'part arrived',
+  full: 'all arrived', damaged: 'damage recorded', over: 'more than remaining',
+}
+
+// ---------------------------------------------------------------------------
 // Main wizard
 // ---------------------------------------------------------------------------
 
@@ -951,6 +1027,12 @@ export default function ReceivingWizard({ poId: poIdProp, onDone }: ReceivingWiz
   const [result,        setResult]        = useState<ReceiveResult | null>(null)
   const [scannedLineIds, setScannedLineIds] = useState<Set<string>>(new Set())
   const navigate = useNavigate()
+  // Phone stepper (see the header note). Desktop ignores these.
+  const isPhone = useIsPhone()
+  const [step, setStep]       = useState(0)
+  const [visited, setVisited] = useState<Set<string>>(new Set())
+  const stepTopRef = useRef<HTMLDivElement>(null)
+  const dotsRef    = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!poId) return
@@ -972,6 +1054,8 @@ export default function ReceivingWizard({ poId: poIdProp, onDone }: ReceivingWiz
   function initLines(detail: PurchaseOrderDetail) {
     const completed = detail.lines.filter(l => l.status === 'received' || l.status === 'cancelled')
     const active    = detail.lines.filter(l => l.status !== 'cancelled' && l.status !== 'received')
+    setStep(0)
+    setVisited(new Set())
     setCompletedLines(completed.map(l => ({
       title:             l.title ?? `Item ${l.inventory_item_id.split('/').pop()}`,
       isbn:              l.isbn ?? null,
@@ -1149,6 +1233,200 @@ export default function ReceivingWizard({ poId: poIdProp, onDone }: ReceivingWiz
   // and disables "Clear all" when there is nothing to clear.
   const enteredCount = lines.filter(l => l.quantity_received > 0 || l.quantity_damaged > 0).length
 
+  // Blocks shared by the desktop list and the phone stepper, so both render
+  // the same markup.
+  const reviewHeader = poDetail ? (
+    <>
+      <div className="rounded-md border dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-0.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="font-mono font-semibold text-gray-900 dark:text-gray-100">{poDetail.order.po_number}</span>
+            {poDetail.order.is_ad_hoc && <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase">Ad hoc</span>}
+            {isTest && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 uppercase">Test</span>}
+          </div>
+          <span className="text-xs text-gray-500 dark:text-gray-400">{poDetail.lines.length} line{poDetail.lines.length !== 1 ? 's' : ''}</span>
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {order?.supplier_name ?? order?.account_label ?? ''}
+          {poDetail.order.ordered_at ? ` · Ordered ${formatDate(poDetail.order.ordered_at)}` : ''}
+        </p>
+        {order?.informal_ref && <p className="text-[11px] font-mono text-gray-400 dark:text-gray-500">ref: {order.informal_ref}</p>}
+      </div>
+
+      <div className="rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 flex items-center justify-between">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-blue-500 dark:text-blue-400 font-bold mb-0.5">Receiving into</p>
+          <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">{locationName(locationId)}</p>
+          <p className="font-mono text-[10px] text-blue-400 dark:text-blue-500 mt-0.5">{locationId.split('/').pop()}</p>
+        </div>
+        <span className="text-[11px] text-blue-500 dark:text-blue-400">PO destination</span>
+      </div>
+    </>
+  ) : null
+
+  const bulkControls = (
+    <>
+      {lines.length > 1 && (
+        <div className="flex items-center justify-between gap-3 px-1">
+          <p className="text-[11px] text-gray-400 dark:text-gray-500">
+            {enteredCount} of {lines.length} line{lines.length !== 1 ? 's' : ''} with a quantity
+          </p>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setAllReceived('all')}
+              className="px-2.5 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-[11px] font-semibold
+                         text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800 transition-colors">
+              Receive all
+            </button>
+            <button type="button" onClick={() => setAllReceived('none')}
+              disabled={enteredCount === 0}
+              className="px-2.5 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-[11px] font-semibold
+                         text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800
+                         disabled:opacity-40 transition-colors">
+              Clear all
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+
+  const completedList = (
+    <>
+      {completedLines.length > 0 && (
+        <div className="border dark:border-gray-700 rounded-md overflow-hidden">
+          <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
+            <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500">
+              Already received ({completedLines.length} line{completedLines.length !== 1 ? 's' : ''})
+            </p>
+          </div>
+          {completedLines.map((l, i) => (
+            <div key={i} className="flex items-center justify-between px-4 py-2.5 border-b dark:border-gray-800 last:border-0 opacity-60">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{l.title}</p>
+                {l.isbn && <p className="text-[10px] font-mono text-gray-400 dark:text-gray-500">{l.isbn}</p>}
+              </div>
+              <span className="text-xs font-semibold text-green-600 dark:text-green-400 shrink-0 ml-3">
+                ✓ {l.quantity_received}/{l.quantity_ordered}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  )
+
+  const notesField = (
+    <div>
+      <label className="block text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold mb-1">Notes</label>
+      <textarea
+        value={notes}
+        onChange={e => setNotes(e.target.value)}
+        rows={2}
+        placeholder="Packing slip reference, price discrepancies, substitutions, backorder notes…"
+        className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+      />
+    </div>
+  )
+
+  // ── Phone stepper ──────────────────────────────────────────────────────
+  // Steps: 0 = start (PO, slip scan, bulk controls), 1..n = one line each,
+  // n + 1 = notes, then Review & confirm into the unchanged confirm phase.
+  const lastStep  = lines.length + 1
+  const stepLine  = step >= 1 && step <= lines.length ? lines[step - 1] : null
+  const stepperOn = isPhone && phase === 'review' && !!poDetail && lines.length > 0
+  const stepRemaining = stepLine ? stepLine.quantity_ordered - stepLine.quantity_previously_received : 0
+  const stepTotal = stepLine ? stepLine.quantity_received + stepLine.quantity_damaged : 0
+  const stepOver  = !!stepLine && stepTotal > stepRemaining
+  const stepAllN  = stepLine ? Math.max(0, stepRemaining - stepLine.quantity_damaged) : 0
+
+  /* Leaving a line marks it seen, so its dot can show "nothing arrived"
+     rather than "not looked at yet". */
+  function goTo(next: number) {
+    if (stepLine) {
+      const id = stepLine.purchase_order_line_id
+      setVisited(prev => (prev.has(id) ? prev : new Set(prev).add(id)))
+    }
+    setStep(Math.max(0, Math.min(lastStep, next)))
+  }
+
+  /* One-tap answers that move straight on (Gil, 2026-11-03). "All arrived"
+     fills what is left after any damaged copies, like Receive all. "None
+     arrived" clears the line, damage included: nothing came, so nothing is
+     damaged either. */
+  function quickSet(mode: 'all' | 'none') {
+    if (!stepLine) return
+    const id = stepLine.purchase_order_line_id
+    setLines(prev => prev.map(l => {
+      if (l.purchase_order_line_id !== id) return l
+      const remaining = l.quantity_ordered - l.quantity_previously_received
+      return mode === 'all'
+        ? { ...l, quantity_received: Math.max(0, remaining - l.quantity_damaged) }
+        : { ...l, quantity_received: 0, quantity_damaged: 0, damage_disposal: null, damage_resolution: null }
+    }))
+    goTo(step + 1)
+  }
+
+  // Each step starts at the top, and the current dot stays in view.
+  useEffect(() => {
+    if (!stepperOn) return
+    stepTopRef.current?.scrollIntoView?.({ block: 'start' })
+    dotsRef.current?.querySelector('[aria-current="step"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  }, [step, stepperOn])
+
+  const stepTitle = step === 0 ? 'Start'
+    : step === lastStep ? 'Notes & review'
+    : `Line ${step} of ${lines.length}`
+
+  const stepperSubheader = stepperOn ? (
+    <div className="px-4 py-2 border-b dark:border-gray-800 space-y-1.5">
+      <div className="flex items-center justify-between gap-2 text-[11px]">
+        <span className="font-semibold text-gray-700 dark:text-gray-200">{stepTitle}</span>
+        <span className="text-gray-400 dark:text-gray-500">{enteredCount} of {lines.length} with a quantity</span>
+      </div>
+      <div ref={dotsRef} className="flex gap-1 overflow-x-auto pb-0.5">
+        {lines.map((l, i) => {
+          const tone = lineTone(l, visited.has(l.purchase_order_line_id))
+          return (
+            <button key={l.purchase_order_line_id} type="button"
+              onClick={() => goTo(i + 1)}
+              aria-label={`Line ${i + 1}: ${l.title} (${TONE_LABEL[tone]})`}
+              aria-current={step === i + 1 ? 'step' : undefined}
+              className={`h-7 min-w-[1.75rem] px-1 shrink-0 rounded-full text-[10px] font-semibold tabular-nums transition
+                ${TONE_CLASS[tone]}
+                ${step === i + 1 ? 'ring-2 ring-blue-500 ring-offset-1 ring-offset-white dark:ring-offset-gray-950' : ''}`}>
+              {i + 1}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  ) : undefined
+
+  const stepperFooter = stepperOn ? (
+    <div className="flex gap-2">
+      {step > 0 && (
+        <button type="button" onClick={() => goTo(step - 1)}
+          className="h-12 px-4 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300
+                     hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+          ← Back
+        </button>
+      )}
+      {step < lastStep ? (
+        <button type="button" onClick={() => goTo(step + 1)} disabled={stepOver}
+          className="flex-1 h-12 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold
+                     disabled:opacity-50 transition-colors active:scale-[0.98]">
+          {step === 0 ? 'Start receiving →' : step === lines.length ? 'Notes & review →' : 'Next line →'}
+        </button>
+      ) : (
+        <button type="button" onClick={handleReviewNext} disabled={busy}
+          className="flex-1 h-12 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold
+                     disabled:opacity-50 transition-colors active:scale-[0.98]">
+          Review & confirm →
+        </button>
+      )}
+    </div>
+  ) : undefined
+
   return (
     <ModalShell
       title="Receive purchase order"
@@ -1156,6 +1434,8 @@ export default function ReceivingWizard({ poId: poIdProp, onDone }: ReceivingWiz
       onClose={exit}
       onBeforeClose={confirmDiscard}
       dismissible={phase !== 'confirming'}
+      subheader={stepperSubheader}
+      footer={stepperFooter}
     >
       {({ requestClose }) => (
             <div className="space-y-6">
@@ -1187,56 +1467,13 @@ export default function ReceivingWizard({ poId: poIdProp, onDone }: ReceivingWiz
       )}
 
       {/* ── REVIEW ───────────────────────────────────────────────── */}
-      {phase === 'review' && poDetail && (
+      {phase === 'review' && poDetail && !stepperOn && (
         <div className="space-y-5">
-          <div className="rounded-md border dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-0.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="font-mono font-semibold text-gray-900 dark:text-gray-100">{poDetail.order.po_number}</span>
-                {poDetail.order.is_ad_hoc && <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase">Ad hoc</span>}
-                {isTest && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 uppercase">Test</span>}
-              </div>
-              <span className="text-xs text-gray-500 dark:text-gray-400">{poDetail.lines.length} line{poDetail.lines.length !== 1 ? 's' : ''}</span>
-            </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {order?.supplier_name ?? order?.account_label ?? ''}
-              {poDetail.order.ordered_at ? ` · Ordered ${formatDate(poDetail.order.ordered_at)}` : ''}
-            </p>
-            {order?.informal_ref && <p className="text-[11px] font-mono text-gray-400 dark:text-gray-500">ref: {order.informal_ref}</p>}
-          </div>
-
-          <div className="rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 flex items-center justify-between">
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-blue-500 dark:text-blue-400 font-bold mb-0.5">Receiving into</p>
-              <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">{locationName(locationId)}</p>
-              <p className="font-mono text-[10px] text-blue-400 dark:text-blue-500 mt-0.5">{locationId.split('/').pop()}</p>
-            </div>
-            <span className="text-[11px] text-blue-500 dark:text-blue-400">PO destination</span>
-          </div>
+          {reviewHeader}
 
           {lines.length > 0 && <WizardSlipScanner lines={lines} onLinesUpdated={handleScanUpdate} />}
 
-          {lines.length > 1 && (
-            <div className="flex items-center justify-between gap-3 px-1">
-              <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                {enteredCount} of {lines.length} line{lines.length !== 1 ? 's' : ''} with a quantity
-              </p>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setAllReceived('all')}
-                  className="px-2.5 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-[11px] font-semibold
-                             text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800 transition-colors">
-                  Receive all
-                </button>
-                <button type="button" onClick={() => setAllReceived('none')}
-                  disabled={enteredCount === 0}
-                  className="px-2.5 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-[11px] font-semibold
-                             text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800
-                             disabled:opacity-40 transition-colors">
-                  Clear all
-                </button>
-              </div>
-            </div>
-          )}
+          {bulkControls}
 
           <div className="space-y-3">
             {lines.map(l => (
@@ -1249,42 +1486,14 @@ export default function ReceivingWizard({ poId: poIdProp, onDone }: ReceivingWiz
               />
             ))}
 
-            {completedLines.length > 0 && (
-              <div className="border dark:border-gray-700 rounded-md overflow-hidden">
-                <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
-                  <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500">
-                    Already received ({completedLines.length} line{completedLines.length !== 1 ? 's' : ''})
-                  </p>
-                </div>
-                {completedLines.map((l, i) => (
-                  <div key={i} className="flex items-center justify-between px-4 py-2.5 border-b dark:border-gray-800 last:border-0 opacity-60">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{l.title}</p>
-                      {l.isbn && <p className="text-[10px] font-mono text-gray-400 dark:text-gray-500">{l.isbn}</p>}
-                    </div>
-                    <span className="text-xs font-semibold text-green-600 dark:text-green-400 shrink-0 ml-3">
-                      ✓ {l.quantity_received}/{l.quantity_ordered}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+            {completedList}
 
             {lines.length === 0 && completedLines.length === 0 && (
               <p className="text-sm text-gray-400 dark:text-gray-600 italic">All lines on this order are already received or cancelled.</p>
             )}
           </div>
 
-          <div>
-            <label className="block text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold mb-1">Notes</label>
-            <textarea
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              rows={2}
-              placeholder="Packing slip reference, price discrepancies, substitutions, backorder notes…"
-              className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-            />
-          </div>
+          {notesField}
 
           {error && (
             <div className="px-3 py-2 rounded bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">{error}</div>
@@ -1294,6 +1503,65 @@ export default function ReceivingWizard({ poId: poIdProp, onDone }: ReceivingWiz
             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-md text-sm transition-colors disabled:opacity-50 active:scale-[0.98]">
             Review & confirm →
           </button>
+        </div>
+      )}
+
+      {/* ── REVIEW, phone: one line at a time ──────────────────────── */}
+      {phase === 'review' && poDetail && stepperOn && (
+        <div className="space-y-4">
+          <div ref={stepTopRef} />
+
+          {/* Start. Kept mounted (hidden) on later steps so the slip scan
+              result survives stepping back to it. */}
+          <div className={step === 0 ? 'space-y-4' : 'hidden'}>
+            {reviewHeader}
+            <WizardSlipScanner lines={lines} onLinesUpdated={handleScanUpdate} />
+            {bulkControls}
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Go through the {lines.length} line{lines.length !== 1 ? 's' : ''} one at a time.
+              “All arrived” and “None arrived” move on by themselves; the numbered dots
+              above jump to any line.
+            </p>
+            {completedList}
+          </div>
+
+          {stepLine && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => quickSet('all')} disabled={stepAllN <= 0}
+                  className="h-12 rounded-md border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20
+                             text-sm font-semibold text-green-800 dark:text-green-200 disabled:opacity-40 active:scale-[0.98] transition">
+                  All {stepAllN} arrived
+                </button>
+                <button type="button" onClick={() => quickSet('none')}
+                  className="h-12 rounded-md border border-gray-300 dark:border-gray-600
+                             text-sm font-semibold text-gray-700 dark:text-gray-300 active:scale-[0.98] transition">
+                  None arrived
+                </button>
+              </div>
+              <LineRow
+                key={stepLine.purchase_order_line_id}
+                line={stepLine}
+                fromScan={scannedLineIds.has(stepLine.purchase_order_line_id)}
+                onQtyChange={handleQtyChange}
+                onDamageChange={handleDamageChange}
+              />
+              {stepOver && (
+                <p className="text-xs text-red-600 dark:text-red-400">
+                  {stepTotal} arrived is more than the {stepRemaining} remaining on this line. Lower it to continue.
+                </p>
+              )}
+            </div>
+          )}
+
+          {step === lastStep && (
+            <div className="space-y-4">
+              {notesField}
+              {error && (
+                <div className="px-3 py-2 rounded bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">{error}</div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
