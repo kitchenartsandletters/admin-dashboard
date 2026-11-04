@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
+from datetime import date
 from app.supabase_client import supabase
 from app.auth import validate_admin_token
 import os
@@ -17,6 +18,30 @@ VALID_REPORT_IDS = {
     "weekly_maintenance",
     "lop_unfulfilled",
 }
+
+# A report window runs from start_date at opening (10:00 AM ET) up to end_date at
+# 9:59 AM ET, so end_date must be strictly after start_date. Equal dates produce an
+# empty window (on 2026-10-21 three such runs reported success and emailed nothing).
+WINDOW_RULE = (
+    "end_date must be after start_date. A report covers start_date from 10:00 AM ET "
+    "up to 9:59 AM ET on end_date, so the same date twice covers nothing. "
+    "For one day's sales, set end_date to the next day."
+)
+
+
+def _validate_window(start_s: Optional[str], end_s: Optional[str]) -> None:
+    if not start_s and not end_s:
+        return
+    if not (start_s and end_s):
+        raise HTTPException(status_code=422, detail="Provide both start_date and end_date, or neither.")
+    try:
+        start_d = date.fromisoformat(str(start_s)[:10])
+        end_d   = date.fromisoformat(str(end_s)[:10])
+    except ValueError:
+        raise HTTPException(status_code=422, detail="start_date and end_date must be YYYY-MM-DD.")
+    if end_d <= start_d:
+        raise HTTPException(status_code=422, detail=WINDOW_RULE)
+
 
 VALID_OVERRIDE_TYPES = {
     "holiday_closure",
@@ -58,6 +83,9 @@ def run_report(payload: RunReportRequest, request: Request):
             detail=f"Unknown report_id '{payload.report_id}'. "
                    f"Valid values: {sorted(VALID_REPORT_IDS)}",
         )
+
+    params = payload.parameters or {}
+    _validate_window(params.get("start_date"), params.get("end_date"))
 
     try:
         resp = (
@@ -157,8 +185,7 @@ def upsert_schedule_override(payload: ScheduleOverrideRequest, request: Request)
 
     if payload.report_id not in VALID_REPORT_IDS:
         raise HTTPException(status_code=422, detail=f"Unknown report_id '{payload.report_id}'")
-    if payload.start_date > payload.end_date:
-        raise HTTPException(status_code=422, detail="start_date must be on or before end_date")
+    _validate_window(payload.start_date, payload.end_date)
 
     try:
         table = supabase.schema("reports").table("report_schedule_overrides")
