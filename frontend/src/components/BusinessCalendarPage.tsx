@@ -7,7 +7,7 @@ import { DASHBOARD_ADMIN_TOKEN, DASHBOARD_BASE_URL } from '../services/dashboard
 type DateString = string; // 'YYYY-MM-DD'
 type DayKind = 'open' | 'closed' | 'holiday' | 'special-open';
 type OverrideType = 'holiday_closure' | 'special_open_sunday' | 'open_override';
-type LocationId = 'kal' | 'nyfs';
+type LocationId = 'kal';
 
 interface CalendarOverride {
   id:            string;
@@ -26,18 +26,16 @@ interface DayInfo {
 
 const LOCATION_OPTIONS = [
   { id: 'kal'  as LocationId, label: 'Kitchen Arts & Letters', address: '1435 Lexington Ave' },
-  { id: 'nyfs' as LocationId, label: 'New York Food Stories',  address: '111 Broadway' },
 ] as const;
 
-// Open weekdays per location: KAL = Mon–Sat (dow 1–6), NYFS = Tue–Sun (dow 2–6 + 0)
+// Open weekdays per location: KAL = Mon–Sat (dow 1–6). (The NYFS pop-up location was retired 2026-11-04.)
 const LOCATION_OPEN_DAYS: Record<LocationId, Set<number>> = {
   kal:  new Set([1, 2, 3, 4, 5, 6]),
-  nyfs: new Set([0, 2, 3, 4, 5, 6]),
 };
 
 // Report open/close times per location
-const LOCATION_OPEN_TIME:  Record<LocationId, string> = { kal: '10:00 AM', nyfs: '12:00 PM' };
-const LOCATION_CLOSE_TIME: Record<LocationId, string> = { kal: '9:59 AM',  nyfs: '11:59 AM' };
+const LOCATION_OPEN_TIME:  Record<LocationId, string> = { kal: '10:00 AM' };
+const LOCATION_CLOSE_TIME: Record<LocationId, string> = { kal: '9:59 AM' };
 
 // ─── Source of truth ──────────────────────────────────────────────────────────
 // Every holiday, special open Sunday and closure is a row in
@@ -256,7 +254,6 @@ function EditPanel({
   const dow      = d.getDay();
 
   // For KAL: only Sundays get the special-open toggle
-  // For NYFS: Sundays are always open (regular day), Mondays are always closed
   const isSunday = dow === 0;
   const isMonday = dow === 1;
 
@@ -362,7 +359,7 @@ function EditPanel({
       {/* Admin edit controls */}
       {isAdmin && (
         <div className="pt-1 space-y-2 border-t border-gray-200 dark:border-gray-700">
-          {/* Special open Sunday toggle — KAL only, not applicable for NYFS (Sun always open) */}
+          {/* Special open Sunday toggle (KAL) */}
           {isSunday && loc === 'kal' ? (
             kind === 'special-open' ? (
               <button
@@ -526,7 +523,8 @@ export default function BusinessCalendarPage() {
         </div>
       </header>
 
-      {/* Location selector */}
+      {/* Location selector — shown only when there is more than one location */}
+      {LOCATION_OPTIONS.length > 1 && (
       <div className="flex items-center gap-3">
         <span className="text-sm text-gray-500 dark:text-gray-400">Location:</span>
         <div className="flex rounded border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -546,6 +544,7 @@ export default function BusinessCalendarPage() {
           ))}
         </div>
       </div>
+      )}
 
       {/* Legend */}
       <div className="flex flex-wrap gap-4 text-xs text-gray-500 dark:text-gray-400">
@@ -572,7 +571,7 @@ export default function BusinessCalendarPage() {
           text-amber-800 dark:text-amber-300">
           No holidays, closures or special open days are defined for {year} yet, so reports
           would run on every regular weekday, including holidays.
-          Showing base schedule ({location === 'kal' ? 'Mon–Sat open, Sun closed' : 'Tue–Sun open, Mon closed'}).
+          Showing base schedule (Mon–Sat open, Sun closed).
           {isAdmin && ' Click any day to add closures or special open Sundays.'}
         </div>
       )}
