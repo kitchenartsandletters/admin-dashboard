@@ -1,6 +1,5 @@
 export type ReportId =
   | 'daily_sales_kal'
-  | 'daily_sales_nyfs'
   | 'weekly_maintenance'
   | 'lop_unfulfilled';
 
@@ -28,7 +27,7 @@ export interface ReportDefinition {
   status:                   'active' | 'disabled' | 'experimental';
   // Location metadata — present on location-scoped reports
   locationLabel?:           string;
-  locationShort?:           'kal' | 'nyfs';
+  locationShort?:           'kal';
 }
 
 export const REPORTS: ReportDefinition[] = [
@@ -50,25 +49,6 @@ export const REPORTS: ReportDefinition[] = [
     status:                   'active',
     locationLabel:            'Kitchen Arts & Letters',
     locationShort:            'kal',
-  },
-  {
-    id:          'daily_sales_nyfs',
-    title:       'Daily Sales Report',
-    description: 'Previous business-day sales for 111 Broadway, grouped by product. Includes inventory, preorder, backorder, OOS, and out-of-print sections. Delivered via email as CSV + PDF.',
-    cadence:                  'daily',
-    scheduledDays:            [2, 3, 4, 5, 6, 0], // Tue–Sun (0=Sun)
-    scheduledRunHourET:       12,
-    editCutoffMinutes:        60,  // locks at 11:00 AM ET
-    rolesAllowed:             ['admin', 'editor'],
-    supportsManualRun:        true,
-    supportsParameters:       true,
-    supportsDateRange:        true,
-    supportsScheduleOverride: true,
-    supportedFormats:         ['pdf', 'csv'],
-    supportedDeliveryMethods: ['email', 'table'],
-    status:                   'active',
-    locationLabel:            'New York Food Stories',
-    locationShort:            'nyfs',
   },
   {
     id:          'weekly_maintenance',
