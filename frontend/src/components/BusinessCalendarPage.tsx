@@ -39,28 +39,11 @@ const LOCATION_OPEN_DAYS: Record<LocationId, Set<number>> = {
 const LOCATION_OPEN_TIME:  Record<LocationId, string> = { kal: '10:00 AM', nyfs: '12:00 PM' };
 const LOCATION_CLOSE_TIME: Record<LocationId, string> = { kal: '9:59 AM',  nyfs: '11:59 AM' };
 
-// ─── Hardcoded baseline (mirrors business_calendar.py) ───────────────────────
-// Shared across both locations. DB overrides always win.
-
-const BASELINE_SPECIAL_OPEN_SUNDAYS: Record<number, Set<DateString>> = {
-  2025: new Set(['2025-12-07', '2025-12-14', '2025-12-21']),
-  2026: new Set(['2026-12-06', '2026-12-13', '2026-12-20']),
-};
-
-const BASELINE_HOLIDAY_CLOSURES: Record<number, Set<DateString>> = {
-  2025: new Set(['2025-05-24','2025-05-26','2025-07-04','2025-09-01','2025-11-28','2025-12-25','2025-12-26']),
-  2026: new Set(['2026-01-01','2026-05-23','2026-05-24','2026-07-04','2026-09-07','2026-11-26','2026-12-25','2026-12-26']),
-};
-
-const BASELINE_HOLIDAY_NAMES: Record<DateString, string> = {
-  '2025-05-24':'Sat before Memorial Day','2025-05-26':'Memorial Day',
-  '2025-07-04':'Independence Day','2025-09-01':'Labor Day',
-  '2025-11-28':'Thanksgiving','2025-12-25':'Christmas','2025-12-26':'Boxing Day',
-  '2026-01-01':"New Year's Day",'2026-05-23':'Sat before Memorial Day',
-  '2026-05-24':'Memorial Day (Sun)','2026-07-04':'Independence Day',
-  '2026-09-07':'Labor Day','2026-11-26':'Thanksgiving',
-  '2026-12-25':'Christmas','2026-12-26':'Boxing Day',
-};
+// ─── Source of truth ──────────────────────────────────────────────────────────
+// Every holiday, special open Sunday and closure is a row in
+// reports.business_calendar_overrides, loaded per location below. The report
+// worker (sr-ops-suite business_calendar.py) reads the same rows, so this page and
+// the reports always agree. There is no hardcoded holiday list here any more.
 
 // ─── Calendar logic ───────────────────────────────────────────────────────────
 
@@ -76,9 +59,9 @@ function parseLocal(s: DateString): Date {
 }
 
 function resolveCalendar(year: number, overrides: CalendarOverride[]) {
-  const holidays = new Set(BASELINE_HOLIDAY_CLOSURES[year] ?? []);
-  const specials = new Set(BASELINE_SPECIAL_OPEN_SUNDAYS[year] ?? []);
-  const labels: Record<DateString, string> = { ...BASELINE_HOLIDAY_NAMES };
+  const holidays = new Set<DateString>();
+  const specials = new Set<DateString>();
+  const labels: Record<DateString, string> = {};
 
   for (const ov of overrides) {
     const d = new Date(ov.date + 'T12:00:00');
@@ -88,7 +71,7 @@ function resolveCalendar(year: number, overrides: CalendarOverride[]) {
       specials.delete(ov.date);
       if (ov.label) labels[ov.date] = ov.label;
     } else if (ov.override_type === 'open_override') {
-      // Location is open despite baseline holiday — remove from holidays set
+      // Location is open on a day that would otherwise be closed
       holidays.delete(ov.date);
       specials.delete(ov.date);
       if (ov.label) labels[ov.date] = ov.label;
@@ -96,6 +79,7 @@ function resolveCalendar(year: number, overrides: CalendarOverride[]) {
       // special_open_sunday
       specials.add(ov.date);
       holidays.delete(ov.date);
+      if (ov.label) labels[ov.date] = ov.label;
     }
   }
 
@@ -506,7 +490,7 @@ export default function BusinessCalendarPage() {
   }
 
   const { holidays, specials, labels } = resolveCalendar(year, overrides);
-  const hasDefinedData = BASELINE_HOLIDAY_CLOSURES[year] !== undefined || overrides.some(
+  const hasDefinedData = overrides.some(
     o => new Date(o.date + 'T12:00:00').getFullYear() === year
   );
 
@@ -586,7 +570,8 @@ export default function BusinessCalendarPage() {
         <div className="rounded-md border border-amber-200 dark:border-amber-700
           bg-amber-50 dark:bg-amber-950/40 px-4 py-3 text-sm
           text-amber-800 dark:text-amber-300">
-          Holiday closures and special open Sundays have not been defined for {year}.
+          No holidays, closures or special open days are defined for {year} yet, so reports
+          would run on every regular weekday, including holidays.
           Showing base schedule ({location === 'kal' ? 'Mon–Sat open, Sun closed' : 'Tue–Sun open, Mon closed'}).
           {isAdmin && ' Click any day to add closures or special open Sundays.'}
         </div>
