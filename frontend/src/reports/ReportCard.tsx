@@ -36,16 +36,29 @@ interface Props {
   onRun: (reportId: string, params: RunParameters) => Promise<{ id: string }>;
 }
 
-// ─── Business calendar helpers (mirrors business_calendar.py) ─────────────────
+// ─── Business calendar helpers ────────────────────────────────────────────────
+// Holidays, special open Sundays and open overrides come from the database
+// (reports.business_calendar_overrides), the same rows the Business Calendar page
+// and the report worker use. There is no hardcoded holiday list here any more.
 
-const SPECIAL_OPEN_SUNDAYS: Record<number, Set<string>> = {
-  2025: new Set(['2025-12-07', '2025-12-14', '2025-12-21']),
-  2026: new Set(['2026-12-06', '2026-12-13', '2026-12-20']),
-};
-const HOLIDAY_CLOSURES: Record<number, Set<string>> = {
-  2025: new Set(['2025-05-24','2025-05-26','2025-07-04','2025-09-01','2025-11-28','2025-12-25','2025-12-26']),
-  2026: new Set(['2026-01-01','2026-05-23','2026-05-24','2026-07-04','2026-09-07','2026-11-26','2026-12-25','2026-12-26']),
-};
+interface Cal {
+  holidays: Set<string>;
+  specials: Set<string>;
+  opens:    Set<string>;
+}
+
+const EMPTY_CAL: Cal = { holidays: new Set(), specials: new Set(), opens: new Set() };
+
+function buildCal(rows: Array<{ date: string; override_type: string }>): Cal {
+  const cal: Cal = { holidays: new Set(), specials: new Set(), opens: new Set() };
+  for (const r of rows) {
+    const d = String(r.date).slice(0, 10);
+    if (r.override_type === 'holiday_closure') cal.holidays.add(d);
+    else if (r.override_type === 'special_open_sunday') cal.specials.add(d);
+    else if (r.override_type === 'open_override') cal.opens.add(d);
+  }
+  return cal;
+}
 
 function toISO(d: Date): string {
   return d.getFullYear() + '-' +
@@ -58,24 +71,29 @@ function parseLocal(s: string): Date {
   return new Date(y, m - 1, d);
 }
 
-function isBusinessDay(dStr: string): boolean {
-  const year = parseInt(dStr.slice(0, 4));
-  const holidays = HOLIDAY_CLOSURES[year];
-  const specials  = SPECIAL_OPEN_SUNDAYS[year];
-  if (holidays?.has(dStr)) return false;
-  const dow = parseLocal(dStr).getDay();
-  if (dow === 0) return specials?.has(dStr) ?? false;
-  return dow >= 1 && dow <= 6;
-}
-
-function findLastOpen(dStr: string): string {
-  const d = parseLocal(dStr);
-  d.setDate(d.getDate() - 1);
-  while (!isBusinessDay(toISO(d))) d.setDate(d.getDate() - 1);
+// Shift a YYYY-MM-DD date by whole days (local calendar arithmetic)
+function shiftISO(iso: string, days: number): string {
+  const d = parseLocal(iso);
+  d.setDate(d.getDate() + days);
   return toISO(d);
 }
 
-function getNextScheduledDate(report: ReportDefinition): Date | null {
+// Same priority as business_calendar.py: closure > open override > special Sunday > Mon–Sat
+function isBusinessDay(dStr: string, cal: Cal): boolean {
+  if (cal.holidays.has(dStr)) return false;
+  if (cal.opens.has(dStr) || cal.specials.has(dStr)) return true;
+  const dow = parseLocal(dStr).getDay();
+  return dow >= 1 && dow <= 6;
+}
+
+function findLastOpen(dStr: string, cal: Cal): string {
+  const d = parseLocal(dStr);
+  d.setDate(d.getDate() - 1);
+  while (!isBusinessDay(toISO(d), cal)) d.setDate(d.getDate() - 1);
+  return toISO(d);
+}
+
+function getNextScheduledDate(report: ReportDefinition, cal: Cal): Date | null {
   if (report.scheduledDays.length === 0) return null;
   const now = new Date();
   // Look ahead up to 14 days
@@ -83,7 +101,7 @@ function getNextScheduledDate(report: ReportDefinition): Date | null {
     const d = new Date(now);
     d.setDate(now.getDate() + i);
     const dStr = toISO(d);
-    if (report.scheduledDays.includes(d.getDay()) && isBusinessDay(dStr)) {
+    if (report.scheduledDays.includes(d.getDay()) && isBusinessDay(dStr, cal)) {
       return d;
     }
   }
@@ -97,13 +115,12 @@ interface ReportWindow {
   displayEnd:   string;
 }
 
-function getDefaultWindow(scheduledDate: Date): ReportWindow {
+function getDefaultWindow(scheduledDate: Date, cal: Cal): ReportWindow {
   const dStr     = toISO(scheduledDate);
-  const startISO = findLastOpen(dStr);
-  // end date boundary is yesterday (for date pickers)
-  const yesterday = new Date(scheduledDate);
-  yesterday.setDate(scheduledDate.getDate() - 1);
-  const endISO = toISO(yesterday);
+  const startISO = findLastOpen(dStr, cal);
+  // The end date is the run date: the window closes at 9:59 AM ET that morning.
+  // (It used to be the day before, which made untouched defaults empty or a day short.)
+  const endISO = dStr;
 
   // Display: window runs 10:00 AM ET on start date → 9:59 AM ET on run date
   const fmtWithTime = (iso: string, time: string) =>
@@ -135,6 +152,9 @@ function fmtDateShort(iso: string): string {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const WINDOW_RULE_MSG =
+  'End date must be after the start date. A report covers the start date from 10:00 AM ET up to 9:59 AM ET on the end date, so the same date twice covers nothing. For one day, set the end date to the next day.';
 
 function todayISO(): string {
   return toISO(new Date());
@@ -180,10 +200,18 @@ export default function ReportCard({ report, onRun }: Props) {
   const [formats, setFormats] = useState<ReportFormat[]>(report.supportedFormats.slice());
 
   // Schedule override state
-  const nextRunDate = useMemo(() => getNextScheduledDate(report), [report.id]);
+  // Business calendar (DB overrides), loaded once per card
+  const [cal, setCal]           = useState<Cal | null>(null);
+  const [calError, setCalError] = useState(false);
+  const datesInitialised        = React.useRef(false);
+
+  const nextRunDate = useMemo(
+    () => cal ? getNextScheduledDate(report, cal) : null,
+    [report.id, cal]
+  );
   const defaultWindow = useMemo(
-    () => nextRunDate ? getDefaultWindow(nextRunDate) : null,
-    [nextRunDate?.toDateString()]
+    () => nextRunDate && cal ? getDefaultWindow(nextRunDate, cal) : null,
+    [nextRunDate?.toDateString(), cal]
   );
   const editOpen       = nextRunDate && report.scheduledRunHourET !== null
     ? isBeforeCutoff(nextRunDate, report.editCutoffMinutes, report.scheduledRunHourET)
@@ -203,16 +231,36 @@ export default function ReportCard({ report, onRun }: Props) {
   const apiBase = DASHBOARD_BASE_URL;
   const token   = DASHBOARD_ADMIN_TOKEN;
 
-  // Initialise on-demand date range to the default window
+  // Load the business calendar from the same rows the worker uses
   useEffect(() => {
-    if (defaultWindow) {
-      setStartDate(defaultWindow.start);
-    } else {
-      const d = new Date();
-      d.setDate(d.getDate() - 1);
-      setStartDate(toISO(d));
-    }
-  }, [report.id]);
+    if (!apiBase || !token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const loc = report.locationShort ?? 'kal';
+        const res = await fetch(`${apiBase}/api/reports/calendar-overrides?location_id=${loc}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        const rows = await res.json();
+        if (!cancelled) { setCal(buildCal(Array.isArray(rows) ? rows : [])); setCalError(false); }
+      } catch {
+        // Fall back to the Mon–Sat baseline so the card still works, and say so.
+        if (!cancelled) { setCal(EMPTY_CAL); setCalError(true); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [apiBase, token, report.id]);
+
+  // Initialise the on-demand range once the calendar is known: today's report
+  // window (last open day 10:00 AM ET -> today 9:59 AM ET). Never overwrites edits.
+  useEffect(() => {
+    if (!cal || datesInitialised.current) return;
+    datesInitialised.current = true;
+    const today = todayISO();
+    setStartDate(findLastOpen(today, cal));
+    setEndDate(today);
+  }, [cal]);
 
   const fetchJobs = useCallback(async () => {
     if (!apiBase || !token) return;
@@ -254,6 +302,9 @@ export default function ReportCard({ report, onRun }: Props) {
   // ── Override save ────────────────────────────────────────────────────────
   async function saveOverride() {
     if (!nextRunDate || !apiBase || !token) return;
+    if (!overrideStart || !overrideEnd || overrideEnd <= overrideStart) {
+      setOverrideMsg(WINDOW_RULE_MSG); return;
+    }
     setOverrideSaving(true);
     setOverrideMsg(null);
     try {
@@ -307,6 +358,9 @@ export default function ReportCard({ report, onRun }: Props) {
 
   async function handleRun() {
     if (delivery === 'email' && formats.length === 0) { setMessage('Select at least one format.'); return; }
+    if (report.supportsDateRange && (!startDate || !endDate || endDate <= startDate)) {
+      setMessage(WINDOW_RULE_MSG); return;
+    }
     try {
       setIsRunning(true); setMessage(null);
       const recipientList = recipients.trim()
@@ -348,6 +402,11 @@ export default function ReportCard({ report, onRun }: Props) {
           <span className={cadenceBadge(report.cadence)}>{report.cadence.replace('_', ' ')}</span>
         </div>
         <p className="text-sm text-gray-500 dark:text-gray-400">{report.description}</p>
+        {calError && (
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            Business calendar couldn’t be loaded, so dates shown here ignore holidays and closures.
+          </p>
+        )}
       </div>
 
       <div className="border-t dark:border-gray-700" />
@@ -398,6 +457,7 @@ export default function ReportCard({ report, onRun }: Props) {
                 <input
                   type="date"
                   value={overrideStart}
+                  max={overrideEnd ? shiftISO(overrideEnd, -1) : undefined}
                   onChange={e => setOverrideStart(e.target.value)}
                   className="flex-1 rounded border px-2 py-1.5 text-xs
                     bg-white text-gray-900 border-gray-300
@@ -408,6 +468,7 @@ export default function ReportCard({ report, onRun }: Props) {
                 <input
                   type="date"
                   value={overrideEnd}
+                  min={overrideStart ? shiftISO(overrideStart, 1) : undefined}
                   onChange={e => setOverrideEnd(e.target.value)}
                   className="flex-1 rounded border px-2 py-1.5 text-xs
                     bg-white text-gray-900 border-gray-300
@@ -480,7 +541,7 @@ export default function ReportCard({ report, onRun }: Props) {
                 <input
                   type="date"
                   value={startDate}
-                  max={endDate}
+                  max={endDate ? shiftISO(endDate, -1) : undefined}
                   onChange={e => setStartDate(e.target.value)}
                   className="flex-1 rounded border px-2 py-1.5 text-sm
                     bg-white text-gray-900 border-gray-300
@@ -491,7 +552,7 @@ export default function ReportCard({ report, onRun }: Props) {
                 <input
                   type="date"
                   value={endDate}
-                  min={startDate}
+                  min={startDate ? shiftISO(startDate, 1) : undefined}
                   onChange={e => setEndDate(e.target.value)}
                   className="flex-1 rounded border px-2 py-1.5 text-sm
                     bg-white text-gray-900 border-gray-300
