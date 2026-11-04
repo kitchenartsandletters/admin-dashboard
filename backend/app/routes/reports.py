@@ -14,7 +14,6 @@ router = APIRouter(prefix="/reports", tags=["reports"], dependencies=[Depends(va
 
 VALID_REPORT_IDS = {
     "daily_sales_kal",
-    "daily_sales_nyfs",
     "weekly_maintenance",
     "lop_unfulfilled",
 }
