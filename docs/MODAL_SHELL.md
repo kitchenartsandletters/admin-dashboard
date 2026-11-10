@@ -52,6 +52,7 @@ Escape closes only the topmost modal. Two things sit outside that:
 | `supply-chain/receiving/ReceivingWizard.tsx` | **Done** | admin-dashboard#105. Tested on phone. Discard prompt via `onBeforeClose`. |
 | `supply-chain/purchase-orders/POBuilder.tsx` | **Done** | admin-dashboard#106. Its line-entry modal moved to `LineEntryModal.tsx` in #110. |
 | `supply-chain/purchase-orders/LineEntryModal.tsx` | **Done** | Built on ModalShell (#110). |
+| `components/preorder/IntlSoloActionModal.tsx` | **Done** | Built on ModalShell. Clear/restore the international cart restriction (intl-solo); not dismissible while saving. |
 | `components/RightSidebar.tsx` | **Done** (not a modal) | `h-svh`; modal-aware layer. |
 | `supply-chain/purchase-orders/PODetailSidebar.tsx` | **Done** (not a modal) | Slide-over at `z-40/50`. Defers Escape to `isModalOpen()` (#110). |
 | `supply-chain/receiving/AwaitingReceipt.tsx` — "Show all" | Pending | Read 2026-11-03: hand-built, `max-h-[80vh]`, `z-50`, backdrop click closes. Same `vh` bug, and `z-50` ties the sidebar panel. |
