@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import ModalShell from '../ModalShell'
 import { useAuth } from '../../auth/AuthProvider'
 import { useStaff } from '../../auth/StaffProvider'
@@ -16,7 +16,7 @@ interface IntlSoloActionModalProps {
   /** Display title, from the products list when the intl row has none. */
   title: string
   onClose: () => void
-  /** Called after a successful action, before closing. */
+  /** Called once after a successful action; the modal then closes itself. */
   onDone: (message: string) => void
 }
 
@@ -33,19 +33,30 @@ export default function IntlSoloActionModal({ target, title, onClose, onDone }: 
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [done, setDone] = useState(false)
   const reasonRef = useRef<HTMLTextAreaElement>(null)
+  // ModalShell hands requestClose to its render props; keep the latest here.
+  const requestCloseRef = useRef<() => void>(() => {})
 
-  const canSubmit = !!action && reason.trim().length > 0 && !busy
+  const canSubmit = !!action && reason.trim().length > 0 && !busy && !done
 
-  const submit = async (requestClose: () => void) => {
+  // Close after a success. This has to wait for the render where busy is
+  // false: ModalShell ignores requestClose while dismissible is false, and
+  // dismissible only flips on the next render. Calling requestClose straight
+  // after setBusy(false) was a no-op, which left the modal open.
+  useEffect(() => {
+    if (done && !busy) requestCloseRef.current()
+  }, [done, busy])
+
+  const submit = async () => {
     if (!action || !canSubmit) return
     setBusy(true)
     setError(null)
     try {
       await runIntlSoloAction(target.product_id, action, reason.trim(), changedBy)
       onDone(`${ACTION_LABEL[action]}: ${title}`)
+      setDone(true)
       setBusy(false)
-      requestClose()
     } catch (e) {
       // 409: state changed since this page loaded. 502: Shopify refused the
       // tag write; the message says which side, if any, was recorded.
@@ -63,7 +74,9 @@ export default function IntlSoloActionModal({ target, title, onClose, onDone }: 
       dismissible={!busy}
       size="sm"
       initialFocusRef={actions.length === 1 ? reasonRef : undefined}
-      footer={({ requestClose }) => (
+      footer={({ requestClose }) => {
+        requestCloseRef.current = requestClose
+        return (
         <div className="flex items-center justify-end gap-2">
           <button
             type="button"
@@ -75,16 +88,17 @@ export default function IntlSoloActionModal({ target, title, onClose, onDone }: 
           </button>
           <button
             type="button"
-            onClick={() => submit(requestClose)}
+            onClick={submit}
             disabled={!canSubmit}
             className="px-3.5 py-2 rounded-lg text-white text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-60"
           >
-            {busy ? 'Working…' : action ? ACTION_LABEL[action] : 'Choose an action'}
+            {busy ? 'Working…' : done ? 'Done' : action ? ACTION_LABEL[action] : 'Choose an action'}
           </button>
         </div>
-      )}
+        )
+      }}
     >
-      {({ requestClose }) => (
+      {() => (
         <div className="space-y-4 text-sm">
           <div className="text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
             <div>Pub date: {target.pub_date ?? '—'}</div>
@@ -126,7 +140,7 @@ export default function IntlSoloActionModal({ target, title, onClose, onDone }: 
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(requestClose)
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit()
               }}
               rows={3}
               disabled={busy}
