@@ -35,7 +35,6 @@ type PreorderProductAPI = {
   classification: string
   preorder_tag_present: boolean | null
   preorder_collection_present: boolean | null
-  override_status: string | null
   anomaly_type: string | null
   arrival_timing: string | null
   arrival_record_is_live: boolean
@@ -115,7 +114,6 @@ function adaptProductRow(row: PreorderProductAPI): PreorderRow {
     arrival_record_is_live: row.arrival_record_is_live ?? false,
     preorder_tag_present: row.preorder_tag_present,
     preorder_collection_present: row.preorder_collection_present,
-    override_status: (row.override_status ?? "none") as PreorderRow["override_status"],
     due_for_release_review: row.due_for_release_review ?? false,
     early_stock_arrival: row.early_stock_arrival ?? false,
     already_reported: row.already_reported ?? false,
@@ -145,7 +143,6 @@ function adaptReleaseQueueRow(row: ReleaseQueueAPI): ReleaseReviewRow {
     due_for_release_review: row.due_for_release_review ?? false,
     early_stock_arrival: row.early_stock_arrival ?? false,
     anomaly_type: row.anomaly_type,
-    override_status: (row.override_status ?? "none") as ReleaseReviewRow["override_status"],
     last_updated: row.last_updated,
     inventory: row.inventory ?? null,
     ...adaptHoldFields(row),

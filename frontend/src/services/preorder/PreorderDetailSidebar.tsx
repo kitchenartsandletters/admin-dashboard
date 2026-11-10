@@ -361,7 +361,6 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
               <section>
                 <SectionHeader label="Metadata" color="gray" />
                 <div className="space-y-3">
-                  <DetailItem label="Override Status" value={row.override_status} />
                   <DetailItem label="Last Updated" value={formatDate(row.last_updated)} />
                 </div>
               </section>
