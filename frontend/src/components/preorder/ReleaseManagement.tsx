@@ -5,6 +5,7 @@ import { hasReceivedStock, isHeld, activeHold, holdLabel } from '../../utils/pre
 import IntlSoloBadge from './IntlSoloBadge';
 import IntlSoloActionModal from './IntlSoloActionModal';
 import { fetchIntlSolo, isIntlRestricted, needsIntlDecision, type IntlSoloState } from './intlSolo';
+import { Z } from '../../lib/zIndex';
 
 // ──────────────────────────────────────────────
 // Types
@@ -285,6 +286,14 @@ const ReleaseManagement = () => {
   }, []);
 
   useEffect(() => { fetchIntl(); }, [fetchIntl]);
+
+  // Success confirmation for intl actions: a toast, so it is visible wherever
+  // the page is scrolled. Clears itself.
+  useEffect(() => {
+    if (!intlMessage) return;
+    const t = window.setTimeout(() => setIntlMessage(null), 6000);
+    return () => window.clearTimeout(t);
+  }, [intlMessage]);
 
   const openIntl = (productId: number, title: string) => {
     const state = intlStates[productId];
@@ -677,9 +686,9 @@ const ReleaseManagement = () => {
         </div>
       )}
       {intlMessage && (
-        <div role="status" className="rounded-xl sm:rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-3 text-xs text-emerald-800 dark:text-emerald-300 flex items-center justify-between gap-3">
+        <div role="status" className={`fixed bottom-4 left-4 right-4 sm:left-auto sm:bottom-6 sm:right-6 ${Z.toast} flex items-center justify-between gap-3 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-xs sm:text-sm px-4 py-3 rounded-xl sm:rounded-lg shadow-xl`}>
           <span>✓ {intlMessage}</span>
-          <button onClick={() => setIntlMessage(null)} aria-label="Dismiss" className="px-1.5 font-semibold">×</button>
+          <button onClick={() => setIntlMessage(null)} aria-label="Dismiss" className="px-1.5 font-semibold opacity-70 hover:opacity-100">×</button>
         </div>
       )}
       {intlDecisions.length > 0 && (
