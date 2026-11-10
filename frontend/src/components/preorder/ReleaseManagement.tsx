@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import ConfirmModal from '../ConfirmModal';
 import HoldBadge from './HoldBadge';
 import { hasReceivedStock, isHeld, activeHold, holdLabel } from '../../utils/preorderFlags';
+import IntlSoloBadge from './IntlSoloBadge';
+import IntlSoloActionModal from './IntlSoloActionModal';
+import { fetchIntlSolo, isIntlRestricted, needsIntlDecision, type IntlSoloState } from './intlSolo';
 
 // ──────────────────────────────────────────────
 // Types
@@ -59,7 +62,7 @@ interface CleanupResult {
 
 type SortKey = 'title' | 'pub_date' | 'classification' | 'inventory' | 'total_presale_qty';
 type SortDir = 'asc' | 'desc';
-type FilterMode = 'active' | 'all' | 'needs_cleanup' | 'historical';
+type FilterMode = 'active' | 'all' | 'needs_cleanup' | 'historical' | 'intl_restricted';
 
 // ──────────────────────────────────────────────
 // Config
@@ -201,7 +204,7 @@ function saveSort(key: SortKey, dir: SortDir) {
 function loadFilter(): FilterMode {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_FILTER);
-    if (raw && ['active', 'all', 'needs_cleanup', 'historical'].includes(raw)) return raw as FilterMode;
+    if (raw && ['active', 'all', 'needs_cleanup', 'historical', 'intl_restricted'].includes(raw)) return raw as FilterMode;
   } catch { /* ignore */ }
   return 'active';
 }
@@ -237,6 +240,14 @@ const ReleaseManagement = () => {
 
   const batchFetchedRef = useRef(false);
 
+  // International cart isolation (intl-solo). Independent of the domestic
+  // preorder lifecycle: a title stays restricted through Full Cleanup until
+  // someone clears it here. State and allowed actions come from the backend.
+  const [intlStates, setIntlStates] = useState<Record<number, IntlSoloState>>({});
+  const [intlError, setIntlError] = useState<string | null>(null);
+  const [intlTarget, setIntlTarget] = useState<{ state: IntlSoloState; title: string } | null>(null);
+  const [intlMessage, setIntlMessage] = useState<string | null>(null);
+
   // Persist sort/filter
   useEffect(() => { saveSort(sortKey, sortDir); }, [sortKey, sortDir]);
   useEffect(() => { saveFilter(filter); }, [filter]);
@@ -258,6 +269,27 @@ const ReleaseManagement = () => {
   }, []);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
+
+  // ── Fetch intl-solo states ──
+  const fetchIntl = useCallback(async () => {
+    try {
+      const data = await fetchIntlSolo();
+      const map: Record<number, IntlSoloState> = {};
+      for (const s of data.products) map[s.product_id] = s;
+      setIntlStates(map);
+      setIntlError(null);
+    } catch (e: any) {
+      // Non-fatal: the rest of Release Management still works.
+      setIntlError(e?.message || 'Could not load international restrictions');
+    }
+  }, []);
+
+  useEffect(() => { fetchIntl(); }, [fetchIntl]);
+
+  const openIntl = (productId: number, title: string) => {
+    const state = intlStates[productId];
+    if (state && state.allowed_actions.length > 0) setIntlTarget({ state, title: state.title || title });
+  };
 
   // ── Batch fetch cleanup states for non-historical products (Safe Unmount) ──
   useEffect(() => {
@@ -370,6 +402,7 @@ const ReleaseManagement = () => {
       .filter((p) => {
         if (filter === 'active' && p.classification !== 'active_preorder' && p.classification !== 'early_stock_arrival') return false;
         if (filter === 'historical' && p.classification !== 'historical_preorder') return false;
+        if (filter === 'intl_restricted' && !isIntlRestricted(intlStates[p.product_id])) return false;
         if (filter === 'needs_cleanup') {
           const cs = cleanupStates[p.product_id];
           if (!cs) return false;
@@ -396,7 +429,17 @@ const ReleaseManagement = () => {
         if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
         return 0;
       });
-  }, [products, cleanupStates, filter, search, sortKey, sortDir]);
+  }, [products, cleanupStates, intlStates, filter, search, sortKey, sortDir]);
+
+  // ── Intl decisions due ──
+  const intlDecisions = useMemo(() => {
+    const titles: Record<number, string> = {};
+    for (const p of products) titles[p.product_id] = p.title;
+    return Object.values(intlStates)
+      .filter(needsIntlDecision)
+      .map((s) => ({ state: s, title: s.title || titles[s.product_id] || String(s.product_id) }))
+      .sort((a, b) => (a.state.pub_date || '').localeCompare(b.state.pub_date || ''));
+  }, [intlStates, products]);
 
   // ── Loading ──
   if (loading) {
@@ -456,8 +499,20 @@ const ReleaseManagement = () => {
       ? "w-full text-center px-4 py-2.5 text-xs font-semibold rounded-lg shadow-sm" 
       : "px-2.5 py-1 text-xs rounded font-medium shadow-sm";
 
+    const intl = intlStates[product.product_id];
+    const intlButton = intl && intl.allowed_actions.length > 0 && (
+      <button
+        onClick={() => openIntl(product.product_id, product.title)}
+        title="Clear or restore the international cart restriction"
+        className={`${baseBtnCls} border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 bg-white dark:bg-gray-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 active:scale-[0.98] transition-transform ${isMobile ? 'mt-2' : ''}`}
+      >
+        Intl…
+      </button>
+    );
+
     return (
-      <div className={`flex items-center ${isMobile ? 'w-full' : 'gap-2'}`}>
+      <div className={`flex ${isMobile ? 'flex-col w-full' : 'items-center gap-2'}`}>
+        <div className={`flex items-center ${isMobile ? 'w-full' : 'gap-2'}`}>
         {!cs && (
           <button 
             onClick={() => fetchCleanupState(product.product_id)}
@@ -493,6 +548,8 @@ const ReleaseManagement = () => {
             {result.overall === 'success' ? '✓ Done' : result.overall === 'held' ? '⏸ Held, not cleaned' : result.overall === 'error' ? '⚠ Failed' : '⚠ Partial'}
           </span>
         )}
+        </div>
+        {intlButton}
       </div>
     );
   };
@@ -525,6 +582,7 @@ const ReleaseManagement = () => {
                     <span className={`shrink-0 px-2 py-0.5 rounded text-[10px] sm:text-xs font-semibold sm:font-medium whitespace-nowrap mt-0.5 sm:mt-0 ${badge.cls}`}>{badge.label}</span>
                     <span className="shrink-0 mt-0.5 sm:mt-0"><StockReceivedBadge product={p} /></span>
                     <span className="shrink-0 mt-0.5 sm:mt-0"><HoldBadge row={p} /></span>
+                    <span className="shrink-0 mt-0.5 sm:mt-0"><IntlSoloBadge state={intlStates[p.product_id]} /></span>
                   </div>
                   <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 dark:border-gray-700/60">
                     <span className="text-xs font-mono sm:font-sans text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDate(p.pub_date)}</span>
@@ -611,6 +669,54 @@ const ReleaseManagement = () => {
         );
       })()}
 
+      {/* ── International: decisions due ── */}
+      {intlError && (
+        <div className="rounded-xl sm:rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3 text-xs text-red-700 dark:text-red-300 flex items-center justify-between gap-3">
+          <span>International restrictions unavailable: {intlError}</span>
+          <button onClick={fetchIntl} className="px-2.5 py-1 rounded border border-red-300 dark:border-red-700 font-medium">Retry</button>
+        </div>
+      )}
+      {intlMessage && (
+        <div role="status" className="rounded-xl sm:rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-3 text-xs text-emerald-800 dark:text-emerald-300 flex items-center justify-between gap-3">
+          <span>✓ {intlMessage}</span>
+          <button onClick={() => setIntlMessage(null)} aria-label="Dismiss" className="px-1.5 font-semibold">×</button>
+        </div>
+      )}
+      {intlDecisions.length > 0 && (
+        <div className="rounded-xl sm:rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 p-4">
+          <h3 className="text-sm font-semibold text-indigo-900 dark:text-indigo-200 mb-2">
+            International — Decision Due ({intlDecisions.length})
+          </h3>
+          <p className="text-xs text-indigo-700 dark:text-indigo-400 mb-3 leading-relaxed">
+            These titles are restricted for international orders (must ship on their own) and need a person to decide whether to clear them. Restrictions are never lifted automatically.
+          </p>
+          <div className="space-y-2">
+            {intlDecisions.map(({ state, title }) => (
+              <div key={state.product_id}
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm bg-white dark:bg-gray-800 rounded-xl sm:rounded p-3 sm:py-2 border border-indigo-100 dark:border-indigo-800/50">
+                <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+                  <span className="font-semibold sm:font-medium text-gray-900 dark:text-gray-100 line-clamp-2 sm:truncate">{title}</span>
+                  <span className="shrink-0"><IntlSoloBadge state={state} /></span>
+                </div>
+                <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 dark:border-gray-700/60">
+                  <span className="text-xs font-mono sm:font-sans text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDate(state.pub_date)}</span>
+                  {state.allowed_actions.length > 0 ? (
+                    <button
+                      onClick={() => setIntlTarget({ state, title })}
+                      className="px-3 py-1.5 sm:py-1 text-xs font-semibold sm:font-medium rounded-lg sm:rounded bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm"
+                    >
+                      Decide…
+                    </button>
+                  ) : (
+                    <span className="text-xs text-gray-400 dark:text-gray-500 italic">Tag drift — run reconcile</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Controls Layout ── */}
       <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between bg-gray-50 dark:bg-gray-800/40 p-3 rounded-xl border border-gray-100 dark:border-gray-800/40">
         <div className="flex flex-col sm:flex-row gap-2 flex-1">
@@ -624,6 +730,7 @@ const ReleaseManagement = () => {
             <option value="all">All Products</option>
             <option value="needs_cleanup">Needs Cleanup</option>
             <option value="historical">Historical Only</option>
+            <option value="intl_restricted">Intl Restricted</option>
           </select>
         </div>
         <span className="text-xs text-center sm:text-right text-gray-400 dark:text-gray-500 font-medium pt-1 sm:pt-0">
@@ -647,6 +754,7 @@ const ReleaseManagement = () => {
                   <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide whitespace-nowrap uppercase ${badge.cls}`}>{badge.label}</span>
                   <StockReceivedBadge product={product} />
                   <HoldBadge row={product} />
+                  <IntlSoloBadge state={intlStates[product.product_id]} />
                 </div>
               </div>
 
@@ -718,6 +826,7 @@ const ReleaseManagement = () => {
                       <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${badge.cls}`}>{badge.label}</span>
                       <StockReceivedBadge product={product} />
                       <HoldBadge row={product} />
+                      <IntlSoloBadge state={intlStates[product.product_id]} />
                     </div>
                   </td>
                   <td className="px-4 py-3">{renderCleanupCell(product.product_id, 'description_status')}</td>
@@ -733,6 +842,19 @@ const ReleaseManagement = () => {
           </tbody>
         </table>
       </div>
+
+      {/* ── Intl-solo action modal ── */}
+      {intlTarget && (
+        <IntlSoloActionModal
+          target={intlTarget.state}
+          title={intlTarget.title}
+          onClose={() => setIntlTarget(null)}
+          onDone={(message) => {
+            setIntlMessage(message);
+            fetchIntl();
+          }}
+        />
+      )}
 
       {/* ── Confirm Modal ── */}
       <ConfirmModal
