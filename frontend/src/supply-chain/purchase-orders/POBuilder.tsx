@@ -57,6 +57,12 @@
 // Frame: ModalShell. A backdrop tap does nothing (it used to discard the whole
 // PO); closing with lines entered asks first.
 //
+// Orderable titles only (supply-chain-service VENDOR_MANAGEMENT.md §4.0): the
+// title search sends orderable_only, so Shopify DRAFT and ARCHIVED titles aren't
+// offered; the backend refuses them on a PO anyway. Not for ad hoc POs, which
+// the backend exempts: they record stock that already arrived. A line refused
+// as product_not_orderable (e.g. a scanned title) shows the backend's message.
+//
 // Search lists (titles, B2B customers; suppliers in SupplierAccountPicker):
 // Up/Down + Enter pick from the keyboard, Escape closes the list before the
 // modal, and on touch screens the field scrolls up when results appear so the
@@ -76,6 +82,7 @@ import {
   discardPurchaseOrder,
   cancelPurchaseOrder,
   recordPOEntryEvents,
+  ScApiError,
   type POEntryEvent,
 } from '../../api/supplyChainApi'
 import { createSupplierAccount, fetchB2bCustomers, createB2bCustomer } from '../../api/supplyChainApi'
@@ -157,12 +164,15 @@ function VariantSearchRow({
   onPick,
   existingItemIds,
   partyId,
+  orderableOnly,
 }: {
   onPick: (item: PickedItem) => void
   existingItemIds: Set<string>
   // Scope the catalog search to the PO's supplier so wrong-supplier titles
   // don't appear. The server-side guardrail is authoritative; this is UX.
   partyId?: string | null
+  // Hide Shopify DRAFT / ARCHIVED titles. Off for ad hoc POs (exempt).
+  orderableOnly: boolean
 }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<VariantSearchResult[]>([])
@@ -182,7 +192,7 @@ function VariantSearchRow({
     const t = setTimeout(async () => {
       setSearching(true)
       try {
-        const data = await searchVariants(query, partyId)
+        const data = await searchVariants(query, partyId, { orderableOnly })
         setResults(data.slice(0, 15))
       } catch {
         setResults([])
@@ -191,7 +201,7 @@ function VariantSearchRow({
       }
     }, 300)
     return () => clearTimeout(t)
-  }, [query, partyId])
+  }, [query, partyId, orderableOnly])
 
   const nav = useComboboxNav({
     items: results,
@@ -658,7 +668,9 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
       // nothing left to confirm discarding.
       onClose()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create purchase order')
+      // ScApiError.text drops the "[400] " prefix, so a draft/archived title reads
+      // “The Philosophy of Pickles” is archived in Shopify and can’t be ordered…, as the backend wrote it.
+      setError(e instanceof ScApiError ? e.text : e instanceof Error ? e.message : 'Failed to create purchase order')
     } finally {
       setBusy(false)
     }
@@ -998,7 +1010,8 @@ export default function POBuilder({ onClose, onCreated, initialSupplier }: Props
                   )}
                 </div>
 
-                <VariantSearchRow onPick={openAddLine} existingItemIds={existingItemIds} partyId={supplierSelection?.party.id ?? null} />
+                <VariantSearchRow onPick={openAddLine} existingItemIds={existingItemIds} partyId={supplierSelection?.party.id ?? null}
+                  orderableOnly={!isAdHoc} />
                 {effectiveAccount?.is_wholesaler && (
                   <p className="text-[11px] text-blue-600 dark:text-blue-400">
                     {supplierSelection?.party.name} is a convenience vendor — the full catalog is searchable here, not just its own titles.
