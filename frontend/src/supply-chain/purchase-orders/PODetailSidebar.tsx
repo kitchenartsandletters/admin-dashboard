@@ -68,6 +68,12 @@
 //      - An optional reason is sent as `reason` and lands on the change row.
 //      - Escape inside the modal closes the modal only. The sidebar's own
 //        capture-phase Escape handler defers to any open ModalShell.
+//
+// Orderable titles (supply-chain-service VENDOR_MANAGEMENT.md §4.0): the
+//      add-line search sends orderable_only unless the PO is ad hoc (exempt
+//      server-side), so Shopify DRAFT / ARCHIVED titles aren't offered. A
+//      refused add (400 product_not_orderable, or any other 4xx) shows the
+//      backend's own message without the "[400]" prefix.
 
 import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -637,8 +643,8 @@ function LineItemRow({ line, isDraft, poEditable, onQtyChange, onDelete, onDamag
 // InlineLineEntry
 // ---------------------------------------------------------------------------
 
-function InlineLineEntry({ poId, existingItemIds, onLineAdded }: {
-  poId: string; existingItemIds: Set<string>
+function InlineLineEntry({ poId, isAdHoc, existingItemIds, onLineAdded }: {
+  poId: string; isAdHoc: boolean; existingItemIds: Set<string>
   onLineAdded: (line: PurchaseOrderLine) => void
 }) {
   const [query, setQuery]   = useState('')
@@ -653,10 +659,10 @@ function InlineLineEntry({ poId, existingItemIds, onLineAdded }: {
     if (query.length < 2) { setResults([]); return }
     setSearching(true)
     const t = setTimeout(() => {
-      searchVariants(query).then(setResults).catch(() => setResults([])).finally(() => setSearching(false))
+      searchVariants(query, null, { orderableOnly: !isAdHoc }).then(setResults).catch(() => setResults([])).finally(() => setSearching(false))
     }, 250)
     return () => clearTimeout(t)
-  }, [query])
+  }, [query, isAdHoc])
 
   useEffect(() => {
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setResults([]) }
@@ -679,8 +685,15 @@ function InlineLineEntry({ poId, existingItemIds, onLineAdded }: {
       }
       setQuery(''); setResults([]); setQty(1); onLineAdded(enrichedLine)
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to add line'
-      setError(msg.includes('500') || msg.includes('fetch') ? 'Could not add this title — it may belong to a different supplier.' : msg)
+      // A refusal the backend explains (product_not_orderable, the supplier
+      // guardrail, …) is shown as written. Only a server error or a network
+      // failure falls back to the generic hint.
+      if (e instanceof ScApiError && e.status < 500) {
+        setError(e.text)
+      } else {
+        const msg = e instanceof Error ? e.message : 'Failed to add line'
+        setError(msg.includes('500') || msg.includes('fetch') ? 'Could not add this title — it may belong to a different supplier.' : msg)
+      }
     } finally { setAdding(null) }
   }
 
@@ -1007,7 +1020,7 @@ function LinesPanel({ order, lines, onLineAdded, onQtyChange, onDelete, onDamage
               </p>
             </div>
           )}
-          <InlineLineEntry poId={order.id} existingItemIds={existingItemIds} onLineAdded={onLineAdded} />
+          <InlineLineEntry poId={order.id} isAdHoc={!!order.is_ad_hoc} existingItemIds={existingItemIds} onLineAdded={onLineAdded} />
         </div>
       )}
     </div>

@@ -107,6 +107,8 @@ export class ScApiError extends Error {
   readonly detail: unknown
   /** `detail` when it is a plain object, else null. Where structured fields live. */
   readonly data: Record<string, unknown> | null
+  /** The readable message without the "[409] " prefix. What staff should see. */
+  readonly text: string
 
   constructor(status: number, message: string, detail: unknown, data: Record<string, unknown> | null) {
     super(`[${status}] ${message}`)
@@ -114,6 +116,7 @@ export class ScApiError extends Error {
     this.status = status
     this.detail = detail
     this.data = data
+    this.text = message
     // Keep instanceof working when the bundle targets ES5.
     Object.setPrototypeOf(this, ScApiError.prototype)
   }
@@ -250,14 +253,36 @@ export interface VariantSearchResult {
   isbn: string
   vendor: string
 }
-export async function searchVariants(query: string, partyId?: string | null): Promise<VariantSearchResult[]> { return sc(`/api/suppliers/products/search${qs({ q: query, party_id: partyId ?? undefined, limit: 15 })}`) }
+/**
+ * Catalogue search for adding a title to a PO.
+ *
+ * `orderableOnly` drops titles whose Shopify status is DRAFT or ARCHIVED
+ * (VENDOR_MANAGEMENT.md §4.0), which the backend refuses on a regular PO. Set
+ * it when building or adding to a non-ad-hoc PO. Never set it for receiving
+ * lookups, and not for ad hoc POs (exempt server-side: they record stock that
+ * already arrived), so a delivered book can always be found.
+ */
+export async function searchVariants(query: string, partyId?: string | null, opts: { orderableOnly?: boolean } = {}): Promise<VariantSearchResult[]> {
+  return sc(`/api/suppliers/products/search${qs({ q: query, party_id: partyId ?? undefined, limit: 15, orderable_only: opts.orderableOnly || undefined })}`)
+}
 export async function lookupProductByISBN(isbn: string): Promise<VariantSearchResult[]> { return sc(`/api/suppliers/products/search${qs({ q: isbn, limit: 5 })}`) }
+
+/**
+ * When a title can't be registered (VENDOR_MANAGEMENT.md §4.0), `reason` says
+ * why and `message` says it in plain words, naming the supplier; show
+ * `message`. `unrecognized_vendor` stays true for older code.
+ */
+export type UnregisteredReason = 'no_vendor' | 'no_supplier' | 'no_active_account'
 
 export interface ShopifyLookupResult {
   found: boolean
   registered: boolean
   not_in_shopify?: boolean
   unrecognized_vendor?: boolean
+  reason?: UnregisteredReason
+  message?: string
+  party_id?: string | null
+  party_name?: string | null
   vendor?: string
   title?: string
   isbn?: string
@@ -267,7 +292,7 @@ export interface ShopifyLookupResult {
   record?: { id: string; inventory_item_id: string; variant_id: string; title: string | null; isbn: string | null; vendor: string | null; is_active: boolean }
 }
 export async function searchShopifyByISBN(isbn: string): Promise<ShopifyLookupResult> { return sc(`/api/suppliers/products/search-shopify${qs({ isbn })}`) }
-export async function syncSingleProduct(isbn: string): Promise<{ synced: boolean; not_in_shopify?: boolean; unrecognized_vendor?: boolean; vendor?: string; title?: string; inventory_item_id?: string; record?: unknown }> {
+export async function syncSingleProduct(isbn: string): Promise<{ synced: boolean; not_in_shopify?: boolean; unrecognized_vendor?: boolean; reason?: UnregisteredReason; message?: string; vendor?: string; title?: string; inventory_item_id?: string; record?: unknown }> {
   return sc(`/api/suppliers/sync/product${qs({ isbn })}`, { method: 'POST' })
 }
 
@@ -656,6 +681,112 @@ export async function fetchStockWaiting(
   opts: { minAgeDays?: number; refresh?: boolean } = {}
 ): Promise<StockWaitingResult> {
   return sc(`/api/attention/stock-waiting${qs({ min_age_days: opts.minAgeDays, refresh: opts.refresh })}`)
+}
+
+/**
+ * Vendors needing setup (VENDOR_MANAGEMENT.md §4.3, supply-chain-service#120).
+ *
+ * A Shopify vendor whose active titles cannot be ordered: no supplier claims
+ * it, or the one that does has no active account. Staff clear each request by
+ * attaching the vendor to an existing supplier, setting up a supplier for it
+ * (which revives an account-less record that already claims it rather than
+ * duplicating it), or ignoring it with a reason.
+ *
+ * Preview first, always: it takes the same body as resolve and changes
+ * nothing. Resolve is one database transaction; it all happens or none does.
+ * Resolve and ignore carry the actor headers like every other write here.
+ *
+ * Refusals are {detail: {error, message, ...details}}, so ScApiError.data.error
+ * names the case and ScApiError.text is the message to show. Preview blockers
+ * carry only `error` and details, no message (see VendorSetupModal).
+ */
+export type VendorSetupRole =
+  'publisher' | 'distributor' | 'small_press' | 'direct' | 'restaurant' | 'author' | 'other'
+
+export interface VendorSetupSuggestion {
+  party_id: string
+  party_name: string
+  reason: string
+  has_active_account: boolean
+}
+
+export interface VendorSetupItem {
+  id: string
+  vendor: string
+  active_titles: number
+  total_titles: number
+  titles_sold_24m: number
+  units_24m: number
+  last_sale: string | null
+  /** isbn can be null or a non-ISBN SKU (e.g. damaged-copy variants). */
+  sample_titles: { title: string | null; isbn: string | null }[]
+  suggestion: VendorSetupSuggestion | null
+  first_seen_at: string
+  last_seen_at: string
+}
+
+export interface VendorSetupList {
+  /** Every open request; items is capped by limit. */
+  count: number
+  items: VendorSetupItem[]
+  as_of: string
+}
+
+export interface VendorSetupCreate {
+  name: string
+  roles?: VendorSetupRole[]
+  account_number?: string
+  account_label?: string
+  ordering_method?: string
+  parent_id?: string
+  location_id?: string
+  notes?: string
+}
+
+/** Exactly one of party_id (attach) or create. */
+export type VendorSetupBody =
+  | { party_id: string; reason?: string }
+  | { create: VendorSetupCreate; reason?: string }
+
+export interface VendorSetupBlocker {
+  error: string
+  [detail: string]: unknown
+}
+
+export interface VendorSetupPlan {
+  request_id: string
+  vendor: string
+  action: 'attach' | 'create' | 'ignore'
+  destination?: {
+    party_id?: string | null
+    party_name?: string | null
+    account_id?: string | null
+    account_label?: string | null
+    new?: boolean
+    revives_party_id?: string | null
+    revives_party_name?: string | null
+  }
+  titles_to_move?: number
+  /** Up to 100; titles_to_move is the full count. */
+  moves?: { title: string | null; isbn: string | null; from_account: string | null; from_account_active?: boolean | null }[]
+  codes_removed_from?: { party_id: string; party_name: string; code: string }[]
+  blockers: VendorSetupBlocker[]
+  applied: boolean
+  code_added?: boolean
+  occupants_consolidated?: number
+}
+
+export async function fetchVendorSetup(limit = 200): Promise<VendorSetupList> {
+  return sc(`/api/attention/vendor-setup${qs({ limit })}`)
+}
+export async function previewVendorSetup(requestId: string, body: VendorSetupBody): Promise<VendorSetupPlan> {
+  return sc(`/api/attention/vendor-setup/${encodeURIComponent(requestId)}/preview`, { method: 'POST', body: JSON.stringify(body) })
+}
+export async function resolveVendorSetup(requestId: string, body: VendorSetupBody): Promise<VendorSetupPlan> {
+  return sc(`/api/attention/vendor-setup/${encodeURIComponent(requestId)}/resolve`, { method: 'POST', body: JSON.stringify(body) })
+}
+export async function ignoreVendorSetup(requestId: string, reason: string): Promise<VendorSetupPlan> {
+  return sc(`/api/attention/vendor-setup/${encodeURIComponent(requestId)}/ignore`, { method: 'POST', body: JSON.stringify({ reason }) })
 }
 
 // ===========================================================================
