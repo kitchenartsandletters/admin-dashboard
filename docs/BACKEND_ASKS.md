@@ -59,6 +59,81 @@ please add it to the line model.
 `ReceivingDashboard.tsx` pages submitted dates at 100 because 100 is the only
 value known to be accepted. If it allows 200, the page can go up.
 
+### 5. Vendor setup: preview blockers carry no `message` (2026-11-13)
+
+`POST /attention/vendor-setup/{id}/preview` returns blockers as `{error, ...details}`
+with no `message`, while resolve's refusals carry `_MESSAGE` text. The dashboard
+(`pages/VendorSetupModal.tsx`, `blockerText`) writes its own wording per code,
+so two sets of wording can drift. Could `vendor_setup_apply`'s blockers (or the
+route) include the same `message` as the refusal table? If so, the dashboard
+will show it and keep its own text only as a fallback.
+
+### 6. Vendor setup: preview of a closed request (2026-11-13)
+
+Previewing `d4699fa1-3c93-43e2-84d9-6f6e85490e2f` (Elliott's, resolved) returns
+**200** with blockers `request_not_open`, `name_exists` and `claimed_elsewhere`;
+only resolve returns 409. The dashboard handles both. Two questions:
+
+- Intended that preview reports `request_not_open` as a blocker rather than a 409?
+- The same preview lists 4 `moves` from "Elliott's Main Account" (active), because
+  a create has no destination account yet, so every active title of the vendor is
+  counted. For a closed request that list is misleading. Should `moves` be empty,
+  or the plan short-circuit, when the request isn't open?
+
+### 7. Vendor setup: damaged-copy SKUs count as titles (2026-11-13)
+
+Montgomery Press's 9 "titles to move" were 4 books plus 5 damaged-copy variants
+(SKUs like `the_irish_bakery_light`, titles like "The Irish Bakery: Damaged").
+They also appear in `sample_titles` with those SKUs in the `isbn` field. Intended?
+If damaged variants should follow their book, fine; if they shouldn't count in
+`active_titles` / `titles_to_move` or appear as samples, that is a backend change.
+
+### 8. Vendor setup: `wholesaler` role (2026-11-13)
+
+`NewSupplier.roles` accepts publisher, distributor, small_press, direct,
+restaurant, author, other. The dashboard's `SupplierRole` (and supplier records)
+also has `wholesaler`. The card offers only the seven accepted. Should
+`wholesaler` be accepted when setting up from the card?
+
+## Notes for the backend chat (no action needed)
+
+- **No receiving-exceptions card on `/welcome`.** The vendor-setup brief said the
+  new card sits "next to the stock-waiting and receiving-exceptions cards". The
+  welcome page (`pages/WelcomePage.tsx`) has no receiving-exceptions card;
+  `api/attentionApi.ts` has `fetchReceivingExceptions`, but the welcome page
+  never calls it. If one was expected, that is frontend work still to do.
+- **Count drift.** `VENDOR_MANAGEMENT.md` §4.3 says 222 open; the live list said
+  221 on 2026-11-13 before any card use, 220 after Montgomery Press.
+- **Suggestions today.** All open requests returned had a suggestion with
+  `has_active_account: false`, so the card defaults to "Set up" everywhere. The
+  "did you mean → attach" default has no live example yet.
+- **Frontend transport.** `api/attentionApi.ts` has its own copy of the request
+  helper with no actor headers and no structured errors. The vendor-setup calls
+  live in `api/supplyChainApi.ts` for that reason. Folding attentionApi into
+  supplyChainApi is a frontend follow-up.
+
+## Verified
+
+### Vendor-setup card, first live resolve (2026-11-13)
+
+Montgomery Press (request `b9668b9b-348c-4a83-a1db-b624c07a54ea`, 774 units in
+24 months) set up from the card as a Publisher by Gil. Checked in the database
+afterwards:
+
+- request `resolved` at 15:05:47 UTC, `asserted_actor_email`
+  gil@kitchenartsandletters.com, role admin (no staff fields: admin session,
+  as expected);
+- the existing account-less "Montgomery Press" record was revived, not
+  duplicated: active, roles `{publisher}`, code `Montgomery Press`;
+- a new active primary account; the old inactive "Primary (seeded)" account
+  left in place;
+- 9 moves in `supplier_product_moves` (source `codes_apply`) with the actor;
+  9 active titles now on the supplier;
+- open requests 221 → 220.
+
+Not yet exercised live: attach, ignore, and the staff headers (needs a
+role `user` session with a PIN-picked staff member).
+
 ## Answered
 
 _None yet._
