@@ -59,58 +59,26 @@ please add it to the line model.
 `ReceivingDashboard.tsx` pages submitted dates at 100 because 100 is the only
 value known to be accepted. If it allows 200, the page can go up.
 
-### 5. Vendor setup: preview blockers carry no `message` (2026-11-13)
-
-`POST /attention/vendor-setup/{id}/preview` returns blockers as `{error, ...details}`
-with no `message`, while resolve's refusals carry `_MESSAGE` text. The dashboard
-(`pages/VendorSetupModal.tsx`, `blockerText`) writes its own wording per code,
-so two sets of wording can drift. Could `vendor_setup_apply`'s blockers (or the
-route) include the same `message` as the refusal table? If so, the dashboard
-will show it and keep its own text only as a fallback.
-
-### 6. Vendor setup: preview of a closed request (2026-11-13)
-
-Previewing `d4699fa1-3c93-43e2-84d9-6f6e85490e2f` (Elliott's, resolved) returns
-**200** with blockers `request_not_open`, `name_exists` and `claimed_elsewhere`;
-only resolve returns 409. The dashboard handles both. Two questions:
-
-- Intended that preview reports `request_not_open` as a blocker rather than a 409?
-- The same preview lists 4 `moves` from "Elliott's Main Account" (active), because
-  a create has no destination account yet, so every active title of the vendor is
-  counted. For a closed request that list is misleading. Should `moves` be empty,
-  or the plan short-circuit, when the request isn't open?
-
-### 7. Vendor setup: damaged-copy SKUs count as titles (2026-11-13)
-
-Montgomery Press's 9 "titles to move" were 4 books plus 5 damaged-copy variants
-(SKUs like `the_irish_bakery_light`, titles like "The Irish Bakery: Damaged").
-They also appear in `sample_titles` with those SKUs in the `isbn` field. Intended?
-If damaged variants should follow their book, fine; if they shouldn't count in
-`active_titles` / `titles_to_move` or appear as samples, that is a backend change.
-
-### 8. Vendor setup: `wholesaler` role (2026-11-13)
-
-`NewSupplier.roles` accepts publisher, distributor, small_press, direct,
-restaurant, author, other. The dashboard's `SupplierRole` (and supplier records)
-also has `wholesaler`. The card offers only the seven accepted. Should
-`wholesaler` be accepted when setting up from the card?
-
 ## Notes for the backend chat (no action needed)
 
 - **No receiving-exceptions card on `/welcome`.** The vendor-setup brief said the
   new card sits "next to the stock-waiting and receiving-exceptions cards". The
   welcome page (`pages/WelcomePage.tsx`) has no receiving-exceptions card;
   `api/attentionApi.ts` has `fetchReceivingExceptions`, but the welcome page
-  never calls it. If one was expected, that is frontend work still to do.
+  never calls it. **Backend, 2026-11-13:** a mistake in the brief; no card was
+  intended. Don't add one as part of the vendor-setup work.
 - **Count drift.** `VENDOR_MANAGEMENT.md` §4.3 says 222 open; the live list said
-  221 on 2026-11-13 before any card use, 220 after Montgomery Press.
+  221 on 2026-11-13 before any card use, 220 after Montgomery Press. **Backend:**
+  222 → 221 was Elliott's (resolved by API test), 221 → 220 Montgomery Press.
 - **Suggestions today.** All open requests returned had a suggestion with
   `has_active_account: false`, so the card defaults to "Set up" everywhere. The
-  "did you mean → attach" default has no live example yet.
+  "did you mean → attach" default has no live example yet. **Backend:**
+  expected; the 279 easy cases were closed by hand in the triage.
 - **Frontend transport.** `api/attentionApi.ts` has its own copy of the request
   helper with no actor headers and no structured errors. The vendor-setup calls
   live in `api/supplyChainApi.ts` for that reason. Folding attentionApi into
-  supplyChainApi is a frontend follow-up.
+  supplyChainApi is a frontend follow-up. **Backend:** our call; vendor setup
+  living in supplyChainApi.ts is fine.
 
 ## Verified
 
@@ -132,8 +100,54 @@ afterwards:
 - open requests 221 → 220.
 
 Not yet exercised live: attach, ignore, and the staff headers (needs a
-role `user` session with a PIN-picked staff member).
+role `user` session with a PIN-picked staff member). Attach needs a vendor that
+genuinely belongs to an existing supplier; none of the current suggestions is
+one, so it waits for a real case. Gil picks.
 
 ## Answered
 
-_None yet._
+Vendor-setup asks 5–8 were answered on 2026-11-13. The fixes shipped in
+supply-chain-service#122 (merged), with migration 068 live. The contract is
+`docs/VENDOR_MANAGEMENT.md` §4.3, "Changes after the first live use". The
+dashboard follow-up is admin-dashboard `feat/vendor-setup-followups-nov13`.
+
+### 5. Preview blockers carried no `message` — fixed (#122)
+
+Every preview blocker now has `message`, the same wording resolve refuses
+with; an unknown future code gets its code as the message. The dashboard shows
+it and keeps its own wording (`blockerText`) only as a fallback for a response
+from before #122.
+
+### 6. Preview of a closed request returned 200 with blockers — fixed (#122)
+
+Preview of a request that is no longer open is now **409**
+`{error: "request_not_open", message, status}`, identical to resolve, with no
+moves list. The dashboard already treated a preview 409 like a resolve 409
+(message plus "Refresh the list"); a test now covers it.
+
+### 7. Damaged-copy SKUs counted as titles — intended to move; count split (068)
+
+They are catalogue items under the vendor and must follow it, or they would be
+stranded on the dead record. Preview and resolve now return
+`titles_to_move` (the total, unchanged meaning), `titles_with_isbn`
+(ISBN-10/13) and `items_without_isbn`. Montgomery Press: 9 = 4 + 5. The
+dashboard shows "9 items (4 titles + 5 other items) will move", with a line
+explaining the other items.
+
+### 8. `wholesaler` rejected by vendor setup — by design, no change
+
+"Wholesaler" is a property of an *account* (`is_wholesaler`, a catch-all
+ordering lane such as Ingram Content Group), not of a supplier role. A vendor on
+the setup card is never that. The card keeps offering only the seven accepted
+roles.
+
+### 9. (Raised by the backend) resolve's `destination.new` / `code_added` over-reported — fixed (068)
+
+`destination.new` and `code_added` were true for every create, including a
+revive; Elliott's and Montgomery Press would now read `new: false,
+revived: true`. Now `new` is true only when a supplier was inserted, a new
+`destination.revived` marks a revive, and `code_added` is true only when the
+code actually went onto the supplier. The dashboard's success line said "set up
+as" for both cases; it now says "Revived <name>" when `revived` is true and
+"Set up <name>" otherwise. It deliberately never reads `new`, because a
+pre-068 response says `new: true` for a revive.
