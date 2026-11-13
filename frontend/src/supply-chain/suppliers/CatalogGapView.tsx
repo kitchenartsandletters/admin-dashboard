@@ -10,6 +10,14 @@
 //   1. Sync status — last run, stats, 'Run sync now' button
 //   2. Register by ISBN — instant lookup + registration for a specific product
 //   3. Unrecognized vendors — vendor codes in Shopify with no supplier mapping
+//
+// When a title can't be registered, the backend now says why (`reason`:
+// no_vendor | no_supplier | no_active_account) and says it in plain words,
+// naming the supplier (`message`). That message is shown as sent. It replaces
+// the old "vendor not mapped" text, which was also shown when the vendor WAS
+// mapped but its supplier had no active account, sending staff to fix the
+// wrong thing (supply-chain-service docs/VENDOR_MANAGEMENT.md §4.0). The old
+// text remains only for a response without a message.
 
 import { useState, useEffect } from 'react'
 import RightSidebar from '../../components/RightSidebar'
@@ -19,7 +27,14 @@ import {
   searchShopifyByISBN,
   type SupplierSyncResult,
   type ShopifyLookupResult,
+  type UnregisteredReason,
 } from '../../api/supplyChainApi'
+
+const UNREGISTERED_HEADINGS: Record<UnregisteredReason, string> = {
+  no_vendor:         'Found in Shopify — no vendor set',
+  no_supplier:       'Found in Shopify — no supplier for this vendor',
+  no_active_account: 'Found in Shopify — supplier has no active account',
+}
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString('en-US', {
@@ -240,8 +255,24 @@ function RegisterByISBN() {
               </div>
             )}
 
-            {/* Found but vendor unrecognized */}
-            {result.unrecognized_vendor && (
+            {/* Found, but can't be registered: the backend says why */}
+            {!result.registered && result.message && (
+              <div className="px-3 py-3 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 space-y-2">
+                <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                  {(result.reason && UNREGISTERED_HEADINGS[result.reason]) ?? 'Found in Shopify — can’t be registered yet'}
+                </p>
+                {result.title && (
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    <strong>{result.title}</strong>
+                    {result.vendor && <> · vendor <span className="font-mono bg-amber-100 dark:bg-amber-900/40 px-1 rounded">{result.vendor}</span></>}
+                  </p>
+                )}
+                <p className="text-xs text-amber-700 dark:text-amber-300">{result.message}</p>
+              </div>
+            )}
+
+            {/* Older response without a message */}
+            {result.unrecognized_vendor && !result.message && (
               <div className="px-3 py-3 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 space-y-2">
                 <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">Found in Shopify — vendor not mapped</p>
                 <p className="text-xs text-amber-700 dark:text-amber-300">
