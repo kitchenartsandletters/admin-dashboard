@@ -697,8 +697,10 @@ export async function fetchStockWaiting(
  * Resolve and ignore carry the actor headers like every other write here.
  *
  * Refusals are {detail: {error, message, ...details}}, so ScApiError.data.error
- * names the case and ScApiError.text is the message to show. Preview blockers
- * carry only `error` and details, no message (see VendorSetupModal).
+ * names the case and ScApiError.text is the message to show. Since
+ * supply-chain-service#122 preview blockers carry the same `message`, and
+ * previewing a request that is no longer open is a 409 request_not_open, like
+ * resolve.
  */
 export type VendorSetupRole =
   'publisher' | 'distributor' | 'small_press' | 'direct' | 'restaurant' | 'author' | 'other'
@@ -750,6 +752,8 @@ export type VendorSetupBody =
 
 export interface VendorSetupBlocker {
   error: string
+  /** Since #122: the wording resolve would refuse with (an unknown code: the code). */
+  message?: string
   [detail: string]: unknown
 }
 
@@ -762,11 +766,19 @@ export interface VendorSetupPlan {
     party_name?: string | null
     account_id?: string | null
     account_label?: string | null
+    /** Resolve, since migration 068: true only when a supplier was inserted. */
     new?: boolean
+    /** Resolve, since migration 068: true when an existing record was brought back. */
+    revived?: boolean
     revives_party_id?: string | null
     revives_party_name?: string | null
   }
+  /** Every catalogue item that moves: titles_with_isbn + items_without_isbn. */
   titles_to_move?: number
+  /** Since migration 068: items whose barcode is an ISBN-10/13. */
+  titles_with_isbn?: number
+  /** Since migration 068: damaged-copy variants, other SKUs, blank barcodes. They move too. */
+  items_without_isbn?: number
   /** Up to 100; titles_to_move is the full count. */
   moves?: { title: string | null; isbn: string | null; from_account: string | null; from_account_active?: boolean | null }[]
   codes_removed_from?: { party_id: string; party_name: string; code: string }[]

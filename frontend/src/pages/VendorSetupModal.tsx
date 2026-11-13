@@ -24,10 +24,18 @@
 // named after that record (it gets revived); no suggestion → set up, named
 // after the vendor.
 //
-// Blockers in a preview carry an `error` code and details but no message, so
-// the wording below is ours. Refusals from resolve DO carry a message and it is
-// shown as sent. Malformed-request 422s (FastAPI arrays) mean a dashboard bug,
-// and say so.
+// Messages come from the backend: refusals always carried one, and since
+// supply-chain-service#122 so does every preview blocker. The wording in
+// blockerText is only a fallback for a response from before #122. Previewing a
+// request someone else already closed is a 409, handled like resolve's: the
+// message and a "Refresh the list" button. Malformed-request 422s (FastAPI
+// arrays) mean a dashboard bug, and say so.
+//
+// Counts: titles_to_move is every catalogue item that moves. Since migration
+// 068 it is split into titles (an ISBN) and other items (damaged-copy
+// variants, other SKUs), which move too so they aren't stranded on the dead
+// record. The success line says "Set up" for a new supplier and "Revived" for
+// an existing record brought back (destination.new / destination.revived).
 
 import { useEffect, useMemo, useState } from 'react'
 import ModalShell from '../components/ModalShell'
@@ -84,6 +92,18 @@ function plural(n: number, one: string, many = `${one}s`) {
   return `${n.toLocaleString()} ${n === 1 ? one : many}`
 }
 
+/** "9 items (4 titles + 5 other items)", or "4 titles" / "9 titles" when there is no split. */
+function moveSummary(p: Pick<VendorSetupPlan, 'titles_to_move' | 'titles_with_isbn' | 'items_without_isbn'>, total: number): string {
+  const withIsbn = p.titles_with_isbn
+  const other = p.items_without_isbn
+  if (typeof withIsbn === 'number' && typeof other === 'number') {
+    if (other === 0) return plural(withIsbn, 'title')
+    if (withIsbn === 0) return plural(other, 'other item')
+    return `${plural(total, 'item')} (${plural(withIsbn, 'title')} + ${plural(other, 'other item')})`
+  }
+  return plural(total, 'title')
+}
+
 interface Party { id: string; name: string }
 
 /** One cached supplier list per page load; the picker filters it locally. */
@@ -95,8 +115,9 @@ function loadSuppliers(): Promise<SupplierParty[]> {
   return suppliersPromise
 }
 
-/** Our wording for a preview blocker (they carry a code and details, no message). */
+/** The blocker's own message (#122), else our wording for a pre-#122 response. */
 function blockerText(b: VendorSetupBlocker): string {
+  if (typeof b.message === 'string' && b.message.trim()) return b.message.trim()
   const name = typeof b.party_name === 'string' ? b.party_name : null
   switch (b.error) {
     case 'request_not_open':
@@ -251,8 +272,14 @@ function PreviewPanel({ plan, onAttachTo, onRefresh }: {
 
       <div className="px-3 py-2 space-y-2">
         <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-          {total > 0 ? `${plural(total, 'title')} will move` : 'No catalogued titles move now'}
+          {total > 0 ? `${moveSummary(plan, total)} will move` : 'No catalogued titles move now'}
         </p>
+        {(plan.items_without_isbn ?? 0) > 0 && (
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Other items are damaged-copy variants and other SKUs without an ISBN. They move with the
+            vendor so they aren’t left on the old record.
+          </p>
+        )}
         {total === 0 && (
           <p className="text-xs text-gray-500 dark:text-gray-400">The next catalog sync registers this vendor’s titles under the new supplier.</p>
         )}
@@ -282,7 +309,7 @@ function PreviewPanel({ plan, onAttachTo, onRefresh }: {
           </div>
         )}
         {total > moves.length && (
-          <p className="text-[11px] text-gray-400">…and {plural(total - moves.length, 'more title')}.</p>
+          <p className="text-[11px] text-gray-400">…and {(total - moves.length).toLocaleString()} more.</p>
         )}
 
         {removed.length > 0 && (
@@ -393,9 +420,14 @@ function RequestPanel({ item, onDone, onRefresh }: {
       const out = await resolveVendorSetup(item.id, body)
       const moved = out.titles_to_move ?? 0
       const dest = out.destination?.party_name ?? (action === 'attach' ? party?.name : name.trim())
+      const movedText = moved > 0 ? ` ${moveSummary(out, moved)} moved.` : ' Nothing to move yet.'
+      // migration 068: `revived` says an existing record was brought back; before
+      // it, `new` was true for every create, so only trust `revived`.
       onDone(action === 'attach'
-        ? `${item.vendor} attached to ${dest}. ${plural(moved, 'title')} moved.`
-        : `${item.vendor} set up as ${dest}. ${plural(moved, 'title')} moved.`)
+        ? `${item.vendor} attached to ${dest}.${movedText}`
+        : out.destination?.revived
+        ? `Revived ${dest} for ${item.vendor}.${movedText}`
+        : `Set up ${dest} for ${item.vendor}.${movedText}`)
     } catch (e) {
       setProblem(toProblem(e, 'Could not apply'))
       setPreview(null)
