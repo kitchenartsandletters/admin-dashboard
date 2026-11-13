@@ -16,6 +16,14 @@
 // opens a modal instead of navigating: those titles are a fulfillment problem
 // and KAL has no shipping module, so there is no in-app screen that could
 // resolve them — the modal deep-links into the Shopify admin instead.
+//
+// "Vendors needing setup" (supply-chain-service VENDOR_MANAGEMENT.md §4.3):
+// Shopify vendors whose active titles nothing can order. Shown to every role,
+// because staff clear them here: the card opens VendorSetupModal, where each
+// vendor is attached to a supplier, set up as one, or ignored, always after a
+// preview. Resolving one drops it from the card's count without a reload. It
+// replaces the old admin-only "Unrecognized vendors" card, which counted the
+// same problem from the last sync log and only linked to /suppliers.
 
 import { useCallback, useEffect, useMemo, useState, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -25,15 +33,16 @@ import {
   fetchPurchaseOrders,
   fetchTransfers,
   fetchReceiptHistory,
-  fetchUnrecognizedVendors,
   fetchFlaggedSnapshots,
   fetchSupplierSyncLog,
   fetchStockWaiting,
+  fetchVendorSetup,
 } from '../api/supplyChainApi';
-import type { StockWaitingResult } from '../api/supplyChainApi';
+import type { StockWaitingResult, VendorSetupList } from '../api/supplyChainApi';
 import { fetchBackorderSummary } from '../api/backorderApi';
 import { fetchPreorderMetrics } from '../../api/preorderApi';
 import StockWaitingModal from './StockWaitingModal';
+import VendorSetupModal from './VendorSetupModal';
 import { requestFetch } from '../services/requests/requestApi';
 
 const GARAMOND =
@@ -55,8 +64,9 @@ interface TriageCard {
   cta: string;
   route?: string;
   // When set, the card opens this modal instead of navigating. Used where the
-  // work doesn't live in this app (e.g. fulfillment, which happens in Shopify).
-  modal?: 'stock-waiting';
+  // work doesn't live in this app (e.g. fulfillment, which happens in Shopify),
+  // or is done right there (vendor setup).
+  modal?: 'stock-waiting' | 'vendor-setup';
 }
 
 interface ActivityRow {
@@ -132,6 +142,20 @@ function fmtTime(iso: string): string {
   }).format(d);
 }
 
+// The vendor-setup card, or null when nothing is open. Built from the list so
+// the count can follow resolves made in the modal.
+function vendorSetupCard(vs: VendorSetupList | null): TriageCard | null {
+  if (!vs || vs.count <= 0) return null;
+  const top = vs.items[0];
+  return {
+    key: 'vendor-setup', icon: 'users', tone: 'amber',
+    count: vs.count,
+    sub: top ? `top: ${top.vendor}, ${top.units_24m.toLocaleString()} sold in 24 mo` : undefined,
+    label: 'Vendors needing setup',
+    cta: 'Set up vendors', modal: 'vendor-setup',
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Signals hook
 // ---------------------------------------------------------------------------
@@ -140,11 +164,39 @@ function useHomeSignals(role: Role | null) {
   const [cards, setCards] = useState<TriageCard[]>([]);
   const [activity, setActivity] = useState<ActivityRow[]>([]);
   const [stockWaiting, setStockWaiting] = useState<StockWaitingResult | null>(null);
+  const [vendorSetup, setVendorSetup] = useState<VendorSetupList | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [nonce, setNonce] = useState(0);
 
   const reload = useCallback(() => setNonce(n => n + 1), []);
+
+  // Keep the vendor-setup card in step with the list without reloading the page.
+  const applyVendorSetup = useCallback((vs: VendorSetupList | null) => {
+    setVendorSetup(vs);
+    setCards(prev => {
+      const card = vendorSetupCard(vs);
+      const i = prev.findIndex(c => c.key === 'vendor-setup');
+      if (i === -1) return card ? [...prev, card] : prev;
+      const next = [...prev];
+      if (card) next[i] = card; else next.splice(i, 1);
+      return next;
+    });
+  }, []);
+
+  // A request was resolved or ignored in the modal.
+  const removeVendorSetup = useCallback((id: string) => {
+    if (!vendorSetup) return;
+    const items = vendorSetup.items.filter(i => i.id !== id);
+    if (items.length === vendorSetup.items.length) return;
+    applyVendorSetup({ ...vendorSetup, items, count: Math.max(0, vendorSetup.count - 1) });
+  }, [vendorSetup, applyVendorSetup]);
+
+  // Re-fetch just the vendor-setup list (e.g. someone else closed a request).
+  const refreshVendorSetup = useCallback(async () => {
+    const r = await attempt(() => fetchVendorSetup(200));
+    if (!r.failed) applyVendorSetup(r.data);
+  }, [applyVendorSetup]);
 
   useEffect(() => {
     if (!role) return;
@@ -156,12 +208,13 @@ function useHomeSignals(role: Role | null) {
       const isAdmin = role === 'admin';
       const isEditorOrAdmin = role === 'admin' || role === 'editor';
 
-      const [poR, trR, boR, histR, swR] = await Promise.all([
+      const [poR, trR, boR, histR, swR, vsR] = await Promise.all([
         attempt(() => fetchPurchaseOrders({ limit: PO_PAGE_LIMIT })),
         attempt(() => fetchTransfers({ status: 'in_transit', limit: PO_PAGE_LIMIT })),
         attempt(() => fetchBackorderSummary()),
         attempt(() => fetchReceiptHistory({ limit: 6 }) as Promise<HistoryRow[]>),
         attempt(() => fetchStockWaiting()),
+        attempt(() => fetchVendorSetup(200)),
       ]);
 
       // Editor + admin signals
@@ -174,12 +227,10 @@ function useHomeSignals(role: Role | null) {
         ]);
       }
 
-      let unrecR: Attempt<Awaited<ReturnType<typeof fetchUnrecognizedVendors>>> = { data: null, failed: false };
       let flagR: Attempt<unknown[]> = { data: null, failed: false };
       let syncR: Attempt<Awaited<ReturnType<typeof fetchSupplierSyncLog>>> = { data: null, failed: false };
       if (isAdmin) {
-        [unrecR, flagR, syncR] = await Promise.all([
-          attempt(() => fetchUnrecognizedVendors()),
+        [flagR, syncR] = await Promise.all([
           attempt(() => fetchFlaggedSnapshots()),
           attempt(() => fetchSupplierSyncLog(1)),
         ]);
@@ -246,6 +297,12 @@ function useHomeSignals(role: Role | null) {
         });
       }
 
+      // Vendors needing setup: titles nothing can order until a supplier is set
+      // up for their vendor. Every role sees it; staff clear it in the modal.
+      setVendorSetup(vsR.data);
+      const vsCard = vendorSetupCard(vsR.data);
+      if (vsCard) next.push(vsCard);
+
       // Editor + admin signals
       if (isEditorOrAdmin) {
         const openReq = reqR.data ?? 0;
@@ -272,14 +329,6 @@ function useHomeSignals(role: Role | null) {
             key: 'recon', icon: 'alert', tone: 'red', count: flags,
             sub: 'inventory discrepancies', label: 'Reconciliation flags',
             cta: 'Review flags', route: '/status',
-          });
-        }
-        const unrec = unrecR.data?.unrecognized_count ?? 0;
-        if (unrec > 0) {
-          next.push({
-            key: 'vendors', icon: 'users', tone: 'amber', count: unrec,
-            sub: 'from last Shopify sync', label: 'Unrecognized vendors',
-            cta: 'Map vendors', route: '/suppliers',
           });
         }
         const lastSync = Array.isArray(syncR.data) ? syncR.data[0] : undefined;
@@ -316,14 +365,14 @@ function useHomeSignals(role: Role | null) {
       setActivity(rows);
 
       // Flag if any signal ultimately failed, so we don't imply all-clear.
-      setError(poR.failed || trR.failed || boR.failed || histR.failed || swR.failed || reqR.failed || preR.failed || unrecR.failed || flagR.failed || syncR.failed);
+      setError(poR.failed || trR.failed || boR.failed || histR.failed || swR.failed || vsR.failed || reqR.failed || preR.failed || flagR.failed || syncR.failed);
       setLoading(false);
     })();
 
     return () => { cancelled = true; };
   }, [role, nonce]);
 
-  return { cards, activity, stockWaiting, loading, error, reload };
+  return { cards, activity, stockWaiting, vendorSetup, removeVendorSetup, refreshVendorSetup, loading, error, reload };
 }
 
 // ---------------------------------------------------------------------------
@@ -402,8 +451,8 @@ export default function WelcomePage() {
   const { user, role } = useAuth();
   const { activeStaff } = useStaff();
   const navigate = useNavigate();
-  const { cards, activity, stockWaiting, loading, error, reload } = useHomeSignals(role);
-  const [openModal, setOpenModal] = useState<'stock-waiting' | null>(null);
+  const { cards, activity, stockWaiting, vendorSetup, removeVendorSetup, refreshVendorSetup, loading, error, reload } = useHomeSignals(role);
+  const [openModal, setOpenModal] = useState<'stock-waiting' | 'vendor-setup' | null>(null);
 
   const name = useMemo(() => {
     if (activeStaff?.name) return activeStaff.name;
@@ -568,6 +617,14 @@ export default function WelcomePage() {
         open={openModal === 'stock-waiting'}
         data={stockWaiting}
         onClose={() => setOpenModal(null)}
+      />
+
+      <VendorSetupModal
+        open={openModal === 'vendor-setup'}
+        data={vendorSetup}
+        onClose={() => setOpenModal(null)}
+        onResolved={removeVendorSetup}
+        onRefresh={refreshVendorSetup}
       />
     </div>
   );
