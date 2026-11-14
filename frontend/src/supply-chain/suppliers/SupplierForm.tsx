@@ -142,7 +142,7 @@ function SectionToggle({
 
 const ALL_ROLES: SupplierRole[] = [
   'distributor', 'wholesaler', 'publisher', 'small_press',
-  'direct', 'author', 'restaurant', 'other',
+  'direct', 'author', 'restaurant', 'sales_rep', 'other',
 ]
 
 function RolePicker({
@@ -447,7 +447,12 @@ const SupplierForm: React.FC<Props> = ({
                   <Label>Roles</Label>
                   <RolePicker
                     selected={p.roles}
-                    onChange={roles => setP({ roles })}
+                    onChange={roles => setP(
+                      // A sales rep never takes returns (database check, migration 072).
+                      roles.includes('sales_rep') && p.is_returnable === 'true'
+                        ? { roles, is_returnable: 'false' }
+                        : { roles }
+                    )}
                   />
                   {p.roles.length === 0 && (
                     <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
@@ -537,9 +542,14 @@ const SupplierForm: React.FC<Props> = ({
                       onChange={e => setP({ is_returnable: e.target.value as PartyFields['is_returnable'] })}
                     >
                       <option value="">Unknown</option>
-                      <option value="true">Returnable</option>
+                      <option value="true" disabled={p.roles.includes('sales_rep')}>Returnable</option>
                       <option value="false">Non-returnable</option>
                     </Select>
+                    {p.roles.includes('sales_rep') && (
+                      <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+                        A sales rep never takes returns.
+                      </p>
+                    )}
                   </div>
                 </div>
 

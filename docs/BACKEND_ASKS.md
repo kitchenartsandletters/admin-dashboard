@@ -59,7 +59,54 @@ please add it to the line model.
 `ReceivingDashboard.tsx` pages submitted dates at 100 because 100 is the only
 value known to be accepted. If it allows 200, the page can go up.
 
+### 10. Supplier map: the dashboard no longer sends `shopify_vendor_codes` (2026-11-14)
+
+Phase 2 screens, screen 3. Once the phase-2 PR is merged and deployed, the
+supplier map's edit (`PATCH /api/suppliers/{id}/cosmology`) sends only `name`,
+`relationship_type`, `notes` and `reason`. Code changes go through
+`/codes/preview` → `/codes/apply` (VendorCodeEditor). The backend can stop
+accepting `shopify_vendor_codes` on that endpoint. The map's writes (cosmology,
+`/parent`, `/deprecate`) now also carry the actor headers.
+
+### 11. Supplier profile: barcode-finding labels
+
+`titles.by_barcode_finding` has finding keys but no labels, and §4.2 says to use
+§4.6's labels. Those exist only in the audit's `summary.labels`, so the profile
+fetches `GET /suppliers/barcode-audit?limit=1` once per session to borrow them,
+which computes the whole-catalogue summary. Could the profile (or explain)
+return `labels` too, or could there be a small endpoint for them? Until then,
+fallback wording lives in `api/vendorManagementApi.ts`.
+
+### 12. Is there a way to set `returns_parent_id` from the dashboard?
+
+`SupplierPartyUpdate` has no `returns_parent_id`, and no dashboard screen edits
+it. The handoff asks to hide sales reps as returns parents
+(`sales_rep_cannot_take_returns`), but there is no picker to hide them from. If
+staff should set returns parents, which endpoint is it? The picker would be
+built on the profile, with sales reps left out.
+
+### 13. Vendor setup: should `create.roles` accept `sales_rep`?
+
+§4.3 lists publisher, distributor, small_press, direct, restaurant, author and
+other. The handoff says to add Sales rep to every roles picker, but an unknown
+role is a 422 there, and a sales rep is not a vendor anyone orders from (COMO,
+§5.4). The card's picker is unchanged until this is confirmed either way.
+
+### 14. `codes_before` / `codes_after`: name included or not?
+
+§4.4's example has `codes_before: ["Independent Publisher's Group"]`, the
+supplier's name, while IPG's stored `shopify_vendor_codes` is
+`["IPG", "Independent Publisher's Group"]`. Are these lists the stored array
+as-is? The editor shows them as sent, but the supplier map reloads after an
+apply instead of using `codes_after`, because of this.
+
 ## Notes for the backend chat (no action needed)
+
+- **Not verified live.** The phase-2 screens were built against
+  `VENDOR_MANAGEMENT.md` (main, 2026-11-14) and tested with contract-shaped
+  mock responses only. The service isn't reachable from the frontend chat's
+  sandbox, so nothing was compared to live responses. Gil's first look at each
+  screen is the live check.
 
 - **No receiving-exceptions card on `/welcome`.** The vendor-setup brief said the
   new card sits "next to the stock-waiting and receiving-exceptions cards". The

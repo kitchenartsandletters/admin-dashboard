@@ -3,9 +3,10 @@ import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   SupplierDetail, SupplierParty,
-  SUPPLIER_ROLE_LABELS, ORDERING_METHOD_LABELS, CONTACT_ROLE_LABELS,
+  roleLabel, ORDERING_METHOD_LABELS, CONTACT_ROLE_LABELS,
 } from './supplierTypes'
 import { fetchSuppliers, updateSupplier } from '../../api/supplyChainApi'
+import { isModalOpen } from '../../components/ModalShell'
 
 interface Props {
   detail: SupplierDetail | null
@@ -18,6 +19,8 @@ interface Props {
   onImprintLinked?: () => void
   parentDetail?: SupplierDetail | null
   onNewParentPO?: () => void
+  /** Opens the full supplier profile (accounts, vendor codes, chains, problems). */
+  onOpenProfile?: () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -158,7 +161,7 @@ function LinkImprintWidget({
 
 const SupplierDetailSidebar: React.FC<Props> = ({
   detail, canGoBack, onBack, onClose, onEdit, onNewPO, onChildClick, onImprintLinked,
-  parentDetail, onNewParentPO,
+  parentDetail, onNewParentPO, onOpenProfile,
 }) => {
   // isOpen controls the slide animation — only flips when sidebar opens or closes.
   // It does NOT flip when navigating between parties (detail.party.id changes).
@@ -197,6 +200,8 @@ const SupplierDetailSidebar: React.FC<Props> = ({
   // ESC closes sidebar (modal handles its own ESC separately)
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
+      // A modal opened from here (the supplier form, the PO builder) owns the key.
+      if (isModalOpen()) return
       if (e.key === 'Escape' && isOpen) {
         e.stopPropagation()
         onClose()
@@ -246,7 +251,7 @@ const SupplierDetailSidebar: React.FC<Props> = ({
             <div className="flex flex-wrap gap-1 mt-0.5">
               {party.roles.map(r => (
                 <span key={r} className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
-                  {SUPPLIER_ROLE_LABELS[r]}
+                  {roleLabel(r)}
                 </span>
               ))}
               {party.roles.length === 0 && (
@@ -259,6 +264,12 @@ const SupplierDetailSidebar: React.FC<Props> = ({
               <button onClick={onNewPO}
                 className="px-2.5 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors active:scale-[0.97]">
                 + New PO
+              </button>
+            )}
+            {onOpenProfile && (
+              <button onClick={onOpenProfile}
+                className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+                Full profile
               </button>
             )}
             <button onClick={onEdit}
@@ -292,7 +303,15 @@ const SupplierDetailSidebar: React.FC<Props> = ({
               <DetailItem label="Status" value={party.is_active ? 'Active' : 'Draft (inactive)'} />
               {party.shopify_vendor_codes && party.shopify_vendor_codes.length > 0 && (
                 <div className="flex flex-col py-1">
-                  <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold mb-1.5">Vendor codes</span>
+                  <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold mb-1.5">
+                    Vendor codes
+                    {onOpenProfile && (
+                      <button type="button" onClick={onOpenProfile}
+                        className="ml-2 normal-case tracking-normal font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+                        change in profile
+                      </button>
+                    )}
+                  </span>
                   <div className="flex flex-wrap gap-1">
                     {party.shopify_vendor_codes.map(code => (
                       <span key={code} className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">

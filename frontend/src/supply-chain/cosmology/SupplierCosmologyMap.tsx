@@ -8,8 +8,10 @@
 // Phase 2 will add: admin edit panel, reparenting, deprecation, audit log
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, forwardRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import RightSidebar from '../../components/RightSidebar'
+import VendorCodeEditor from '../suppliers/VendorCodeEditor'
+import { scRequest } from '../../api/supplyChainApi'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -272,30 +274,15 @@ function TreeNode({
 const SC_BASE_URL  = import.meta.env.VITE_SC_BASE_URL as string
 const SC_TOKEN     = import.meta.env.VITE_SC_ADMIN_TOKEN as string
 
+// Writes go through supplyChainApi's transport, so they carry the actor
+// headers (X-Actor-Email / -Role / -Staff-Id / -Staff-Name) like every other
+// write, and a refusal's message reaches the screen instead of "[object Object]".
 async function apiPatch(path: string, body: object) {
-  const res = await fetch(`${SC_BASE_URL}${path}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', 'X-Admin-Token': SC_TOKEN },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail ?? `HTTP ${res.status}`)
-  }
-  return res.json()
+  return scRequest<unknown>(path, { method: 'PATCH', body: JSON.stringify(body) })
 }
 
 async function apiPost(path: string, body: object) {
-  const res = await fetch(`${SC_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Admin-Token': SC_TOKEN },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail ?? `HTTP ${res.status}`)
-  }
-  return res.json()
+  return scRequest<unknown>(path, { method: 'POST', body: JSON.stringify(body) })
 }
 
 async function fetchParentCandidates(search: string): Promise<CosmologyNode[]> {
@@ -322,6 +309,10 @@ function NodeDetail({
   onUpdated: (updated: Partial<CosmologyNode>) => void
 }) {
   const [editing, setEditing] = useState(false)
+  // Vendor codes are changed only through preview / apply (VendorCodeEditor),
+  // which moves the titles a code owns. Rendered here, not in the edit panel,
+  // so it survives the refresh that follows an apply.
+  const [editingCodes, setEditingCodes] = useState(false)
   const isDeprecated = node.is_deprecated || node.relationship_type === 'deprecated_code'
   const cfg = REL_TYPE_CONFIG[node.relationship_type ?? '']
   const relNotes = node.notes?.replace(/^\[(IMPRINT|DISTRIBUTION CLIENT)\]\s*/, '') ?? null
@@ -367,11 +358,48 @@ function NodeDetail({
             node={node}
             onCancel={() => setEditing(false)}
             onSaved={(updated) => { setEditing(false); onUpdated(updated) }}
+            onEditCodes={() => setEditingCodes(true)}
           />
         ) : (
-          <NodeReadView node={node} relNotes={relNotes} isDeprecated={isDeprecated} cfg={cfg} />
+          <NodeReadView node={node} relNotes={relNotes} isDeprecated={isDeprecated} cfg={cfg}
+            onEditCodes={isDeprecated ? undefined : () => setEditingCodes(true)} />
         )}
       </div>
+
+      {editingCodes && (
+        <VendorCodeEditor
+          partyId={node.id}
+          partyName={node.name}
+          onClose={() => setEditingCodes(false)}
+          onApplied={() => onUpdated({})}
+        />
+      )}
+    </div>
+  )
+}
+
+/** Read-only code chips with the way to change them. */
+function VendorCodesBlock({ node, onEditCodes }: { node: CosmologyNode; onEditCodes?: () => void }) {
+  const codes = node.shopify_vendor_codes ?? []
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500">Vendor codes</p>
+        {onEditCodes && (
+          <button type="button" onClick={onEditCodes} className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+            Change codes…
+          </button>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {codes.length === 0
+          ? <span className="text-xs text-gray-300 dark:text-gray-600 italic">No codes</span>
+          : codes.map(c => <CodeChip key={c} code={c} />)}
+      </div>
+      <Link to={`/suppliers?supplier=${encodeURIComponent(node.id)}`}
+        className="inline-block mt-1.5 text-[11px] text-blue-600 dark:text-blue-400 hover:underline">
+        Full supplier profile →
+      </Link>
     </div>
   )
 }
@@ -381,11 +409,12 @@ function NodeDetail({
 // Read view (extracted from original NodeDetail)
 // ---------------------------------------------------------------------------
 
-function NodeReadView({ node, relNotes, isDeprecated, cfg }: {
+function NodeReadView({ node, relNotes, isDeprecated, cfg, onEditCodes }: {
   node: CosmologyNode
   relNotes: string | null
   isDeprecated: boolean
   cfg: typeof REL_TYPE_CONFIG[string] | undefined
+  onEditCodes?: () => void
 }) {
   return (
     <div className="p-4 space-y-5 text-sm">
@@ -394,14 +423,7 @@ function NodeReadView({ node, relNotes, isDeprecated, cfg }: {
           ⛔ Deprecated legacy code — do not use for new orders.
         </div>
       )}
-      {node.shopify_vendor_codes && node.shopify_vendor_codes.length > 0 && (
-        <div>
-          <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1.5">Vendor codes</p>
-          <div className="flex flex-wrap gap-1">
-            {node.shopify_vendor_codes.map(c => <CodeChip key={c} code={c} />)}
-          </div>
-        </div>
-      )}
+      <VendorCodesBlock node={node} onEditCodes={onEditCodes} />
       {node.relationship_type && (
         <div>
           <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1">Relationship</p>
@@ -445,20 +467,17 @@ const REL_TYPE_OPTIONS = [
   { value: 'deprecated_code',     label: 'Deprecated code' },
 ]
 
-function NodeEditPanel({ node, onCancel, onSaved }: {
+function NodeEditPanel({ node, onCancel, onSaved, onEditCodes }: {
   node: CosmologyNode
   onCancel: () => void
   onSaved: (updated: Partial<CosmologyNode>) => void
+  onEditCodes: () => void
 }) {
   const [name, setName] = useState(node.name)
   const [relType, setRelType] = useState(node.relationship_type ?? '')
   const [notes, setNotes] = useState(
     node.notes?.replace(/^\[(IMPRINT|DISTRIBUTION CLIENT)\]\s*/, '') ?? ''
   )
-  // Bug fix #2: prepopulate codes from node
-  const [codes, setCodes] = useState<string[]>(node.shopify_vendor_codes ?? [])
-  const [newCode, setNewCode] = useState('')
-  const codeInputRef = useRef<HTMLInputElement>(null)
 
   // Parent assignment — only shown for non-ordering_party entries
   const isOrderingParty = node.relationship_type === 'ordering_party'
@@ -493,17 +512,6 @@ function NodeEditPanel({ node, onCancel, onSaved }: {
     fetchParentCandidates(parentSearch).then(setParentResults)
   }, [parentSearch])
 
-  // Bug fix #1: add code without losing focus
-  const addCode = () => {
-    const c = newCode.trim().toUpperCase()
-    if (c && !codes.includes(c)) setCodes(prev => [...prev, c])
-    setNewCode('')
-    // Re-focus the input after adding
-    setTimeout(() => codeInputRef.current?.focus(), 0)
-  }
-
-  const removeCode = (c: string) => setCodes(prev => prev.filter(x => x !== c))
-
   const handleSelectParent = (party: CosmologyNode) => {
     setSelectedParentId(party.id)
     setSelectedParentName(party.name)
@@ -530,8 +538,9 @@ function NodeEditPanel({ node, onCancel, onSaved }: {
       if (notes !== (node.notes?.replace(/^\[(IMPRINT|DISTRIBUTION CLIENT)\]\s*/, '') ?? '')) {
         editBody.notes = notes; updated.notes = notes
       }
-      const codesChanged = JSON.stringify([...codes].sort()) !== JSON.stringify([...(node.shopify_vendor_codes ?? [])].sort())
-      if (codesChanged) { editBody.shopify_vendor_codes = codes; updated.shopify_vendor_codes = codes }
+      // Vendor codes are never sent here: this endpoint writes them straight to
+      // the database and moves no titles (the IPG mix-up, 2026-11-12). They go
+      // through VendorCodeEditor's preview / apply instead.
 
       if (Object.keys(editBody).length > 1) {
         await apiPatch(`/api/suppliers/${node.id}/cosmology`, editBody)
@@ -610,37 +619,11 @@ function NodeEditPanel({ node, onCancel, onSaved }: {
         </select>
       </div>
 
-      {/* Vendor codes */}
-      <div>
-        <FieldLabel>Vendor codes</FieldLabel>
-        <div className="flex flex-wrap gap-1 mb-2 min-h-[24px]">
-          {codes.length === 0 && (
-            <span className="text-xs text-gray-300 dark:text-gray-600 italic">No codes</span>
-          )}
-          {codes.map(c => (
-            <span key={c} className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
-              {c}
-              <button type="button" onClick={() => removeCode(c)}
-                className="text-gray-400 hover:text-red-500 leading-none ml-0.5">×</button>
-            </span>
-          ))}
-        </div>
-        {/* Bug fix #1: ref + setTimeout refocus so focus isn't lost on re-render */}
-        <div className="flex gap-1">
-          <Input
-            ref={codeInputRef}
-            value={newCode}
-            onChange={e => setNewCode(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCode() } }}
-            placeholder="Type code and press Enter…"
-            className="flex-1"
-          />
-          <button type="button" onClick={addCode}
-            className="px-2.5 py-1.5 rounded bg-gray-100 dark:bg-gray-800 text-xs font-semibold hover:bg-gray-200 dark:hover:bg-gray-700 shrink-0">
-            Add
-          </button>
-        </div>
-      </div>
+      {/* Vendor codes: read-only here; changed through preview / apply. */}
+      <VendorCodesBlock node={node} onEditCodes={onEditCodes} />
+      <p className="-mt-3 text-[11px] text-gray-400 dark:text-gray-500">
+        Code changes move titles, so they open their own preview.
+      </p>
 
       {/* Notes */}
       <div>
