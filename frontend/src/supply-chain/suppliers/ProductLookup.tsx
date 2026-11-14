@@ -361,26 +361,96 @@ function RegisterAction({ isbn, onRegistered }: { isbn: string; onRegistered: ()
 // Change vendor (writes to Shopify)
 // ---------------------------------------------------------------------------
 
-let suggestionCache: Promise<string[]> | null = null
+let suggestionCache: Promise<string[] | null> | null = null
 
-/** Supplier names first (what the dashboard should write), then their codes. */
-function loadVendorSuggestions(): Promise<string[]> {
+/**
+ * Active suppliers' full names: what the dashboard writes to Shopify (Gil,
+ * 2026-11-12 and 11-14). Codes are not offered. null when the list can't load.
+ */
+function loadVendorSuggestions(): Promise<string[] | null> {
   if (!suggestionCache) {
     suggestionCache = fetchSuppliers({ activeOnly: true })
-      .then(list => {
-        const names = new Set<string>()
-        const codes = new Set<string>()
-        for (const p of list) {
-          names.add(p.name)
-          for (const c of p.shopify_vendor_codes ?? []) codes.add(c)
-        }
-        const byName = [...names].sort((a, b) => a.localeCompare(b))
-        const rest = [...codes].filter(c => !names.has(c)).sort((a, b) => a.localeCompare(b))
-        return [...byName, ...rest]
-      })
-      .catch(() => { suggestionCache = null; return [] })
+      .then(list => [...new Set(list.map(p => p.name))].sort((a, b) => a.localeCompare(b)))
+      .catch(() => { suggestionCache = null; return null })
   }
   return suggestionCache
+}
+
+/** Matching that ignores case, apostrophes, punctuation and spacing, "&" = "and". */
+function matchKey(s: string): string {
+  return s.toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '')
+}
+
+const MAX_SUGGESTIONS = 8
+
+/**
+ * Free-text field with our own suggestion list. Not a <datalist>: browsers
+ * show those inconsistently (some phones never), so staff saw nothing.
+ */
+function VendorNameInput({ id, value, onChange, names }: {
+  id: string
+  value: string
+  onChange: (v: string) => void
+  names: string[] | null | undefined
+}) {
+  const [focused, setFocused] = useState(false)
+  const [active, setActive] = useState(-1)
+  const q = matchKey(value)
+  const matches = !names || !q ? [] : (() => {
+    const starts: string[] = []
+    const contains: string[] = []
+    for (const nm of names) {
+      const k = matchKey(nm)
+      if (k === q) continue
+      if (k.startsWith(q)) starts.push(nm)
+      else if (k.includes(q)) contains.push(nm)
+    }
+    return [...starts, ...contains].slice(0, MAX_SUGGESTIONS)
+  })()
+  const show = focused && matches.length > 0
+  const pick = (nm: string) => { onChange(nm); setActive(-1); setFocused(false) }
+
+  return (
+    <div className="relative">
+      <input
+        id={id}
+        value={value}
+        autoComplete="off"
+        role="combobox"
+        aria-expanded={show}
+        aria-controls={`${id}-list`}
+        aria-autocomplete="list"
+        onChange={ev => { onChange(ev.target.value); setActive(-1); setFocused(true) }}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onKeyDown={ev => {
+          if (!show) return
+          if (ev.key === 'ArrowDown') { ev.preventDefault(); setActive(a => Math.min(a + 1, matches.length - 1)) }
+          else if (ev.key === 'ArrowUp') { ev.preventDefault(); setActive(a => Math.max(a - 1, 0)) }
+          else if (ev.key === 'Enter' && active >= 0) { ev.preventDefault(); pick(matches[active]) }
+          else if (ev.key === 'Escape') { ev.preventDefault(); setFocused(false) }
+        }}
+        placeholder="Supplier’s full name"
+        className={`w-full ${input}`}
+      />
+      {show && (
+        <ul id={`${id}-list`} role="listbox"
+          className="absolute z-10 left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg text-sm">
+          {matches.map((nm, i) => (
+            <li key={nm} role="option" aria-selected={i === active}
+              // mousedown, not click: fires before the input's blur closes the list
+              onMouseDown={ev => { ev.preventDefault(); pick(nm) }}
+              className={`px-3 py-2 cursor-pointer ${i === active ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-800'} text-gray-900 dark:text-gray-100`}>
+              {nm}
+            </li>
+          ))}
+        </ul>
+      )}
+      {names === null && (
+        <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">Supplier names couldn’t be loaded; type the full name.</p>
+      )}
+    </div>
+  )
 }
 
 function ChangeVendor({ itemId, currentVendor, onChanged, onStale }: {
@@ -392,7 +462,7 @@ function ChangeVendor({ itemId, currentVendor, onChanged, onStale }: {
   const [open, setOpen] = useState(false)
   const [vendor, setVendor] = useState('')
   const [reason, setReason] = useState('')
-  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [suggestions, setSuggestions] = useState<string[] | null | undefined>(undefined)
   const [busy, setBusy] = useState<'plan' | 'write' | null>(null)
   const [plan, setPlan] = useState<VendorEditResult | null>(null)
   const [done, setDone] = useState<VendorEditResult | null>(null)
@@ -456,11 +526,8 @@ function ChangeVendor({ itemId, currentVendor, onChanged, onStale }: {
       <div className="grid gap-2 sm:grid-cols-2">
         <div>
           <label htmlFor={`${listId}-in`} className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">New vendor</label>
-          <input id={`${listId}-in`} list={listId} value={vendor} onChange={ev => edit(() => setVendor(ev.target.value))}
-            placeholder="Supplier name or code" className={`w-full ${input}`} />
-          <datalist id={listId}>
-            {suggestions.map(sg => <option key={sg} value={sg} />)}
-          </datalist>
+          <VendorNameInput id={`${listId}-in`} value={vendor} names={suggestions}
+            onChange={v => edit(() => setVendor(v))} />
         </div>
         <div>
           <label htmlFor={`${listId}-reason`} className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Reason</label>
