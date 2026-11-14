@@ -362,8 +362,6 @@ const SupplierDetailSidebar: React.FC<Props> = ({
               <DetailItem label="Payment terms" value={party.payment_terms} />
               <DetailItem label="Returns"
                 value={party.is_returnable === true ? 'Returnable' : party.is_returnable === false ? 'Non-returnable' : undefined} />
-              <DetailItem label="Default discount"
-                value={party.discount_pct != null ? `${party.discount_pct}%` : undefined} />
               {party.notes && (
                 <div className="flex flex-col py-1">
                   <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold">Notes</span>

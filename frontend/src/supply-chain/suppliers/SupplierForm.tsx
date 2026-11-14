@@ -59,7 +59,6 @@ interface PartyFields {
   notes: string
   payment_terms: string
   is_returnable: '' | 'true' | 'false'
-  discount_pct: string
   is_active: boolean
 }
 
@@ -207,7 +206,6 @@ const SupplierForm: React.FC<Props> = ({
     notes:         party?.notes         ?? '',
     payment_terms: party?.payment_terms ?? '',
     is_returnable: party?.is_returnable == null ? '' : party.is_returnable ? 'true' : 'false',
-    discount_pct:  party?.discount_pct  != null ? String(party.discount_pct) : '',
     is_active:     party?.is_active     ?? false,
   })
 
@@ -284,9 +282,6 @@ const SupplierForm: React.FC<Props> = ({
         is_returnable: partyFields.is_returnable === ''
                          ? undefined
                          : partyFields.is_returnable === 'true',
-        discount_pct:  partyFields.discount_pct !== ''
-                         ? parseFloat(partyFields.discount_pct)
-                         : undefined,
       }
 
       let partyId: string
@@ -553,19 +548,9 @@ const SupplierForm: React.FC<Props> = ({
                   </div>
                 </div>
 
-                {/* Discount */}
-                <div>
-                  <Label>Default discount off list (%)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={0.5}
-                    value={p.discount_pct}
-                    onChange={e => setP({ discount_pct: e.target.value })}
-                    placeholder="40"
-                  />
-                </div>
+                {/* No discount field: KAL doesn't track discounts or cost (CLAUDE.md,
+                    "Prices"). The form never sends discount_pct, so a stored
+                    value is left as it is. */}
 
                 {/* Notes */}
                 <div>
