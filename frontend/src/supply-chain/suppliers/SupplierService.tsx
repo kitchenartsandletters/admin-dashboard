@@ -1,11 +1,15 @@
 // SupplierService.tsx
+// The suppliers list, and at ?supplier=<id> one supplier's full profile
+// (SupplierProfilePage). The list's quick sidebar links to the profile.
 import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import SupplierProfilePage from './SupplierProfilePage'
 import SupplierTable from './SupplierTable'
 import SupplierDetailSidebar from './SupplierDetailSidebar'
 import SupplierForm from './SupplierForm'
 import POBuilder from '../purchase-orders/POBuilder'
 import RightSidebar from '../../components/RightSidebar'
-import { SupplierParty, SupplierDetail, SupplierRole, SUPPLIER_ROLE_LABELS } from './supplierTypes'
+import { SupplierParty, SupplierDetail, SupplierRole, roleLabel } from './supplierTypes'
 import { fetchSuppliers, fetchSupplierDetail } from '../../api/supplyChainApi'
 import { SortConfig, sortTitle, nextSortDirection } from '../../utils/tableUtils'
 
@@ -22,6 +26,7 @@ const ROLE_FILTERS: { key: RoleFilter; label: string }[] = [
   { key: 'direct',      label: 'Direct' },
   { key: 'author',      label: 'Authors' },
   { key: 'restaurant',  label: 'Restaurants' },
+  { key: 'sales_rep',   label: 'Sales reps' },
 ]
 
 const FILTER_STORAGE_KEY = 'sc_supplier_role_filter'
@@ -84,6 +89,31 @@ export default function SupplierService() {
   const [docsFilePath, setDocsFilePath] = useState<string | null>(null)
   const [showPOBuilder, setShowPOBuilder] = useState(false)
 
+  // Full profile, addressable as /suppliers?supplier=<id>.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const profileId = searchParams.get('supplier')
+  const [profileRefresh, setProfileRefresh] = useState(0)
+
+  const openProfile = useCallback((id: string) => {
+    setSearchParams({ supplier: id })
+  }, [setSearchParams])
+
+  const closeProfile = useCallback(() => {
+    setSearchParams({})
+    setPartyStack([])
+  }, [setSearchParams])
+
+  // The profile's Edit and + New PO reuse the existing detail fetch, so keep
+  // the selected party in step with the profile shown.
+  useEffect(() => {
+    if (!profileId) return
+    setPartyStack(prev => {
+      if (prev.length === 1 && prev[0].id === profileId) return prev
+      const known = allSuppliers.find(p => p.id === profileId)
+      return [known ?? ({ id: profileId } as SupplierParty)]
+    })
+  }, [profileId, allSuppliers])
+
   const handleSetRoleFilter = (f: RoleFilter) => {
     setRoleFilter(f)
     try { localStorage.setItem(FILTER_STORAGE_KEY, f) } catch {}
@@ -134,7 +164,7 @@ export default function SupplierService() {
       list = list.filter(p =>
         p.name.toLowerCase().includes(q) ||
         (p.legal_name ?? '').toLowerCase().includes(q) ||
-        p.roles.some(r => SUPPLIER_ROLE_LABELS[r].toLowerCase().includes(q))
+        p.roles.some(r => roleLabel(r).toLowerCase().includes(q))
       )
     }
     if (sortConfig) {
@@ -164,6 +194,7 @@ export default function SupplierService() {
       direct: allSuppliers.filter(p => p.roles.includes('direct')).length,
       author: allSuppliers.filter(p => p.roles.includes('author')).length,
       restaurant: allSuppliers.filter(p => p.roles.includes('restaurant')).length,
+      sales_rep: allSuppliers.filter(p => p.roles.includes('sales_rep')).length,
       other: allSuppliers.filter(p => p.roles.includes('other')).length,
     }
     return obj
@@ -207,6 +238,7 @@ export default function SupplierService() {
       })
     } catch {}
     setFormMode(null)
+    setProfileRefresh(k => k + 1)
   }
 
   const handleImprintLinked = useCallback(async () => {
@@ -228,8 +260,20 @@ export default function SupplierService() {
       .catch(() => setParentDetail(null))
   }, [detail?.party.parent_id])
 
+  const profileDetail = profileId && detail?.party.id === profileId ? detail : null
+
   return (
     <>
+      {profileId ? (
+        <SupplierProfilePage
+          partyId={profileId}
+          refreshKey={profileRefresh}
+          onBack={closeProfile}
+          onOpenSupplier={openProfile}
+          onEdit={profileDetail ? () => setFormMode('edit') : undefined}
+          onNewPO={profileDetail ? () => setShowPOBuilder(true) : undefined}
+        />
+      ) : (
       <div className="p-4 sm:p-6 space-y-6 bg-white dark:bg-gray-950 min-h-screen">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
@@ -346,7 +390,7 @@ export default function SupplierService() {
                         </span>
                         {supplier.roles.map(role => (
                           <span key={role} className="text-[10px] text-gray-500 bg-gray-50 border border-gray-200/60 dark:bg-gray-800 dark:text-gray-400 dark:border-transparent px-1.5 py-0.2 rounded font-medium">
-                            {SUPPLIER_ROLE_LABELS[role]}
+                            {roleLabel(role)}
                           </span>
                         ))}
                       </div>
@@ -373,9 +417,11 @@ export default function SupplierService() {
           </div>
         )}
       </div>
+      )}
 
       <SupplierDetailSidebar
-        detail={detailLoading ? null : detail}
+        detail={detailLoading || profileId ? null : detail}
+        onOpenProfile={() => { if (selectedParty) openProfile(selectedParty.id) }}
         canGoBack={partyStack.length > 1}
         onBack={handleBack}
         onClose={handleClose}

@@ -26,7 +26,7 @@
 // same problem from the last sync log and only linked to /suppliers.
 
 import { useCallback, useEffect, useMemo, useState, ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth, Role } from '../auth/AuthProvider';
 import { useStaff } from '../auth/StaffProvider';
 import {
@@ -452,7 +452,12 @@ export default function WelcomePage() {
   const { activeStaff } = useStaff();
   const navigate = useNavigate();
   const { cards, activity, stockWaiting, vendorSetup, removeVendorSetup, refreshVendorSetup, loading, error, reload } = useHomeSignals(role);
-  const [openModal, setOpenModal] = useState<'stock-waiting' | 'vendor-setup' | null>(null);
+  // ?open=vendor-setup opens the vendor-setup card directly (linked from a
+  // supplier profile's open setup requests).
+  const [searchParams] = useSearchParams();
+  const [openModal, setOpenModal] = useState<'stock-waiting' | 'vendor-setup' | null>(
+    () => (searchParams.get('open') === 'vendor-setup' ? 'vendor-setup' : null),
+  );
 
   const name = useMemo(() => {
     if (activeStaff?.name) return activeStaff.name;

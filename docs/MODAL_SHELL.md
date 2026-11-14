@@ -52,6 +52,8 @@ Escape closes only the topmost modal. Two things sit outside that:
 | `supply-chain/receiving/ReceivingWizard.tsx` | **Done** | admin-dashboard#105. Tested on phone. Discard prompt via `onBeforeClose`. |
 | `supply-chain/purchase-orders/POBuilder.tsx` | **Done** | admin-dashboard#106. Its line-entry modal moved to `LineEntryModal.tsx` in #110. |
 | `supply-chain/purchase-orders/LineEntryModal.tsx` | **Done** | Built on ModalShell (#110). |
+| `supply-chain/suppliers/VendorCodeEditor.tsx` | **Done** | Built on ModalShell. Vendor-code preview / apply (`VENDOR_MANAGEMENT.md` §4.4); not dismissible while previewing or applying. Opened from the supplier profile and from the supplier map's detail panel. |
+| `supply-chain/suppliers/SupplierDetailSidebar.tsx` | **Done** (not a modal) | Slide-over. Defers Escape to `isModalOpen()` (phase-2 PR). |
 | `components/preorder/IntlSoloActionModal.tsx` | **Done** | Built on ModalShell. Clear/restore the international cart restriction (intl-solo); not dismissible while saving. |
 | `components/RightSidebar.tsx` | **Done** (not a modal) | `h-svh`; modal-aware layer. |
 | `supply-chain/purchase-orders/PODetailSidebar.tsx` | **Done** (not a modal) | Slide-over at `z-40/50`. Defers Escape to `isModalOpen()` (#110). |

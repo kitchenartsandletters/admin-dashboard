@@ -6,35 +6,26 @@
 // Answers the question: "Why can't I find this product in the PO builder?"
 // and gives non-technical staff the tools to fix it without developer access.
 //
-// Three sections:
-//   1. Sync status — last run, stats, 'Run sync now' button
-//   2. Register by ISBN — instant lookup + registration for a specific product
-//   3. Unrecognized vendors — vendor codes in Shopify with no supplier mapping
+// Two tabs (?tab=barcodes selects the second):
+//   Catalog        1. Sync status — last run, stats, 'Run sync now' button
+//                  2. Product lookup (ProductLookup.tsx) — explain one title,
+//                     register it, change its vendor in Shopify. Grew out of
+//                     the "Register by ISBN" box; registering keeps the
+//                     backend's reason / message wording (§4.0).
+//   Barcode audit  BarcodeAudit.tsx (§4.6)
 //
-// When a title can't be registered, the backend now says why (`reason`:
-// no_vendor | no_supplier | no_active_account) and says it in plain words,
-// naming the supplier (`message`). That message is shown as sent. It replaces
-// the old "vendor not mapped" text, which was also shown when the vendor WAS
-// mapped but its supplier had no active account, sending staff to fix the
-// wrong thing (supply-chain-service docs/VENDOR_MANAGEMENT.md §4.0). The old
-// text remains only for a response without a message.
+// Contract: supply-chain-service docs/VENDOR_MANAGEMENT.md.
 
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import RightSidebar from '../../components/RightSidebar'
+import ProductLookup from './ProductLookup'
+import BarcodeAudit from './BarcodeAudit'
 import {
   fetchSupplierSyncLog,
   triggerSupplierSync,
-  searchShopifyByISBN,
   type SupplierSyncResult,
-  type ShopifyLookupResult,
-  type UnregisteredReason,
 } from '../../api/supplyChainApi'
-
-const UNREGISTERED_HEADINGS: Record<UnregisteredReason, string> = {
-  no_vendor:         'Found in Shopify — no vendor set',
-  no_supplier:       'Found in Shopify — no supplier for this vendor',
-  no_active_account: 'Found in Shopify — supplier has no active account',
-}
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString('en-US', {
@@ -175,148 +166,21 @@ function SyncPanel() {
 }
 
 // ---------------------------------------------------------------------------
-// Register by ISBN panel
-// ---------------------------------------------------------------------------
-
-function RegisterByISBN() {
-  const [isbn, setIsbn]         = useState('')
-  const [searching, setSearching] = useState(false)
-  const [result, setResult]     = useState<ShopifyLookupResult | null>(null)
-  const [error, setError]       = useState<string | null>(null)
-
-  const handleLookup = async () => {
-    const clean = isbn.replace(/-/g, '').trim()
-    if (clean.length < 9) return
-    setSearching(true)
-    setResult(null)
-    setError(null)
-    try {
-      const res = await searchShopifyByISBN(clean)
-      setResult(res)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Lookup failed')
-    } finally {
-      setSearching(false)
-    }
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleLookup()
-  }
-
-  return (
-    <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
-      <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Register a product by ISBN</h3>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-          If a product isn't appearing in the PO builder or receive flow, enter its ISBN here.
-          We'll check Shopify directly and register it in the catalog if it's there.
-        </p>
-      </div>
-
-      <div className="px-4 py-4 space-y-3">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={isbn}
-            onChange={e => { setIsbn(e.target.value); setResult(null); setError(null) }}
-            onKeyDown={handleKeyDown}
-            placeholder="9780525536673"
-            className="flex-1 px-3 py-2 border dark:border-gray-600 rounded text-sm font-mono
-                       bg-white dark:bg-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-          />
-          <button
-            onClick={handleLookup}
-            disabled={searching || isbn.replace(/-/g, '').length < 9}
-            className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold
-                       disabled:opacity-50 transition-colors"
-          >
-            {searching ? (
-              <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Searching…
-              </span>
-            ) : 'Look up'}
-          </button>
-        </div>
-
-        {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
-
-        {result && (
-          <div>
-            {/* Not found in Shopify */}
-            {result.not_in_shopify && (
-              <div className="px-3 py-3 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-                <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Not found in Shopify</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  ISBN <span className="font-mono">{isbn}</span> doesn't match any product variant in Shopify.
-                  The product may need to be created in the Shopify Admin first.
-                </p>
-              </div>
-            )}
-
-            {/* Found, but can't be registered: the backend says why */}
-            {!result.registered && result.message && (
-              <div className="px-3 py-3 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 space-y-2">
-                <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
-                  {(result.reason && UNREGISTERED_HEADINGS[result.reason]) ?? 'Found in Shopify — can’t be registered yet'}
-                </p>
-                {result.title && (
-                  <p className="text-xs text-amber-700 dark:text-amber-300">
-                    <strong>{result.title}</strong>
-                    {result.vendor && <> · vendor <span className="font-mono bg-amber-100 dark:bg-amber-900/40 px-1 rounded">{result.vendor}</span></>}
-                  </p>
-                )}
-                <p className="text-xs text-amber-700 dark:text-amber-300">{result.message}</p>
-              </div>
-            )}
-
-            {/* Older response without a message */}
-            {result.unrecognized_vendor && !result.message && (
-              <div className="px-3 py-3 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 space-y-2">
-                <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">Found in Shopify — vendor not mapped</p>
-                <p className="text-xs text-amber-700 dark:text-amber-300">
-                  <strong>{result.title}</strong> exists in Shopify with vendor code
-                  {' '}<span className="font-mono bg-amber-100 dark:bg-amber-900/40 px-1 rounded">{result.vendor}</span>,
-                  but that code isn't linked to any supplier in this system.
-                </p>
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  To fix this: go to <strong>Suppliers</strong>, find or create the publisher,
-                  and add <span className="font-mono">{result.vendor}</span> to their vendor codes.
-                  Then come back and look up this ISBN again.
-                </p>
-              </div>
-            )}
-
-            {/* Registered successfully */}
-            {result.registered && result.record && (
-              <div className="px-3 py-3 rounded border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 space-y-2">
-                <p className="text-sm font-semibold text-green-800 dark:text-green-200">✓ Registered in catalog</p>
-                <div className="text-xs space-y-0.5">
-                  <p className="text-gray-900 dark:text-gray-100 font-medium">{result.title}</p>
-                  <p className="text-gray-500 dark:text-gray-400 font-mono">{result.isbn}</p>
-                  <p className="text-gray-500 dark:text-gray-400">Vendor: {result.vendor}</p>
-                </div>
-                <p className="text-xs text-green-700 dark:text-green-300">
-                  This product will now appear in PO builder and receive flow searches.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Main view
 // ---------------------------------------------------------------------------
 
+type Tab = 'catalog' | 'barcodes'
+
 export default function CatalogGapView() {
   const [docsFilePath, setDocsFilePath] = useState<string | null>(null)
+  const [params, setParams] = useSearchParams()
+  const tab: Tab = params.get('tab') === 'barcodes' ? 'barcodes' : 'catalog'
+  const setTab = (t: Tab) => {
+    // Filters belong to the tab they were set on.
+    setParams(t === 'barcodes' ? { tab: 'barcodes' } : {}, { replace: true })
+  }
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className={`space-y-6 ${tab === 'barcodes' ? 'max-w-5xl' : 'max-w-2xl'}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Catalog coverage</h1>
@@ -332,8 +196,25 @@ export default function CatalogGapView() {
         </button>
       </div>
 
-      <SyncPanel />
-      <RegisterByISBN />
+      <div role="tablist" className="flex gap-1 border-b dark:border-gray-800">
+        {([['catalog', 'Catalog'], ['barcodes', 'Barcode audit']] as [Tab, string][]).map(([t, label]) => (
+          <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}
+            className={`px-3 py-1.5 text-sm font-semibold border-b-2 -mb-px ${tab === t
+              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+              : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'catalog' ? (
+        <>
+          <SyncPanel />
+          <ProductLookup />
+        </>
+      ) : (
+        <BarcodeAudit />
+      )}
 
       {docsFilePath && (
         <RightSidebar

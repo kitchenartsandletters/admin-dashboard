@@ -1,6 +1,6 @@
 // SupplierTable.tsx
 import React from 'react'
-import { SupplierParty, SUPPLIER_ROLE_LABELS, SupplierRole } from './supplierTypes'
+import { SupplierParty, roleLabel, SupplierRole } from './supplierTypes'
 import { SortConfig, SortIcon, nextSortDirection } from '../../utils/tableUtils'
 
 interface Props {
@@ -19,13 +19,14 @@ const ROLE_COLORS: Record<SupplierRole, string> = {
   direct:      'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
   author:      'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
   restaurant:  'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+  sales_rep:   'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
   other:       'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
 }
 
 function RoleBadge({ role }: { role: SupplierRole }) {
   return (
     <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${ROLE_COLORS[role]}`}>
-      {SUPPLIER_ROLE_LABELS[role]}
+      {roleLabel(role)}
     </span>
   )
 }

@@ -9,6 +9,10 @@ export type SupplierRole =
   | 'direct'
   | 'author'
   | 'restaurant'
+  // A sales rep group (Chesapeake & Hudson, Como Sales), migration 072. Never
+  // takes returns: the database refuses is_returnable on one, and the API
+  // refuses to name one as a returns parent (sales_rep_cannot_take_returns).
+  | 'sales_rep'
   | 'other'
 
 export type OrderingMethod =
@@ -34,7 +38,13 @@ export const SUPPLIER_ROLE_LABELS: Record<SupplierRole, string> = {
   direct: 'Direct',
   author: 'Author',
   restaurant: 'Restaurant',
+  sales_rep: 'Sales rep',
   other: 'Other',
+}
+
+/** Label for a role string from the API, including any this build doesn't know yet. */
+export function roleLabel(role: string): string {
+  return (SUPPLIER_ROLE_LABELS as Record<string, string>)[role] ?? role.replace(/_/g, ' ')
 }
 
 export const ORDERING_METHOD_LABELS: Record<OrderingMethod, string> = {

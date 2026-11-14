@@ -165,11 +165,22 @@ async function scError(res: Response, fallback?: string): Promise<ScApiError> {
 }
 
 async function sc<T>(path: string, options: RequestInit = {}): Promise<T> {
+  return scRequest<T>(path, options)
+}
+
+/**
+ * The transport every supply-chain call uses: base URL, admin token, actor
+ * headers, ScApiError on refusal. Exported so other API modules
+ * (vendorManagementApi.ts) send the same headers and raise the same errors.
+ * `raw` returns the Response itself, for downloads such as CSV.
+ */
+export async function scRequest<T>(path: string, options: RequestInit = {}, opts: { raw?: boolean } = {}): Promise<T> {
   const res = await fetch(`${SC_BASE_URL}${path}`, {
     ...options,
     headers: { ...headers, ...actorHeaders(), ...options.headers },
   })
   if (!res.ok) throw await scError(res)
+  if (opts.raw) return res as unknown as T
   if (res.status === 204) return undefined as T
   return res.json()
 }
