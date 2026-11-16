@@ -3,6 +3,7 @@ import { InterestEntry, StatusPhase, STATUS_ORDER } from '../types';
 import RightSidebar from './RightSidebar';
 import RequestNotes from './RequestNotes';
 import { shopifyGraphQL } from '../services/requests/requestApi';
+import { StickyNote } from 'lucide-react';
 
 interface RequestTableProps {
   filteredData: InterestEntry[];
@@ -72,6 +73,17 @@ const RequestTable: React.FC<RequestTableProps> = ({
   const [selected, setSelected] = useState<(InterestEntry & { handle?: string; isLoadingHandle?: boolean }) | null>(null);
   
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Counts reported by the open sidebar's RequestNotes. They override the
+  // list's note_count so a note added or deleted shows on the row at once;
+  // the next page fetch brings the server value back in line.
+  const [noteCountOverrides, setNoteCountOverrides] = useState<Record<string, number>>({});
+  const noteCountFor = (entry: InterestEntry) =>
+    noteCountOverrides[entry.id] ?? entry.note_count ?? 0;
+
+  useEffect(() => {
+    setNoteCountOverrides({});
+  }, [filteredData]);
 
   const headerCbRef = useRef<HTMLInputElement>(null);
   const idsOnPage = useMemo(() => filteredData.map(r => r.id), [filteredData]);
@@ -178,8 +190,24 @@ const RequestTable: React.FC<RequestTableProps> = ({
                 {entry.cr_id || '—'}
               </td>
 
-              <td className="px-3 py-3 font-medium text-gray-900 dark:text-white max-w-[140px] sm:max-w-xs truncate" title={decodeHTMLEntities(entry.product_title)}>
-                {decodeHTMLEntities(entry.product_title)}
+              <td className="px-3 py-3 font-medium text-gray-900 dark:text-white max-w-[140px] sm:max-w-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="truncate" title={decodeHTMLEntities(entry.product_title)}>
+                    {decodeHTMLEntities(entry.product_title)}
+                  </span>
+                  {noteCountFor(entry) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelected(entry)}
+                      title={`${noteCountFor(entry)} note${noteCountFor(entry) === 1 ? '' : 's'}. Click to open.`}
+                      aria-label={`${noteCountFor(entry)} note${noteCountFor(entry) === 1 ? '' : 's'}, open details`}
+                      className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold tabular-nums bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/50 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1 transition-colors"
+                    >
+                      <StickyNote className="w-3 h-3" aria-hidden="true" />
+                      {noteCountFor(entry)}
+                    </button>
+                  )}
+                </div>
               </td>
 
               {/* Table Row: Click-to-Copy Email */}
@@ -354,7 +382,15 @@ const RequestTable: React.FC<RequestTableProps> = ({
             <hr className="border-gray-200 dark:border-gray-700" />
 
             {/* Notes */}
-            <RequestNotes requestId={selected.id} crId={selected.cr_id} />
+            <RequestNotes
+              requestId={selected.id}
+              crId={selected.cr_id}
+              onCountChange={(count) =>
+                setNoteCountOverrides(prev =>
+                  prev[selected.id] === count ? prev : { ...prev, [selected.id]: count }
+                )
+              }
+            />
 
           </div>
         )}
