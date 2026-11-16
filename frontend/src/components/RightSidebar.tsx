@@ -85,10 +85,13 @@ export default function RightSidebar({ title, onClose, row, renderRowContent, do
           setTimeout(onClose, 300);
         }}
       />
-      {/* Sidebar Container — h-svh, not h-screen: 100vh runs under a phone's
+      {/* Sidebar Container — portaled to <body>, outside the app's themed
+          wrapper, so it sets its own text colour; without it, unstyled text
+          (the heading, Close, caller content) renders black in dark mode.
+          h-svh, not h-screen: 100vh runs under a phone's
           address bar and hides the bottom of the guide. */}
       <div
-        className={`fixed top-0 right-0 h-svh w-full sm:w-[28rem] bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 shadow-xl ${layer.panel} transition-transform duration-300 transform ${isVisible ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed top-0 right-0 h-svh w-full sm:w-[28rem] bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 border-l border-gray-200 dark:border-gray-800 shadow-xl ${layer.panel} transition-transform duration-300 transform ${isVisible ? 'translate-x-0' : 'translate-x-full'}`}
       >
         {/*
           A caller-supplied `title` now wins. The path checks below are the legacy

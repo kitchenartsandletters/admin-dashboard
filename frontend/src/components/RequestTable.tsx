@@ -271,6 +271,7 @@ const RequestTable: React.FC<RequestTableProps> = ({
 
       {/* Right Sidebar Integration */}
       <RightSidebar
+        title="Request Details"
         row={selected}
         onClose={() => setSelected(null)}
         renderRowContent={() => selected && (
