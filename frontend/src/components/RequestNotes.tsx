@@ -29,6 +29,9 @@ export interface RequestNote {
 interface RequestNotesProps {
   requestId: string;
   crId?: string | null;
+  /** Called with the live note count after load and after every add/remove,
+   *  so the list row's badge stays in step without refetching the page. */
+  onCountChange?: (count: number) => void;
 }
 
 function relativeTime(iso: string): string {
@@ -54,7 +57,7 @@ function shortName(name: string): string {
   return at > 0 ? name.slice(0, at) : name;
 }
 
-export default function RequestNotes({ requestId, crId }: RequestNotesProps) {
+export default function RequestNotes({ requestId, crId, onCountChange }: RequestNotesProps) {
   const { activeStaff } = useStaff();
   const { user } = useAuth();
 
@@ -107,6 +110,13 @@ export default function RequestNotes({ requestId, crId }: RequestNotesProps) {
   useEffect(() => {
     loadNotes();
   }, [loadNotes]);
+
+  // Report the count only once loaded, so a failed or in-flight load never
+  // clears a badge the list already shows.
+  useEffect(() => {
+    if (!loading && !error) onCountChange?.(notes.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notes.length, loading, error]);
 
   const addNote = async () => {
     const body = draft.trim();

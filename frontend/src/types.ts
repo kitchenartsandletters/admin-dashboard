@@ -34,6 +34,9 @@ export interface InterestEntry {
   cr_seq?: number;
   archived?: boolean;
   archived_at?: string | null;
+  // Live (not soft-deleted) notes on this request. Sent by GET /api/interest;
+  // undefined until request-service ships it, which renders as "no badge".
+  note_count?: number;
 
   // optional enrichers you already use
   shopify_collection_handles?: string[] | null;
