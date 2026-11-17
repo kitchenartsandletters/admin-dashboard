@@ -16,6 +16,7 @@ import AccountPage from './pages/AccountPage';
 import ReportsPage from './reports/ReportsPage';
 import PreorderService from './services/preorder/PreorderService';
 import BackorderService from './services/backorders/BackorderService';
+import CampaignService from './services/campaign/CampaignService';
 import BusinessCalendarPage from './components/BusinessCalendarPage';
 import ReportJobPage from './components/ReportJobPage';
 import SupplierService from './supply-chain/suppliers/SupplierService'
@@ -182,6 +183,11 @@ const App = () => {
                       <Route path="/backorders" element={
                         <ProtectedRoute requiredRoles={['admin', 'editor', 'user']}>
                           <BackorderService />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/campaigns" element={
+                        <ProtectedRoute requiredRoles={['admin', 'editor']}>
+                          <CampaignService />
                         </ProtectedRoute>
                       } />
                       <Route path="/suppliers" element={
