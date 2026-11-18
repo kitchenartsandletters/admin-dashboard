@@ -31,6 +31,10 @@ const navItems = [
     ]
   },
   { label: 'Backorders', path: '/backorders', roles: ['admin', 'editor', 'user'] },
+  // Narrower than Backorders on purpose: /campaigns is guarded in App.tsx as
+  // admin + editor, and sidebar visibility follows the router rather than
+  // leading it. Creating giveaway orders is gated to admin inside the panel.
+  { label: 'Campaigns', path: '/campaigns', roles: ['admin', 'editor'] },
   {
     label: 'Supply Chain',
     path: '/purchase-orders',

@@ -20,6 +20,7 @@ import type {
   ReconcileReport,
 } from '../../types/campaignTypes'
 import CampaignOrdersTable from './CampaignOrdersTable'
+import GiveawayPanel from './GiveawayPanel'
 
 const STATE_STYLES: Record<string, string> = {
   open:   'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
@@ -79,6 +80,24 @@ export default function CampaignService() {
       .catch(e => setError(String(e)))
   }, [slug])
 
+  /**
+   * Switching campaigns has to drop everything derived from the old one in the
+   * same breath as the slug. Anything left behind renders under the new
+   * campaign's name, and these are the numbers someone decides to send a
+   * partner file on — a stale summary strip is worse than a stale table.
+   *
+   * The giveaway panel is keyed on slug instead, so React discards its state
+   * structurally rather than relying on this handler being kept in step with
+   * whatever state that panel grows later.
+   */
+  const onSelectCampaign = (next: string) => {
+    setSlug(next)
+    setReport(null)
+    setMetrics(null)
+    setOrders([])
+    setError(null)
+  }
+
   const run = async (label: string, fn: () => Promise<void>) => {
     setBusy(label)
     setError(null)
@@ -135,10 +154,7 @@ export default function CampaignService() {
           {campaigns.length > 1 && (
             <select
               value={slug ?? ''}
-              onChange={e => {
-                setSlug(e.target.value)
-                setReport(null)
-              }}
+              onChange={e => onSelectCampaign(e.target.value)}
               className="text-sm border rounded px-2 py-1 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
             >
               {campaigns.map(c => (
@@ -323,6 +339,10 @@ export default function CampaignService() {
       )}
 
       <CampaignOrdersTable data={orders} remaining={campaign.remaining} />
+
+      {/* Keyed on slug: the panel's tracking rows and its dry-run snapshot must
+          not survive a campaign switch. See onSelectCampaign above. */}
+      <GiveawayPanel key={campaign.slug} slug={campaign.slug} />
     </div>
   )
 }
