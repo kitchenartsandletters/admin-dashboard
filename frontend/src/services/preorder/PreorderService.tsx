@@ -17,7 +17,10 @@ import {
   fetchReportablePreorders,
   fetchLateArrivals,
   fetchNoArrivalTitles,
+  fetchRunState,
+  type RunStateRow,
 } from "../../../api/preorderApi"
+import { withRunState } from "../../utils/runState"
 import { withHoldFields } from "../../utils/preorderFlags"
 
 type ViewMode = "overview" | "historical" | "release-review"
@@ -63,10 +66,15 @@ function TableSkeleton() {
 }
 
 function PreorderService() {
-  const [products, setProducts] = useState<PreorderRow[]>([])
+  const [rawProducts, setProducts] = useState<PreorderRow[]>([])
   const [releaseQueue, setReleaseQueue] = useState<ReleaseReviewRow[]>([])
   const [metrics, setMetrics] = useState<PreorderSummaryMetrics | null>(null)
-  const [upcoming, setUpcoming] = useState<ReleaseReviewRow[]>([])
+  const [rawUpcoming, setUpcoming] = useState<ReleaseReviewRow[]>([])
+  // Run state (vw_run_state). null until loaded, or if the endpoint is not
+  // available; rows then render exactly as before.
+  const [runStates, setRunStates] = useState<RunStateRow[] | null>(null)
+  const products = useMemo(() => withRunState(rawProducts, runStates), [rawProducts, runStates])
+  const upcoming = useMemo(() => withRunState(rawUpcoming, runStates), [rawUpcoming, runStates])
   const [reportable, setReportable] = useState<ReportablePreorderRow[]>([])
   const [searchFilter, setSearchFilter] = useState("")
   const [classFilter, setClassFilter] = useState<string>("all")
@@ -120,6 +128,18 @@ function PreorderService() {
       setLoading(false)
     }
     loadAlertIds()
+    loadRunState()
+  }
+
+  // Separate from the main load: a missing or failing run-state endpoint must
+  // not blank the page. Without it every title renders as single-run.
+  const loadRunState = async () => {
+    try {
+      setRunStates(await fetchRunState())
+    } catch (err) {
+      console.warn("Run state unavailable; treating all titles as single-run", err)
+      setRunStates(null)
+    }
   }
 
   // Separate from the main load so a failing alert endpoint can't blank the page.
