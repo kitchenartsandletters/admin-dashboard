@@ -6,12 +6,15 @@ import IntlSoloBadge from './IntlSoloBadge';
 import IntlSoloActionModal from './IntlSoloActionModal';
 import { fetchIntlSolo, isIntlRestricted, needsIntlDecision, type IntlSoloState } from './intlSolo';
 import { Z } from '../../lib/zIndex';
+import { fetchRunState } from '../../../api/preorderApi';
+import { withRunState, type WithRunState } from '../../utils/runState';
+import { ReissueBadge } from './RunStateBits';
 
 // ──────────────────────────────────────────────
 // Types
 // ──────────────────────────────────────────────
 
-interface PreorderProduct {
+interface PreorderProduct extends WithRunState {
   product_id: number;
   title: string;
   isbn: string | null;
@@ -257,10 +260,14 @@ const ReleaseManagement = () => {
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${PREORDER_SERVICE_URL}/admin/preorders/products`, { headers: apiHeaders() });
+      // Run state is fetched alongside; if it fails, titles render as single-run.
+      const [res, runState] = await Promise.all([
+        fetch(`${PREORDER_SERVICE_URL}/admin/preorders/products`, { headers: apiHeaders() }),
+        fetchRunState().catch((e) => { console.warn('Run state unavailable', e); return null; }),
+      ]);
       if (!res.ok) throw new Error(`Failed to fetch products: ${res.status}`);
       const data: PreorderProduct[] = await res.json();
-      setProducts(data);
+      setProducts(withRunState(data, runState));
       setError(null);
     } catch (e: any) {
       setError(e.message);
@@ -590,6 +597,7 @@ const ReleaseManagement = () => {
                     <span className="font-semibold sm:font-medium text-gray-900 dark:text-gray-100 line-clamp-2 sm:truncate">{p.title}</span>
                     <span className={`shrink-0 px-2 py-0.5 rounded text-[10px] sm:text-xs font-semibold sm:font-medium whitespace-nowrap mt-0.5 sm:mt-0 ${badge.cls}`}>{badge.label}</span>
                     <span className="shrink-0 mt-0.5 sm:mt-0"><StockReceivedBadge product={p} /></span>
+                    <span className="shrink-0 mt-0.5 sm:mt-0"><ReissueBadge row={p} /></span>
                     <span className="shrink-0 mt-0.5 sm:mt-0"><HoldBadge row={p} /></span>
                     <span className="shrink-0 mt-0.5 sm:mt-0"><IntlSoloBadge state={intlStates[p.product_id]} /></span>
                   </div>
@@ -762,6 +770,7 @@ const ReleaseManagement = () => {
                 <div className="flex flex-col items-end gap-1 shrink-0">
                   <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide whitespace-nowrap uppercase ${badge.cls}`}>{badge.label}</span>
                   <StockReceivedBadge product={product} />
+                  <ReissueBadge row={product} />
                   <HoldBadge row={product} />
                   <IntlSoloBadge state={intlStates[product.product_id]} />
                 </div>
@@ -834,6 +843,7 @@ const ReleaseManagement = () => {
                     <div className="flex items-center gap-1.5">
                       <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${badge.cls}`}>{badge.label}</span>
                       <StockReceivedBadge product={product} />
+                      <ReissueBadge row={product} />
                       <HoldBadge row={product} />
                       <IntlSoloBadge state={intlStates[product.product_id]} />
                     </div>

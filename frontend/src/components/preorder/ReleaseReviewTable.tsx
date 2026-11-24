@@ -6,6 +6,8 @@ import {
   SortConfig, SortIcon, nextSortDirection
 } from "../../utils/tableUtils"
 import HoldBadge from "./HoldBadge"
+import { ReissueBadge, presaleCell, CURRENT_RUN_TAG_CLASS } from "./RunStateBits"
+import { hasPriorRun } from "../../utils/runState"
 
 interface ReleaseReviewTableProps {
   upcoming: ReleaseReviewRow[]
@@ -274,6 +276,7 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
                       <div className="min-w-0">
                         <span className="font-semibold text-gray-900 dark:text-white text-sm line-clamp-2">{row.title}</span>
                         <div className="text-[10px] font-mono text-gray-400 mt-0.5">ISBN: {row.isbn ?? "—"}</div>
+                        <ReissueBadge row={row} className="mt-1" />
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-md bg-gray-50 dark:bg-gray-800/60 ${daysClass(days)}`}>
@@ -288,7 +291,7 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
                         <span className="text-gray-400 block text-[9px] uppercase tracking-wider font-medium">Pub Date & Stock</span>
                         <div className="flex flex-col gap-1 items-start">
                           <span className="text-gray-600 dark:text-gray-300 font-medium">{formatDate(row.pub_date)}</span>
-                          <StockStatusPill inventory={row.inventory ?? 0} arrivalRecordIsLive={row.arrival_record_is_live} />
+                          <StockStatusPill inventory={row.inventory ?? 0} arrivalRecordIsLive={hasPriorRun(row) ? false : row.arrival_record_is_live} />
                         </div>
                       </div>
 
@@ -296,9 +299,11 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
                         <span className="text-gray-400 block text-[9px] uppercase tracking-wider font-medium">Live Presales</span>
                         <div className="flex items-center justify-end mt-0.5">
                           <span className="font-mono font-bold text-gray-900 dark:text-white">
-                            {row.live_presale_qty.toLocaleString()}
+                            {presaleCell(row, "live").qty.toLocaleString()}
                           </span>
-                          <ConfidenceBadge confidence={row.data_confidence} />
+                          {hasPriorRun(row)
+                            ? <span className={CURRENT_RUN_TAG_CLASS}>current run</span>
+                            : <ConfidenceBadge confidence={row.data_confidence} />}
                         </div>
                       </div>
                     </div>
@@ -339,6 +344,7 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
                         <td className="px-4 py-3 font-medium text-gray-900 dark:text-white max-w-xs truncate">
                           {row.title}
                           <div className="text-[10px] font-mono text-gray-400 mt-0.5">{row.isbn ?? "—"}</div>
+                          <ReissueBadge row={row} className="mt-1" />
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
                           {formatDate(row.pub_date)}
@@ -352,13 +358,15 @@ const ReleaseReviewTable: React.FC<ReleaseReviewTableProps> = ({
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <StockStatusPill inventory={row.inventory ?? 0} arrivalRecordIsLive={row.arrival_record_is_live} />
+                          <StockStatusPill inventory={row.inventory ?? 0} arrivalRecordIsLive={hasPriorRun(row) ? false : row.arrival_record_is_live} />
                         </td>
                         <td className="px-4 py-3 text-right">
                           <span className="font-mono font-bold text-xs text-gray-900 dark:text-white">
-                            {row.live_presale_qty.toLocaleString()}
+                            {presaleCell(row, "live").qty.toLocaleString()}
                           </span>
-                          <ConfidenceBadge confidence={row.data_confidence} />
+                          {hasPriorRun(row)
+                            ? <span className={CURRENT_RUN_TAG_CLASS}>current run</span>
+                            : <ConfidenceBadge confidence={row.data_confidence} />}
                         </td>
                       </tr>
                     )

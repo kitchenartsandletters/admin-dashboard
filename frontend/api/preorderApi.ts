@@ -252,6 +252,54 @@ export interface AlertTitleRow {
   arrival_timing: string | null
 }
 
+// Run state (preorder.vw_run_state). lifecycle_snapshot holds one lifecycle per
+// product, so a reissue (a second run on the same product and ISBN) would
+// otherwise show run 1's figures as current. Rows here say which titles have a
+// closed prior run and give current-run figures. All prior_run_* fields are
+// null when there is no prior run.
+//
+// PENDING: preorder-service has no route for this view yet. Until it does this
+// request fails, the page treats every title as single-run, and nothing
+// changes on screen. The route should return the view's rows unchanged.
+export const RUN_STATE_PATH = "/admin/preorders/run-state"
+
+export interface RunStateRow {
+  product_id: number
+  has_prior_closed_run: boolean
+  lifecycle_closed_at: string | null
+  current_run_started_at: string | null   // cut-off between runs
+  prior_run_presale_total: number | null  // NOT reliable yet (Landmine 22)
+  prior_run_reported: boolean | null
+  current_run_open_lines: number
+  current_run_open_units: number
+  current_run_open_orders: number
+  current_run_reported: boolean
+  orphan_lines: number
+  inventory_unclamped: number | null      // real inventory; can be negative
+}
+
+const num = (v: unknown): number => (v === null || v === undefined ? 0 : Number(v))
+const numOrNull = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v))
+
+export async function fetchRunState(): Promise<RunStateRow[]> {
+  // bigint columns can arrive as strings; normalise them.
+  const rows = await fetchFromService<any[]>(RUN_STATE_PATH)
+  return rows.map((r) => ({
+    product_id: Number(r.product_id),
+    has_prior_closed_run: r.has_prior_closed_run === true,
+    lifecycle_closed_at: r.lifecycle_closed_at ?? null,
+    current_run_started_at: r.current_run_started_at ?? null,
+    prior_run_presale_total: numOrNull(r.prior_run_presale_total),
+    prior_run_reported: r.prior_run_reported ?? null,
+    current_run_open_lines: num(r.current_run_open_lines),
+    current_run_open_units: num(r.current_run_open_units),
+    current_run_open_orders: num(r.current_run_open_orders),
+    current_run_reported: r.current_run_reported === true,
+    orphan_lines: num(r.orphan_lines),
+    inventory_unclamped: numOrNull(r.inventory_unclamped),
+  }))
+}
+
 export async function fetchNoArrivalTitles(): Promise<AlertTitleRow[]> {
   return fetchFromService<AlertTitleRow[]>("/admin/preorders/no-arrival-titles")
 }

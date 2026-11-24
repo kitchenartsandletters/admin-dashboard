@@ -2,6 +2,8 @@
 // Updated for Phase 5 — aligned to actual backend view columns.
 // See docs/Trust_Tier_Labeling.md for data_confidence semantics.
 
+import type { RunState } from "../utils/runState"
+
 export interface PreorderRow {
   // Identity
   product_id: number
@@ -52,6 +54,11 @@ export interface PreorderRow {
   hold_reason?: string | null
   hold_note?: string | null
   hold_active?: boolean | null
+
+  // Run state (vw_run_state), attached by PreorderService. When
+  // run_state.has_prior_closed_run is true, run-1 columns above are stale;
+  // read them through utils/runState.
+  run_state?: RunState | null
 }
 
 export interface ReleaseReviewRow {
@@ -93,6 +100,11 @@ export interface ReleaseReviewRow {
   hold_reason?: string | null
   hold_note?: string | null
   hold_active?: boolean | null
+
+  // Run state (vw_run_state), attached by PreorderService. When
+  // run_state.has_prior_closed_run is true, run-1 columns above are stale;
+  // read them through utils/runState.
+  run_state?: RunState | null
 }
 
 export interface PreorderSummaryMetrics {

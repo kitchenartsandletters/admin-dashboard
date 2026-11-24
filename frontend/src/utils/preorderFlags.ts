@@ -5,6 +5,8 @@
 // preorder-service is the authority. These helpers only add context that the
 // classification alone does not convey.
 
+import { hasPriorRun } from "./runState"
+
 interface FlagFields {
   classification: string
   pub_date: string | null
@@ -17,6 +19,9 @@ interface FlagFields {
  * a candidate for shipping-profile detachment.
  */
 export function hasReceivedStock(row: FlagFields): boolean {
+  // For a reissue the arrival record belongs to the previous run, so it says
+  // nothing about stock for the current one.
+  if (hasPriorRun(row)) return false
   return row.classification === "active_preorder" && row.arrival_record_is_live === true
 }
 

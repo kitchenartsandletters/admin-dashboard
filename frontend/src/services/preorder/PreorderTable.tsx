@@ -6,6 +6,8 @@ import {
 } from "../../utils/tableUtils"
 import { hasReceivedStock } from "../../utils/preorderFlags"
 import HoldBadge from "../../components/preorder/HoldBadge"
+import { ReissueBadge, presaleCell, CURRENT_RUN_TAG_CLASS } from "../../components/preorder/RunStateBits"
+import { hasPriorRun, isReportedNow } from "../../utils/runState"
 
 interface PreorderTableProps {
   data: PreorderRow[]
@@ -146,7 +148,7 @@ const PreorderTable: React.FC<PreorderTableProps> = ({
               <div className="min-w-0">
                 <div className="flex items-center flex-wrap gap-1.5">
                   <span className="font-semibold text-gray-900 dark:text-white text-sm line-clamp-2">{row.title}</span>
-                  {isHistorical && row.already_reported && (
+                  {isHistorical && isReportedNow(row) && (
                     <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 font-medium">
                       Reported
                     </span>
@@ -168,8 +170,9 @@ const PreorderTable: React.FC<PreorderTableProps> = ({
                   </span>
                   <StockReceivedBadge row={row} />
                   <HoldBadge row={row} />
+                  <ReissueBadge row={row} />
                 </div>
-                {row.classification === "early_stock_arrival" && row.arrival_timing && (
+                {row.classification === "early_stock_arrival" && row.arrival_timing && !hasPriorRun(row) && (
                   <div className={`text-[10px] mt-1 font-medium ${
                     row.arrival_timing === "early_arrival" ? "text-purple-600 dark:text-purple-400" : "text-gray-500 dark:text-gray-400"
                   }`}>
@@ -196,10 +199,10 @@ const PreorderTable: React.FC<PreorderTableProps> = ({
                 </span>
                 <div className="flex items-center justify-end mt-0.5">
                   <span className="font-mono font-bold text-gray-900 dark:text-white">
-                    {isHistorical ? row.total_presale_qty.toLocaleString() : row.live_presale_qty.toLocaleString()}
+                    {presaleCell(row, isHistorical ? "total" : "live").qty.toLocaleString()}
                   </span>
-                  <span className={getConfidenceBadgeClass(row.data_confidence)}>
-                    {row.data_confidence}
+                  <span className={presaleCell(row, "live").reissue ? CURRENT_RUN_TAG_CLASS : getConfidenceBadgeClass(row.data_confidence)}>
+                    {presaleCell(row, "live").tag}
                   </span>
                 </div>
               </div>
@@ -251,7 +254,7 @@ const PreorderTable: React.FC<PreorderTableProps> = ({
                 <td className="px-3 sm:px-4 py-3 font-medium text-gray-900 dark:text-white max-w-[150px] sm:max-w-xs">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="truncate">{row.title}</span>
-                    {isHistorical && row.already_reported && (
+                    {isHistorical && isReportedNow(row) && (
                       <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 font-medium">
                         Reported
                       </span>
@@ -267,8 +270,9 @@ const PreorderTable: React.FC<PreorderTableProps> = ({
                       </span>
                       <StockReceivedBadge row={row} />
                       <HoldBadge row={row} />
+                      <ReissueBadge row={row} />
                     </div>
-                    {row.classification === "early_stock_arrival" && row.arrival_timing && (
+                    {row.classification === "early_stock_arrival" && row.arrival_timing && !hasPriorRun(row) && (
                       <div className={`text-[9px] mt-0.5 font-medium ${
                         row.arrival_timing === "early_arrival"
                           ? "text-purple-600 dark:text-purple-400"
@@ -289,12 +293,10 @@ const PreorderTable: React.FC<PreorderTableProps> = ({
                 </td>
                 <td className="hidden md:table-cell px-4 py-3 text-right">
                   <span className="font-mono font-bold text-gray-900 dark:text-white text-xs">
-                    {isHistorical
-                      ? row.total_presale_qty.toLocaleString()
-                      : row.live_presale_qty.toLocaleString()}
+                    {presaleCell(row, isHistorical ? "total" : "live").qty.toLocaleString()}
                   </span>
-                  <span className={getConfidenceBadgeClass(row.data_confidence)}>
-                    {row.data_confidence}
+                  <span className={presaleCell(row, "live").reissue ? CURRENT_RUN_TAG_CLASS : getConfidenceBadgeClass(row.data_confidence)}>
+                    {presaleCell(row, "live").tag}
                   </span>
                 </td>
                 <td className="px-3 sm:px-4 py-3 text-right">
