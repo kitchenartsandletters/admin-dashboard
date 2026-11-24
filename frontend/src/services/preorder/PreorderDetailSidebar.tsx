@@ -3,6 +3,8 @@ import { createPortal } from "react-dom"
 import { PreorderRow } from "../../types/preorderTypes"
 import { formatDate } from "../../utils/tableUtils"
 import { activeHold, holdLabel } from "../../utils/preorderFlags"
+import { hasPriorRun, isReportedNow, formatRunCutoff, inventoryText } from "../../utils/runState"
+import { ReissueBadge } from "../../components/preorder/RunStateBits"
 
 interface PreorderDetailSidebarProps {
   row: PreorderRow | null
@@ -61,6 +63,112 @@ const ConfidenceBadge = ({ confidence }: { confidence: "verified" | "estimated" 
   </span>
 )
 
+const ReportingChip = ({ reported, label }: { reported: boolean; label?: string }) =>
+  reported ? (
+    <span className="text-[10px] px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 font-medium">
+      ✓ {label ?? "Reported"}
+    </span>
+  ) : (
+    <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 font-medium">
+      Not yet reported
+    </span>
+  )
+
+const RowLabel = ({ children }: { children: React.ReactNode }) => (
+  <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">{children}</span>
+)
+
+function formatArrivalTimingLong(timing: string | null | undefined): string {
+  if (!timing) return "—"
+  switch (timing) {
+    case "early_arrival":   return "Early — more than 7 days before pub date"
+    case "on_time_arrival": return "On time — within 7 days of pub date"
+    case "late_arrival":    return "Late — after pub date"
+    case "no_arrival":      return "No inventory receipt recorded"
+    default:                return timing.replace(/_/g, " ")
+  }
+}
+
+// For a reissue: figures for the run that is live now, from vw_run_state.
+const CurrentRunPanel = ({ row }: { row: PreorderRow }) => {
+  const rs = row.run_state!
+  return (
+    <section>
+      <SectionHeader label="Current Run" color="green" />
+      <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-md border dark:border-gray-800 space-y-3">
+        <p className="text-[10px] text-gray-500 dark:text-gray-400 leading-relaxed">
+          Reissue started {formatRunCutoff(rs.current_run_started_at)}. Open commitments only; earlier
+          orders belong to the previous run.
+        </p>
+        <div className="grid grid-cols-3 gap-3 pt-1 border-t dark:border-gray-700">
+          <DetailItem label="Open Units" value={rs.current_run_open_units.toLocaleString()} mono />
+          <DetailItem label="Open Orders" value={rs.current_run_open_orders.toLocaleString()} mono />
+          <DetailItem label="Open Lines" value={rs.current_run_open_lines.toLocaleString()} mono />
+        </div>
+        <div className="flex items-center justify-between pt-1 border-t dark:border-gray-700">
+          <RowLabel>Reporting Status</RowLabel>
+          <ReportingChip reported={rs.current_run_reported} />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// For a reissue: run-1 facts, kept apart and labelled so they aren't read as
+// current. The presale total is shown but marked unreliable (Landmine 22).
+const PreviousRunPanel = ({ row }: { row: PreorderRow }) => {
+  const rs = row.run_state!
+  const cutoff = formatRunCutoff(rs.current_run_started_at)
+  return (
+    <section>
+      <SectionHeader label={`Previous Run · before ${cutoff}`} color="gray" />
+      <div className="p-3 rounded-md border border-dashed border-gray-300 dark:border-gray-700 space-y-3 opacity-90">
+        <div>
+          <RowLabel>Presale Total</RowLabel>
+          <div className="mt-0.5 text-sm font-mono text-gray-500 dark:text-gray-400">
+            {rs.prior_run_presale_total ?? "—"}
+            <span className="ml-1.5 text-[10px] font-sans px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+              unreliable
+            </span>
+          </div>
+          <p className="mt-1 text-[10px] text-amber-600 dark:text-amber-400 leading-relaxed">
+            Not authoritative: a known data issue can record this as 0 for a run that had presales.
+          </p>
+        </div>
+        <div className="flex items-center justify-between pt-1 border-t dark:border-gray-700">
+          <RowLabel>Reporting Status</RowLabel>
+          <ReportingChip reported={rs.prior_run_reported === true} label="Reported (previous run)" />
+        </div>
+        <div className="grid grid-cols-2 gap-4 pt-1 border-t dark:border-gray-700">
+          <DetailItem label="Arrival Timing" value={formatArrivalTimingLong(row.arrival_timing)} />
+          <DetailItem label="First Stock Recorded" value={formatDate(row.first_positive_inventory_at)} />
+        </div>
+        <div className="flex items-center justify-between">
+          <RowLabel>Data Confidence</RowLabel>
+          <ConfidenceBadge confidence={row.data_confidence} />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// Real inventory and ledger residue, from vw_run_state. Any title.
+const StockAndLedger = ({ row }: { row: PreorderRow }) => {
+  const rs = row.run_state
+  if (!rs) return null
+  return (
+    <>
+      <DetailItem label="Inventory" value={inventoryText(rs.inventory_unclamped)} mono />
+      {rs.orphan_lines > 0 && (
+        <p className="text-[10px] text-gray-500 dark:text-gray-400 leading-relaxed">
+          {rs.orphan_lines.toLocaleString()} ledger line{rs.orphan_lines === 1 ? "" : "s"} for this title
+          don't match a current order (ledger residue).
+        </p>
+      )}
+    </>
+  )
+}
+
 const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onClose }) => {
   const [isVisible, setIsVisible] = useState(false)
   const [shouldRender, setShouldRender] = useState(false)
@@ -96,6 +204,8 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
   if (!shouldRender || !row) return null
 
   const isHistorical = row.classification === "historical_preorder"
+  // Reissue: run-1 columns (confidence, presales, arrival, reported) are stale.
+  const priorRun = hasPriorRun(row)
 
   const arrivalIsLive = row.arrival_record_is_live === true
 
@@ -140,6 +250,7 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
             <p className="text-[11px] font-mono text-gray-400 uppercase tracking-tighter">
               PID: {row.product_id}
             </p>
+            {priorRun && <ReissueBadge row={row} className="mt-1" />}
           </div>
           <button
             onClick={handleClose}
@@ -182,7 +293,13 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
                 <DetailItem label="Pub Date" value={formatDate(row.pub_date)} />
               </section>
 
-          {/* Presale Record */}
+          {priorRun ? (
+            <>
+              <CurrentRunPanel row={row} />
+              <PreviousRunPanel row={row} />
+            </>
+          ) : (
+          /* Presale Record */
           <section>
             <SectionHeader label="Presale Record" color="green" />
             <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-md border dark:border-gray-800 space-y-3">
@@ -212,25 +329,23 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
               )}
               {/* Reporting Status — belongs here in historical layout */}
               <div className="flex items-center justify-between pt-1 border-t dark:border-gray-700">
-                <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">
-                  Reporting Status
-                </span>
-                {row.already_reported ? (
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 font-medium">
-                    ✓ Reported
-                  </span>
-                ) : (
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 font-medium">
-                    Not yet reported
-                  </span>
-                )}
+                <RowLabel>Reporting Status</RowLabel>
+                <ReportingChip reported={isReportedNow(row)} />
               </div>
             </div>
           </section>
+          )}
 
-              {/* Inventory */}
+              {/* Inventory — for a reissue, receipt facts are in the previous-run panel */}
+              {priorRun ? (
+                <section>
+                  <SectionHeader label="Stock" color="gray" />
+                  <div className="space-y-3"><StockAndLedger row={row} /></div>
+                </section>
+              ) : (
               <section>
                 <SectionHeader label="Inventory Receipt" color="gray" />
+                {row.run_state && <div className="mb-3"><StockAndLedger row={row} /></div>}
                 {arrivalIsLive ? (
                   <div className="space-y-3">
                     <DetailItem
@@ -266,6 +381,7 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
                   </p>
                 )}
               </section>
+              )}
 
               {/* Anomaly note — only if one was ever recorded */}
               {row.anomaly_type && (
@@ -289,7 +405,7 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
                   />
                   <DetailItem
                     label="Arrival Timing"
-                    value={row.arrival_timing?.replace(/_/g, " ") ?? "—"}
+                    value={priorRun ? "— (previous run below)" : row.arrival_timing?.replace(/_/g, " ") ?? "—"}
                   />
                   <DetailItem label="Pub Date" value={formatDate(row.pub_date)} />
                   <DetailItem label="Anomaly" value={row.anomaly_type} />
@@ -312,7 +428,13 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
                 )}
               </section>
 
-              {/* Presale Data */}
+              {priorRun ? (
+                <>
+                  <CurrentRunPanel row={row} />
+                  <PreviousRunPanel row={row} />
+                </>
+              ) : (
+              /* Presale Data */
               <section>
                 <SectionHeader label="Presale Data" color="green" />
                 <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-md border dark:border-gray-800 space-y-3">
@@ -341,26 +463,18 @@ const PreorderDetailSidebar: React.FC<PreorderDetailSidebarProps> = ({ row, onCl
                     </p>
                   )}
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">
-                      Reporting Status
-                    </span>
-                    {row.already_reported ? (
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 font-medium">
-                        ✓ Reported
-                      </span>
-                    ) : (
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 font-medium">
-                        Not yet reported
-                      </span>
-                    )}
+                    <RowLabel>Reporting Status</RowLabel>
+                    <ReportingChip reported={isReportedNow(row)} />
                   </div>
                 </div>
               </section>
+              )}
 
               {/* Metadata */}
               <section>
                 <SectionHeader label="Metadata" color="gray" />
                 <div className="space-y-3">
+                  <StockAndLedger row={row} />
                   <DetailItem label="Last Updated" value={formatDate(row.last_updated)} />
                 </div>
               </section>
