@@ -112,6 +112,12 @@ export interface LineStockContext {
   // waiting on them — the "backordered but never shipped" case. Warn loudly;
   // never block receiving on it.
   stock_alert:    boolean
+  // Committed units that stock on hand doesn't cover:
+  // max(committed - max(on_hand, 0), 0). When > 0, that many copies of this
+  // shipment fill customer orders already waiting — including when the shelf
+  // is empty (on_hand <= 0), which stock_alert never covers. null = unknown.
+  // Advisory only; never blocks receiving.
+  backorders_waiting: number | null
 }
 
 // UI state for each active (non-received) line in the wizard.
@@ -150,6 +156,7 @@ export const EMPTY_STOCK_CONTEXT: LineStockContext = {
   list_price:     null,
   price_mismatch: null,
   stock_alert:    false,
+  backorders_waiting: null,
 }
 
 // Pull the decision-support fields off a raw PO line from the API.
@@ -168,6 +175,7 @@ export function stockContextFromLine(line: any): LineStockContext {
                       ? null
                       : Boolean(line.price_mismatch),
     stock_alert:    Boolean(line.stock_alert),
+    backorders_waiting: num(line.backorders_waiting),
   }
 }
 
