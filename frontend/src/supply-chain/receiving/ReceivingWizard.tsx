@@ -51,7 +51,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Minus, Plus } from 'lucide-react'
 import {
-  WizardLine, ReceiveResult, DamageDisposal, DamageResolution,
+  WizardLine, ReceiveResult, DamageDisposal, DamageResolution, LineStockContext,
   stockContextFromLine, formatStockCount, formatMoney,
 } from './receivingTypes'
 import { PurchaseOrderDetail } from '../purchase-orders/purchaseOrderTypes'
@@ -216,6 +216,11 @@ function WizardSlipScanner({
 //      while customers wait — surface it loudly, but never block receiving.
 //   2. Publisher list price vs the current Shopify price, flagged on ANY
 //      difference so staff can correct Shopify in the moment.
+//   3. backorders_waiting: copies of THIS shipment that fill orders already
+//      waiting, because the shelf doesn't cover them (on_hand <= 0 included,
+//      which stock_alert never is). Shown alongside stock_alert when both apply:
+//      1 on the shelf and 3 orders → red for the copy already here, and
+//      "2 copies of this shipment fill waiting orders". KAL-10278, 2026-11-23.
 //
 // null/undefined renders as an em dash. A failed Shopify lookup must never
 // display as 0, which would wrongly say "nothing on hand, nothing waiting".
@@ -227,7 +232,9 @@ function LineStockPriceContext({ line }: { line: WizardLine }) {
     (line.list_price !== null && line.list_price !== undefined) ||
     (line.current_price !== null && line.current_price !== undefined)
 
-  if (!knowsStock && !knowsPrice) return null
+  const waiting = waitingCount(line)
+
+  if (!knowsStock && !knowsPrice && waiting === 0) return null
 
   return (
     <div className="space-y-2">
@@ -279,8 +286,31 @@ function LineStockPriceContext({ line }: { line: WizardLine }) {
           </p>
         </div>
       )}
+
+      {waiting > 0 && (
+        <div className="px-2.5 py-2 rounded border border-amber-300 dark:border-amber-700
+                        bg-amber-50 dark:bg-amber-900/20">
+          <p className="text-[11px] text-amber-900 dark:text-amber-100">
+            <strong className="font-semibold">
+              {waiting} cop{waiting === 1 ? 'y' : 'ies'} of this shipment fill{waiting === 1 ? 's' : ''} waiting orders.
+            </strong>{' '}
+            Set {waiting === 1 ? 'it' : 'them'} aside for shipping.
+          </p>
+          {line.quantity_received > 0 && line.quantity_received < waiting && (
+            <p className="text-[11px] text-amber-800 dark:text-amber-200 mt-0.5">
+              Only {line.quantity_received} of these {waiting} orders can be filled from this shipment.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   )
+}
+
+/** backorders_waiting as a count; unknown (null/absent) reads as 0 here, which shows nothing — never a "0". */
+function waitingCount(line: Partial<LineStockContext>): number {
+  const w = line.backorders_waiting
+  return typeof w === 'number' && w > 0 ? w : 0
 }
 
 // ---------------------------------------------------------------------------
@@ -740,6 +770,11 @@ function ConfirmSummary({
   // Lines being received that already have copies committed to unfulfilled
   // orders — last chance to notice before the box goes on the shelf.
   const alertLines    = activeLines.filter(l => l.stock_alert)
+  // Lines whose copies fill orders already waiting (backorders_waiting). Copies
+  // for waiting orders = what's being received, up to what's waiting.
+  const waitingLines  = activeLines
+    .map(l => ({ l, waiting: waitingCount(l), filling: Math.min(waitingCount(l), l.quantity_received) }))
+    .filter(x => x.filling > 0)
 
   const totalReceived = activeLines.reduce((s, l) => s + l.quantity_received, 0)
   const totalDamaged  = activeLines.reduce((s, l) => s + l.quantity_damaged, 0)
@@ -753,6 +788,26 @@ function ConfirmSummary({
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Confirm Receipt</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Review before applying inventory changes.</p>
       </div>
+
+      {/* Copies in this receipt that fill orders already waiting */}
+      {waitingLines.length > 0 && (
+        <div className="px-4 py-3 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 space-y-2">
+          <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+            {waitingLines.length} title{waitingLines.length !== 1 ? 's' : ''} in this receipt fill{waitingLines.length === 1 ? 's' : ''} waiting orders
+          </p>
+          <div className="space-y-0.5">
+            {waitingLines.map(({ l, waiting, filling }) => (
+              <p key={l.purchase_order_line_id} className="text-xs text-amber-800 dark:text-amber-200 truncate">
+                · {l.title}: {filling} cop{filling === 1 ? 'y' : 'ies'} for waiting orders
+                {filling < waiting && ` (${waiting} waiting)`}
+              </p>
+            ))}
+          </div>
+          <p className="text-xs text-amber-700 dark:text-amber-300">
+            Set these aside for shipping.
+          </p>
+        </div>
+      )}
 
       {/* Orders already waiting on titles in this receipt */}
       {alertLines.length > 0 && (

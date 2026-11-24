@@ -131,6 +131,12 @@ export interface PurchaseOrderLine {
   title?: string | null
   isbn?: string | null
   supplier_sku?: string | null
+  // Committed units that stock on hand doesn't cover:
+  // max(committed - max(on_hand, 0), 0). These copies of the shipment fill
+  // waiting customer orders. null = the Shopify lookup failed (unknown, not 0).
+  // The rest of the live stock context is typed in receiving/receivingTypes.ts
+  // (LineStockContext).
+  backorders_waiting?: number | null
 }
 
 export interface PurchaseOrderDetail {
